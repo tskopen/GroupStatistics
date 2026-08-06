@@ -1,11 +1,11 @@
-A tracker for all 10 of group 1 squadrons.
+Create a website PHP tracker for USAFA Group 1 which contains 10 competing squadrons
 
 Input bracket rankings from competitions
 Input scores from events, SAMIS, PFT, ETC
 Rank all squads from combined events.
 Authorized persons can upload through password protected (environment variables) page to upload events.
 
-Information on squadrons
+Information on squadrons: Should have a folder to upload squadron icons and link to their squadron pages.
 
 Squadron 1: Mighty Mach One
 The griffin symbolizes protection and a search for the treasure of knowledge while the Maltese Cross indicates a devotion to duty and dedication to success. The positioning of the cross, above the black diagonal strip, indicates a higher ideal in life.
