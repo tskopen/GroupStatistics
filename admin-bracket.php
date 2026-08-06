@@ -1,25 +1,16 @@
 <?php
 session_start();
+require __DIR__ . '/config.php';
 if (empty($_SESSION['admin'])) {
     header('Location: admin-login.php');
     exit;
 }
 
-function readJson($file) {
-    if (!file_exists($file)) return [];
-    $data = json_decode(file_get_contents($file), true);
-    return is_array($data) ? $data : [];
-}
-
-function writeJson($file, $data) {
-    file_put_contents($file, json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
-}
-
-$squadrons = readJson('data/squadrons.json');
+$squadrons = readJson(DATA_DIR . '/squadrons.json');
 $squadronMap = [];
 foreach ($squadrons as $s) $squadronMap[$s['id']] = $s;
 
-$brackets = readJson('data/brackets.json');
+$brackets = readJson(DATA_DIR . '/brackets.json');
 $bracket = null;
 $selectedName = $_GET['bracket'] ?? null;
 
@@ -43,7 +34,7 @@ if ($_POST && isset($_POST['create_bracket'])) {
             'final_winner' => null
         ];
         $brackets[] = $newBracket;
-        writeJson('data/brackets.json', $brackets);
+        writeJson(DATA_DIR . '/brackets.json', $brackets);
         header('Location: admin-bracket.php?bracket=' . urlencode($name));
         exit;
     }
@@ -68,7 +59,7 @@ if ($_POST && isset($_POST['match_id']) && $bracket) {
             break;
         }
     }
-    writeJson('data/brackets.json', $brackets);
+    writeJson(DATA_DIR . '/brackets.json', $brackets);
     header('Location: admin-bracket.php?bracket=' . urlencode($bracket['name']));
     exit;
 }

@@ -1,22 +1,13 @@
 <?php
 session_start();
+require __DIR__ . '/config.php';
 if (empty($_SESSION['admin'])) {
     header('Location: admin-login.php');
     exit;
 }
 
-function readJson($file) {
-    if (!file_exists($file)) return [];
-    $data = json_decode(file_get_contents($file), true);
-    return is_array($data) ? $data : [];
-}
-
-function writeJson($file, $data) {
-    file_put_contents($file, json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
-}
-
-$squadrons = readJson('data/squadrons.json');
-$scores = readJson('data/scores.json');
+$squadrons = readJson(DATA_DIR . '/squadrons.json');
+$scores = readJson(DATA_DIR . '/scores.json');
 $success = '';
 
 if ($_POST) {
@@ -37,7 +28,7 @@ if ($_POST) {
                 ];
             }
         }
-        writeJson('data/scores.json', $scores);
+        writeJson(DATA_DIR . '/scores.json', $scores);
         $success = "Event '$eventName' recorded for all squadrons!";
     }
 }
@@ -92,7 +83,7 @@ if ($_POST) {
                 <div class="score-input">
                     <label>
                         <?php if ($s['icon']): ?>
-                        <img src="<?php echo htmlspecialchars($s['icon']); ?>" class="icon">
+                        <img src="<?php echo htmlspecialchars(iconUrl($s['icon'])); ?>" class="icon">
                         <?php endif; ?>
                         <span><?php echo htmlspecialchars($s['name']); ?></span>
                     </label>
