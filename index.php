@@ -9,9 +9,10 @@ function writeJson($file, $data) {
     file_put_contents($file, json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
 }
 
-$squadrons = readJson('data/squadrons.json');
-$scores = readJson('data/scores.json');
-$brackets = readJson('data/brackets.json');
+$dataDir = '/data';
+$squadrons = readJson($dataDir . '/squadrons.json');
+$scores = readJson($dataDir . '/scores.json');
+$brackets = readJson($dataDir . '/brackets.json');
 
 // Build squadron map
 $squadronMap = [];

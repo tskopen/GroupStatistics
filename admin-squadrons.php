@@ -19,7 +19,8 @@ function writeJson($file, $data) {
     file_put_contents($file, json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
 }
 
-$squadronsFile = __DIR__ . '/data/squadrons.json';
+$dataDir = '/data';
+$squadronsFile = $dataDir . '/squadrons.json';
 $uploadsDir = __DIR__ . '/uploads';
 
 $success = '';

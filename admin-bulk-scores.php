@@ -15,8 +15,9 @@ function writeJson($file, $data) {
     file_put_contents($file, json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
 }
 
-$squadrons = readJson('data/squadrons.json');
-$scores = readJson('data/scores.json');
+$dataDir = '/data';
+$squadrons = readJson($dataDir . '/squadrons.json');
+$scores = readJson($dataDir . '/scores.json');
 $success = '';
 
 if ($_POST) {
@@ -37,7 +38,7 @@ if ($_POST) {
                 ];
             }
         }
-        writeJson('data/scores.json', $scores);
+        writeJson($dataDir . '/scores.json', $scores);
         $success = "Event '$eventName' recorded for all squadrons!";
     }
 }

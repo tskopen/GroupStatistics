@@ -19,8 +19,9 @@ function writeJson($file, $data) {
     file_put_contents($file, json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
 }
 
-$squadronsFile = __DIR__ . '/data/squadrons.json';
-$scoresFile = __DIR__ . '/data/scores.json';
+$dataDir = '/data';
+$squadronsFile = $dataDir . '/squadrons.json';
+$scoresFile = $dataDir . '/scores.json';
 
 $squadrons = readJson($squadronsFile);
 $eventTypes = ['bracket', 'pft', 'samis', 'other'];
