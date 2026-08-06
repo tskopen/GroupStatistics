@@ -1,17 +1,9 @@
 <?php
-function readJson($file) {
-    if (!file_exists($file)) return [];
-    $data = json_decode(file_get_contents($file), true);
-    return is_array($data) ? $data : [];
-}
+require __DIR__ . '/config.php';
 
-function writeJson($file, $data) {
-    file_put_contents($file, json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
-}
-
-$squadrons = readJson('data/squadrons.json');
-$scores = readJson('data/scores.json');
-$brackets = readJson('data/brackets.json');
+$squadrons = readJson(DATA_DIR . '/squadrons.json');
+$scores = readJson(DATA_DIR . '/scores.json');
+$brackets = readJson(DATA_DIR . '/brackets.json');
 
 // Build squadron map
 $squadronMap = [];
@@ -103,7 +95,7 @@ foreach ($scores as $score) {
             <td>#<?php echo $rank; ?></td>
             <td>
                 <?php if ($s['icon']): ?>
-                    <img src="<?php echo htmlspecialchars($s['icon']); ?>" alt="icon" class="icon">
+                    <img src="<?php echo htmlspecialchars(iconUrl($s['icon'])); ?>" alt="icon" class="icon">
                 <?php else: ?>
                     <span class="icon-placeholder"></span>
                 <?php endif; ?>
@@ -143,7 +135,7 @@ foreach ($scores as $score) {
                 <tr class="<?php echo $isWinner ? 'winner' : ''; ?>">
                     <td>
                         <?php if (isset($squadronMap[$sid]['icon']) && $squadronMap[$sid]['icon']): ?>
-                            <img src="<?php echo htmlspecialchars($squadronMap[$sid]['icon']); ?>" alt="icon" class="icon">
+                            <img src="<?php echo htmlspecialchars(iconUrl($squadronMap[$sid]['icon'])); ?>" alt="icon" class="icon">
                         <?php else: ?>
                             <span class="icon-placeholder"></span>
                         <?php endif; ?>

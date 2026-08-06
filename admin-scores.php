@@ -1,26 +1,14 @@
 <?php
 session_start();
+require __DIR__ . '/config.php';
 
 if (empty($_SESSION['admin'])) {
     header('Location: admin-login.php');
     exit;
 }
 
-function readJson($file) {
-    if (!file_exists($file)) {
-        return [];
-    }
-    $content = file_get_contents($file);
-    $data = json_decode($content, true);
-    return is_array($data) ? $data : [];
-}
-
-function writeJson($file, $data) {
-    file_put_contents($file, json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
-}
-
-$squadronsFile = __DIR__ . '/data/squadrons.json';
-$scoresFile = __DIR__ . '/data/scores.json';
+$squadronsFile = DATA_DIR . '/squadrons.json';
+$scoresFile = DATA_DIR . '/scores.json';
 
 $squadrons = readJson($squadronsFile);
 $eventTypes = ['bracket', 'pft', 'samis', 'other'];

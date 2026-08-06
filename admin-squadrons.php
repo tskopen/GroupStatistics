@@ -1,26 +1,14 @@
 <?php
 session_start();
+require __DIR__ . '/config.php';
 
 if (empty($_SESSION['admin'])) {
     header('Location: admin-login.php');
     exit;
 }
 
-function readJson($file) {
-    if (!file_exists($file)) {
-        return [];
-    }
-    $content = file_get_contents($file);
-    $data = json_decode($content, true);
-    return is_array($data) ? $data : [];
-}
-
-function writeJson($file, $data) {
-    file_put_contents($file, json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
-}
-
-$squadronsFile = __DIR__ . '/data/squadrons.json';
-$uploadsDir = __DIR__ . '/uploads';
+$squadronsFile = DATA_DIR . '/squadrons.json';
+$uploadsDir = IMAGES_DIR;
 
 $success = '';
 $error = '';
@@ -51,7 +39,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['squadron_id'])) {
             if (move_uploaded_file($_FILES['icon']['tmp_name'], $destination)) {
                 foreach ($squadrons as &$squadron) {
                     if ($squadron['id'] === $squadronId) {
-                        $squadron['icon'] = 'uploads/' . $filename;
+                        $squadron['icon'] = $filename;
                         break;
                     }
                 }
@@ -104,7 +92,7 @@ $squadrons = readJson($squadronsFile);
             <div class="squadron-card">
                 <h2>
                     <?php if (!empty($squadron['icon'])): ?>
-                        <img src="<?php echo htmlspecialchars($squadron['icon']); ?>" alt="icon">
+                        <img src="<?php echo htmlspecialchars(iconUrl($squadron['icon'])); ?>" alt="icon">
                     <?php endif; ?>
                     Squadron <?php echo htmlspecialchars((string) $squadron['id']); ?>: <?php echo htmlspecialchars($squadron['name']); ?>
                 </h2>
