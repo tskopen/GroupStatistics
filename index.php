@@ -29,14 +29,14 @@ foreach ($squadrons as $s) {
 }
 usort($ranked, fn($a, $b) => $b['total'] <=> $a['total']);
 
-// Get recent events (most recent first, max 15)
-$recentEvents = array_reverse($scores);
-$recentEvents = array_slice($recentEvents, 0, 15);
+// Get ALL events (reversed, so newest first)
+$allEvents = array_reverse($scores);
 
-// Separate recent events into bracket events (grouped by tournament) and regular events
+// Separate into bracket events (grouped by tournament) and regular events
 $bracketsByTournament = [];
 $regularEvents = [];
-foreach ($recentEvents as $event) {
+
+foreach ($allEvents as $event) {
     if (($event['event_type'] ?? 'other') === 'bracket') {
         $tName = $event['tournament_name'] ?? 'Bracket';
         if (!isset($bracketsByTournament[$tName])) {
@@ -54,7 +54,8 @@ foreach ($recentEvents as $event) {
         $regularEvents[] = $event;
     }
 }
-// Most recent tournaments first
+
+// Sort tournaments by most recent first
 usort($bracketsByTournament, fn($a, $b) => ($b['latest_timestamp'] ?? 0) <=> ($a['latest_timestamp'] ?? 0));
 ?>
 <!DOCTYPE html>
@@ -93,25 +94,21 @@ usort($bracketsByTournament, fn($a, $b) => ($b['latest_timestamp'] ?? 0) <=> ($a
     @media (max-width: 768px) { .tournament-card { grid-column: 1 / -1; } }
     .tournament-header { background: #002147; color: #fff; padding: 16px; font-weight: bold; font-size: 1.3em; text-align: center; }
     .tournament-body { padding: 15px; }
+    
     .tournament-match { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px; margin-bottom: 10px; border-radius: 6px; background: #f9f9f9; }
     .tournament-match:last-child { margin-bottom: 0; }
+    
     .match-team { flex: 1; display: flex; align-items: center; gap: 10px; }
     .match-team.team-right { flex-direction: row-reverse; text-align: right; }
     .match-team-icon { width: 45px; height: 45px; border-radius: 4px; object-fit: cover; flex-shrink: 0; }
     .match-team-name { font-weight: bold; font-size: 0.95em; }
+    
     .match-score-block { display: flex; align-items: center; gap: 8px; font-size: 1.3em; font-weight: bold; color: #002147; padding: 0 15px; }
-    .match-vs-label { font-weight: bold; color: #999; font-size: 0.9em; margin: 0 4px; }
+    .match-vs-label { font-weight: bold; color: #999; font-size: 0.9em; }
+    .match-points { font-size: 0.75em; color: #666; margin-top: 4px; text-align: center; }
+    
     .match-winner { background: #ffd700; }
     .match-winner-check { color: #28a745; font-weight: bold; margin-left: 6px; }
-
-    /* Bracket event card (legacy, kept for compatibility) */
-    .bracket-vs { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 10px 0; }
-    .bracket-team { flex: 1; text-align: center; }
-    .bracket-team-icon { width: 50px; height: 50px; margin: 0 auto 5px; border-radius: 4px; object-fit: cover; }
-    .bracket-team-name { font-weight: bold; font-size: 0.85em; }
-    .bracket-score { font-size: 1.2em; font-weight: bold; color: #002147; }
-    .bracket-vs-label { font-weight: bold; color: #999; }
-    .bracket-winner { background: #ffd700; color: #000; padding: 2px 6px; border-radius: 3px; font-size: 0.75em; font-weight: bold; }
     
     /* Regular event card */
     .regular-event { text-align: center; }
@@ -153,7 +150,7 @@ usort($bracketsByTournament, fn($a, $b) => ($b['latest_timestamp'] ?? 0) <=> ($a
     </table>
     
     <?php if ($bracketsByTournament || $regularEvents): ?>
-    <h2>🔥 Recent Events</h2>
+    <h2>🔥 Recent Events & Results</h2>
     <div class="events-grid">
         <?php foreach ($bracketsByTournament as $tournament): ?>
         <!-- Tournament Card (grouped bracket matches) -->
@@ -166,6 +163,7 @@ usort($bracketsByTournament, fn($a, $b) => ($b['latest_timestamp'] ?? 0) <=> ($a
                     $winnerId = $match['winner_id'] ?? null;
                     $t1IsWinner = $winnerId && $winnerId === $match['squadron_id'];
                     $t2IsWinner = $winnerId && $winnerId === $match['opponent_id'];
+                    $pointsAwarded = $match['value'] ?? 0;
                 ?>
                 <div class="tournament-match">
                     <div class="match-team <?php echo $t1IsWinner ? 'match-winner' : ''; ?>">
@@ -196,6 +194,7 @@ usort($bracketsByTournament, fn($a, $b) => ($b['latest_timestamp'] ?? 0) <=> ($a
                         </span>
                     </div>
                 </div>
+                <div class="match-points">+<?php echo $pointsAwarded; ?> pts</div>
                 <?php endforeach; ?>
             </div>
         </div>
