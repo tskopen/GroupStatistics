@@ -32,6 +32,30 @@ usort($ranked, fn($a, $b) => $b['total'] <=> $a['total']);
 // Get recent events (most recent first, max 15)
 $recentEvents = array_reverse($scores);
 $recentEvents = array_slice($recentEvents, 0, 15);
+
+// Separate recent events into bracket events (grouped by tournament) and regular events
+$bracketsByTournament = [];
+$regularEvents = [];
+foreach ($recentEvents as $event) {
+    if (($event['event_type'] ?? 'other') === 'bracket') {
+        $tName = $event['tournament_name'] ?? 'Bracket';
+        if (!isset($bracketsByTournament[$tName])) {
+            $bracketsByTournament[$tName] = [
+                'tournament_name' => $tName,
+                'matches' => [],
+                'latest_timestamp' => $event['timestamp'] ?? 0,
+            ];
+        }
+        $bracketsByTournament[$tName]['matches'][] = $event;
+        if (($event['timestamp'] ?? 0) > $bracketsByTournament[$tName]['latest_timestamp']) {
+            $bracketsByTournament[$tName]['latest_timestamp'] = $event['timestamp'];
+        }
+    } else {
+        $regularEvents[] = $event;
+    }
+}
+// Most recent tournaments first
+usort($bracketsByTournament, fn($a, $b) => ($b['latest_timestamp'] ?? 0) <=> ($a['latest_timestamp'] ?? 0));
 ?>
 <!DOCTYPE html>
 <html>
@@ -64,7 +88,23 @@ $recentEvents = array_slice($recentEvents, 0, 15);
     .event-header { background: #003366; color: #fff; padding: 12px; font-weight: bold; font-size: 0.9em; text-align: center; }
     .event-body { padding: 15px; }
     
-    /* Bracket event card */
+    /* Tournament card (grouped bracket events) */
+    .tournament-card { background: #fff; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); overflow: hidden; grid-column: span 2; }
+    @media (max-width: 768px) { .tournament-card { grid-column: 1 / -1; } }
+    .tournament-header { background: #002147; color: #fff; padding: 16px; font-weight: bold; font-size: 1.3em; text-align: center; }
+    .tournament-body { padding: 15px; }
+    .tournament-match { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px; margin-bottom: 10px; border-radius: 6px; background: #f9f9f9; }
+    .tournament-match:last-child { margin-bottom: 0; }
+    .match-team { flex: 1; display: flex; align-items: center; gap: 10px; }
+    .match-team.team-right { flex-direction: row-reverse; text-align: right; }
+    .match-team-icon { width: 45px; height: 45px; border-radius: 4px; object-fit: cover; flex-shrink: 0; }
+    .match-team-name { font-weight: bold; font-size: 0.95em; }
+    .match-score-block { display: flex; align-items: center; gap: 8px; font-size: 1.3em; font-weight: bold; color: #002147; padding: 0 15px; }
+    .match-vs-label { font-weight: bold; color: #999; font-size: 0.9em; margin: 0 4px; }
+    .match-winner { background: #ffd700; }
+    .match-winner-check { color: #28a745; font-weight: bold; margin-left: 6px; }
+
+    /* Bracket event card (legacy, kept for compatibility) */
     .bracket-vs { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 10px 0; }
     .bracket-team { flex: 1; text-align: center; }
     .bracket-team-icon { width: 50px; height: 50px; margin: 0 auto 5px; border-radius: 4px; object-fit: cover; }
@@ -112,49 +152,56 @@ $recentEvents = array_slice($recentEvents, 0, 15);
         <?php $rank++; endforeach; ?>
     </table>
     
-    <?php if ($recentEvents): ?>
+    <?php if ($bracketsByTournament || $regularEvents): ?>
     <h2>🔥 Recent Events</h2>
     <div class="events-grid">
-        <?php foreach ($recentEvents as $event): 
-            if ($event['event_type'] === 'bracket'): 
-                $t1 = $squadronMap[$event['squadron_id']] ?? null;
-                $t2 = $squadronMap[$event['opponent_id']] ?? null;
-                $isWinner = $event['winner_id'] === $event['squadron_id'];
-        ?>
-        <!-- Bracket Event Card -->
-        <div class="event-card">
-            <div class="event-header"><?php echo htmlspecialchars($event['tournament_name'] ?? 'Bracket'); ?></div>
-            <div class="event-body">
-                <div class="bracket-vs">
-                    <div class="bracket-team">
+        <?php foreach ($bracketsByTournament as $tournament): ?>
+        <!-- Tournament Card (grouped bracket matches) -->
+        <div class="tournament-card">
+            <div class="tournament-header">🏆 <?php echo htmlspecialchars($tournament['tournament_name']); ?></div>
+            <div class="tournament-body">
+                <?php foreach ($tournament['matches'] as $match): 
+                    $t1 = $squadronMap[$match['squadron_id']] ?? null;
+                    $t2 = $squadronMap[$match['opponent_id']] ?? null;
+                    $winnerId = $match['winner_id'] ?? null;
+                    $t1IsWinner = $winnerId && $winnerId === $match['squadron_id'];
+                    $t2IsWinner = $winnerId && $winnerId === $match['opponent_id'];
+                ?>
+                <div class="tournament-match">
+                    <div class="match-team <?php echo $t1IsWinner ? 'match-winner' : ''; ?>">
                         <?php if ($t1 && $t1['icon']): ?>
-                            <img src="<?php echo htmlspecialchars(iconUrl($t1['icon'])); ?>" alt="icon" class="bracket-team-icon">
+                            <img src="<?php echo htmlspecialchars(iconUrl($t1['icon'])); ?>" alt="icon" class="match-team-icon">
                         <?php else: ?>
-                            <div class="bracket-team-icon" style="background:#ccc;"></div>
+                            <div class="match-team-icon" style="background:#ccc;"></div>
                         <?php endif; ?>
-                        <div class="bracket-team-name"><?php echo htmlspecialchars($t1['name'] ?? 'TBD'); ?></div>
-                        <div class="bracket-score"><?php echo $event['team1_score'] ?? '-'; ?></div>
+                        <span class="match-team-name">
+                            <?php echo htmlspecialchars($t1['name'] ?? 'TBD'); ?>
+                            <?php if ($t1IsWinner): ?><span class="match-winner-check">✓</span><?php endif; ?>
+                        </span>
                     </div>
-                    <div class="bracket-vs-label">VS</div>
-                    <div class="bracket-team">
+                    <div class="match-score-block">
+                        <span><?php echo $match['team1_score'] ?? '-'; ?></span>
+                        <span class="match-vs-label">—</span>
+                        <span><?php echo $match['team2_score'] ?? '-'; ?></span>
+                    </div>
+                    <div class="match-team team-right <?php echo $t2IsWinner ? 'match-winner' : ''; ?>">
                         <?php if ($t2 && $t2['icon']): ?>
-                            <img src="<?php echo htmlspecialchars(iconUrl($t2['icon'])); ?>" alt="icon" class="bracket-team-icon">
+                            <img src="<?php echo htmlspecialchars(iconUrl($t2['icon'])); ?>" alt="icon" class="match-team-icon">
                         <?php else: ?>
-                            <div class="bracket-team-icon" style="background:#ccc;"></div>
+                            <div class="match-team-icon" style="background:#ccc;"></div>
                         <?php endif; ?>
-                        <div class="bracket-team-name"><?php echo htmlspecialchars($t2['name'] ?? 'TBD'); ?></div>
-                        <div class="bracket-score"><?php echo $event['team2_score'] ?? '-'; ?></div>
+                        <span class="match-team-name">
+                            <?php if ($t2IsWinner): ?><span class="match-winner-check">✓</span><?php endif; ?>
+                            <?php echo htmlspecialchars($t2['name'] ?? 'TBD'); ?>
+                        </span>
                     </div>
                 </div>
-                <?php if ($event['winner_id']): ?>
-                <div style="margin-top: 10px;">
-                    <span class="bracket-winner">🏆 <?php echo htmlspecialchars($squadronMap[$event['winner_id']]['name'] ?? 'Winner'); ?></span>
-                </div>
-                <?php endif; ?>
+                <?php endforeach; ?>
             </div>
         </div>
-        
-        <?php else: ?>
+        <?php endforeach; ?>
+
+        <?php foreach ($regularEvents as $event): ?>
         <!-- Regular Event Card -->
         <div class="event-card">
             <div class="event-header"><?php echo strtoupper($event['event_type'] ?? 'Event'); ?></div>
@@ -170,7 +217,6 @@ $recentEvents = array_slice($recentEvents, 0, 15);
                 <div class="regular-event-score"><?php echo $event['value'] ?? 'N/A'; ?></div>
             </div>
         </div>
-        <?php endif; ?>
         <?php endforeach; ?>
     </div>
     <?php endif; ?>
