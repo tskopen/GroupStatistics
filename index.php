@@ -75,7 +75,17 @@ usort(
 <html>
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>USAFA Group 1 Squadron Tracker</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#002147">
+<meta name="description" content="Track USAFA Group 1 squadron competition scores and tournament brackets">
+
+<!-- iOS PWA support -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Squadron Tracker">
+<link rel="apple-touch-icon" href="pwa-icon.php?size=192">
 <style>
     * { box-sizing: border-box; }
     body { font-family: Arial, sans-serif; background: #f4f4f4; margin: 0; padding: 20px; color: #222; }
@@ -237,5 +247,14 @@ usort(
         <a href="admin-login.php">Admin Login</a>
     </div>
 </div>
+<script>
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function () {
+        navigator.serviceWorker.register('sw.js').catch(function (err) {
+            console.error('Service worker registration failed:', err);
+        });
+    });
+}
+</script>
 </body>
 </html>
