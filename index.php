@@ -28,34 +28,48 @@ foreach ($squadrons as $s) {
 }
 usort($ranked, fn($a, $b) => $b['total'] <=> $a['total']);
 
-// Get ALL events (reversed, so newest first)
-$allEvents = array_reverse($scores);
-
-// Separate into bracket events (grouped by tournament) and regular events
+/*
+ * Bracket match scores must come from brackets.json.
+ * scores.json only contains the point-award event records.
+ */
 $bracketsByTournament = [];
-$regularEvents = [];
 
-foreach ($allEvents as $event) {
-    if (($event['event_type'] ?? 'other') === 'bracket') {
-        $tName = $event['tournament_name'] ?? 'Bracket';
-        if (!isset($bracketsByTournament[$tName])) {
-            $bracketsByTournament[$tName] = [
-                'tournament_name' => $tName,
-                'matches' => [],
-                'latest_timestamp' => $event['timestamp'] ?? 0,
+foreach ($brackets as $bracket) {
+    $tournament = [
+        'tournament_name' => $bracket['name'] ?? 'Bracket',
+        'matches' => [],
+        'latest_timestamp' => $bracket['updated_at'] ?? $bracket['created_at'] ?? 0,
+    ];
+
+    foreach (($bracket['rounds'] ?? []) as $round) {
+        foreach (($round['matchups'] ?? []) as $matchup) {
+            $tournament['matches'][] = [
+                'squadron_id' => $matchup['team1_id'] ?? null,
+                'opponent_id' => $matchup['team2_id'] ?? null,
+                'team1_score' => $matchup['team1_score'] ?? '-',
+                'team2_score' => $matchup['team2_score'] ?? '-',
+                'winner_id' => $matchup['winner_id'] ?? null,
+                'value' => $matchup['value'] ?? 0,
             ];
         }
-        $bracketsByTournament[$tName]['matches'][] = $event;
-        if (($event['timestamp'] ?? 0) > $bracketsByTournament[$tName]['latest_timestamp']) {
-            $bracketsByTournament[$tName]['latest_timestamp'] = $event['timestamp'];
-        }
-    } else {
-        $regularEvents[] = $event;
+    }
+
+    if (!empty($tournament['matches'])) {
+        $bracketsByTournament[] = $tournament;
     }
 }
 
+// Regular events still come from scores.json, newest first.
+$regularEvents = array_values(array_filter(
+    array_reverse($scores),
+    fn($event) => ($event['event_type'] ?? 'other') !== 'bracket'
+));
+
 // Sort tournaments by most recent first
-usort($bracketsByTournament, fn($a, $b) => ($b['latest_timestamp'] ?? 0) <=> ($a['latest_timestamp'] ?? 0));
+usort(
+    $bracketsByTournament,
+    fn($a, $b) => ($b['latest_timestamp'] ?? 0) <=> ($a['latest_timestamp'] ?? 0)
+);
 ?>
 <!DOCTYPE html>
 <html>
@@ -88,7 +102,7 @@ usort($bracketsByTournament, fn($a, $b) => ($b['latest_timestamp'] ?? 0) <=> ($a
     .event-header { background: #003366; color: #fff; padding: 12px; font-weight: bold; font-size: 0.9em; text-align: center; }
     .event-body { padding: 15px; }
     
-    /* Tournament card (grouped bracket events) */
+    /* Tournament card */
     .tournament-card { background: #fff; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); overflow: hidden; grid-column: span 2; }
     @media (max-width: 768px) { .tournament-card { grid-column: 1 / -1; } }
     .tournament-header { background: #002147; color: #fff; padding: 16px; font-weight: bold; font-size: 1.3em; text-align: center; }
@@ -136,7 +150,7 @@ usort($bracketsByTournament, fn($a, $b) => ($b['latest_timestamp'] ?? 0) <=> ($a
         <tr>
             <td>#<?php echo $rank; ?></td>
             <td>
-                <?php if ($s['icon']): ?>
+                <?php if (!empty($s['icon'])): ?>
                     <img src="<?php echo htmlspecialchars(iconUrl($s['icon'])); ?>" alt="icon" class="icon">
                 <?php else: ?>
                     <span class="icon-placeholder"></span>
@@ -149,14 +163,13 @@ usort($bracketsByTournament, fn($a, $b) => ($b['latest_timestamp'] ?? 0) <=> ($a
     </table>
     
     <?php if ($bracketsByTournament || $regularEvents): ?>
-    <h2>🔥 Recent Events & Results</h2>
+    <h2>🔥 Recent Events &amp; Results</h2>
     <div class="events-grid">
         <?php foreach ($bracketsByTournament as $tournament): ?>
-        <!-- Tournament Card (grouped bracket matches) -->
         <div class="tournament-card">
             <div class="tournament-header">🏆 <?php echo htmlspecialchars($tournament['tournament_name']); ?></div>
             <div class="tournament-body">
-                <?php foreach ($tournament['matches'] as $match): 
+                <?php foreach ($tournament['matches'] as $match):
                     $t1 = $squadronMap[$match['squadron_id']] ?? null;
                     $t2 = $squadronMap[$match['opponent_id']] ?? null;
                     $winnerId = $match['winner_id'] ?? null;
@@ -166,7 +179,7 @@ usort($bracketsByTournament, fn($a, $b) => ($b['latest_timestamp'] ?? 0) <=> ($a
                 ?>
                 <div class="tournament-match">
                     <div class="match-team <?php echo $t1IsWinner ? 'match-winner' : ''; ?>">
-                        <?php if ($t1 && $t1['icon']): ?>
+                        <?php if ($t1 && !empty($t1['icon'])): ?>
                             <img src="<?php echo htmlspecialchars(iconUrl($t1['icon'])); ?>" alt="icon" class="match-team-icon">
                         <?php else: ?>
                             <div class="match-team-icon" style="background:#ccc;"></div>
@@ -176,13 +189,15 @@ usort($bracketsByTournament, fn($a, $b) => ($b['latest_timestamp'] ?? 0) <=> ($a
                             <?php if ($t1IsWinner): ?><span class="match-winner-check">✓</span><?php endif; ?>
                         </span>
                     </div>
+
                     <div class="match-score-block">
-                        <span><?php echo $match['team1_score'] ?? '-'; ?></span>
+                        <span><?php echo htmlspecialchars((string)($match['team1_score'] ?? '-')); ?></span>
                         <span class="match-vs-label">—</span>
-                        <span><?php echo $match['team2_score'] ?? '-'; ?></span>
+                        <span><?php echo htmlspecialchars((string)($match['team2_score'] ?? '-')); ?></span>
                     </div>
+
                     <div class="match-team team-right <?php echo $t2IsWinner ? 'match-winner' : ''; ?>">
-                        <?php if ($t2 && $t2['icon']): ?>
+                        <?php if ($t2 && !empty($t2['icon'])): ?>
                             <img src="<?php echo htmlspecialchars(iconUrl($t2['icon'])); ?>" alt="icon" class="match-team-icon">
                         <?php else: ?>
                             <div class="match-team-icon" style="background:#ccc;"></div>
@@ -200,12 +215,11 @@ usort($bracketsByTournament, fn($a, $b) => ($b['latest_timestamp'] ?? 0) <=> ($a
         <?php endforeach; ?>
 
         <?php foreach ($regularEvents as $event): ?>
-        <!-- Regular Event Card -->
         <div class="event-card">
             <div class="event-header"><?php echo strtoupper($event['event_type'] ?? 'Event'); ?></div>
             <div class="event-body regular-event">
                 <?php $squad = $squadronMap[$event['squadron_id']] ?? null; ?>
-                <?php if ($squad && $squad['icon']): ?>
+                <?php if ($squad && !empty($squad['icon'])): ?>
                     <img src="<?php echo htmlspecialchars(iconUrl($squad['icon'])); ?>" alt="icon" class="regular-event-icon">
                 <?php else: ?>
                     <div class="regular-event-icon" style="background:#ccc;"></div>
