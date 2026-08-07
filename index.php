@@ -11,13 +11,12 @@ foreach ($squadrons as $s) {
     $squadronMap[$s['id']] = $s;
 }
 
-// Calculate total scores (exclude bracket events from total)
+// Calculate total scores (includes bracket event values)
 $totals = array_fill_keys(array_keys($squadronMap), 0);
 foreach ($scores as $score) {
     $sid = $score['squadron_id'] ?? null;
     $value = isset($score['value']) ? (float)$score['value'] : 0;
-    // Only count non-bracket events for total score
-    if ($sid && isset($totals[$sid]) && ($score['event_type'] ?? 'other') !== 'bracket') {
+    if ($sid && isset($totals[$sid])) {
         $totals[$sid] += $value;
     }
 }
