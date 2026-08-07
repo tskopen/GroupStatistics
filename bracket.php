@@ -94,7 +94,66 @@ foreach ($bracket['participants'] as $p) {
             <div class="round">
                 <div class="round-title"><?php echo htmlspecialchars($round['round_name']); ?></div>
                 <?php foreach ($round['matchups'] as $matchup): 
-                    $t1 = $squadronMap[$matchup['team1_id']] ?? null;
-                    $t2 = $squadronMap[$matchup['team2_id']] ?? null;
-                    $winner = $matchup['winner_id'];
-                    $status
+                    $status = $matchup['status'] ?? 'upcoming';
+                    if ($winner) {
+                        $status = 'finished';
+                    }
+                ?>
+                <div class="matchup <?php echo $status === 'finished' ? 'completed' : ($status === 'live' ? 'live' : ''); ?>">
+                    <span class="status-badge status-<?php echo htmlspecialchars($status); ?>"><?php echo htmlspecialchars($status); ?></span>
+                    <?php if (empty($matchup['team2_id'])): ?>
+                        <div class="team winner">
+                            <span class="team-name">
+                                <?php if ($t1 && !empty($t1['icon'])): ?>
+                                    <img src="<?php echo htmlspecialchars(iconUrl($t1['icon'])); ?>" class="team-icon" alt="icon">
+                                <?php endif; ?>
+                                <?php echo htmlspecialchars($t1['name'] ?? 'TBD'); ?>
+                            </span>
+                        </div>
+                        <div class="bye">BYE</div>
+                    <?php else: ?>
+                        <div class="team <?php echo $winner && $winner === $matchup['team1_id'] ? 'winner' : ($winner ? 'loser' : ''); ?>">
+                            <span class="team-name">
+                                <?php if ($t1 && !empty($t1['icon'])): ?>
+                                    <img src="<?php echo htmlspecialchars(iconUrl($t1['icon'])); ?>" class="team-icon" alt="icon">
+                                <?php endif; ?>
+                                <?php echo htmlspecialchars($t1['name'] ?? 'TBD'); ?>
+                            </span>
+                            <span class="team-score"><?php echo $matchup['team1_score'] ?? '-'; ?></span>
+                        </div>
+                        <div class="team <?php echo $winner && $winner === $matchup['team2_id'] ? 'winner' : ($winner ? 'loser' : ''); ?>">
+                            <span class="team-name">
+                                <?php if ($t2 && !empty($t2['icon'])): ?>
+                                    <img src="<?php echo htmlspecialchars(iconUrl($t2['icon'])); ?>" class="team-icon" alt="icon">
+                                <?php endif; ?>
+                                <?php echo htmlspecialchars($t2['name'] ?? 'TBD'); ?>
+                            </span>
+                            <span class="team-score"><?php echo $matchup['team2_score'] ?? '-'; ?></span>
+                        </div>
+                    <?php endif; ?>
+                </div>
+                <?php endforeach; ?>
+            </div>
+            <?php endforeach; ?>
+        </div>
+    </div>
+
+    <?php if (($bracket['status'] ?? '') === 'completed' && !empty($bracket['champion_id'])): ?>
+    <?php $champion = $squadronMap[$bracket['champion_id']] ?? null; ?>
+    <div class="champion">
+        <h2>🏆 Champion</h2>
+        <div class="champion-team">
+            <?php if ($champion && !empty($champion['icon'])): ?>
+                <img src="<?php echo htmlspecialchars(iconUrl($champion['icon'])); ?>" class="champion-icon" alt="icon">
+            <?php endif; ?>
+            <span><?php echo htmlspecialchars($champion['name'] ?? 'Unknown'); ?></span>
+        </div>
+    </div>
+    <?php endif; ?>
+
+    <div class="nav">
+        <a href="index.php">← Back to Rankings</a>
+    </div>
+</div>
+</body>
+</html>
