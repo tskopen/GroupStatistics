@@ -254,6 +254,9 @@ usort(
     
     <div class="footer">
         <a href="admin-login.php">Admin Login</a>
+        <?php if (!empty($theme['active_preset'])): ?>
+            <p style="color: #999; font-size: 0.75em; margin-top: 10px;">Theme: <?php echo htmlspecialchars($theme['active_preset']); ?></p>
+        <?php endif; ?>
     </div>
 </div>
 <script>

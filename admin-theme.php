@@ -8,11 +8,17 @@ if (empty($_SESSION['admin'])) {
     exit;
 }
 
+require __DIR__ . '/presets-manager.php';
+require __DIR__ . '/theme-preset-generator.php';
+
 $squadrons = readJson(DATA_DIR . '/squadrons.json');
 $squadronMap = [];
 foreach ($squadrons as $s) {
     $squadronMap[$s['id']] = $s;
 }
+
+$presets = loadPresets();
+$squadronPresets = getAllPresetNames($squadrons);
 
 $success = '';
 $theme = loadTheme();
@@ -22,11 +28,74 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $theme = getDefaultTheme();
         saveTheme($theme);
         $success = 'Theme reset to defaults.';
+    } elseif (isset($_POST['load_preset'])) {
+        $presetName = $_POST['load_preset'];
+        $preset = loadPreset($presetName);
+        if ($preset) {
+            $theme = array_merge($theme, [
+                'primary_color' => $preset['primary_color'],
+                'secondary_color' => $preset['secondary_color'],
+                'accent_color' => $preset['accent_color'],
+                'background_color' => $preset['background_color'],
+                'text_color' => $preset['text_color'],
+                'active_preset' => $preset['name'],
+            ]);
+            saveTheme($theme);
+            $success = 'Preset "' . htmlspecialchars($presetName) . '" loaded.';
+        } else {
+            $success = 'Preset not found.';
+        }
+    } elseif (isset($_POST['load_squadron_preset'])) {
+        $squadronId = (int) $_POST['load_squadron_preset'];
+        $found = null;
+        foreach ($squadronPresets as $sp) {
+            if ($sp['squadron_id'] == $squadronId) {
+                $found = $sp;
+                break;
+            }
+        }
+        if ($found) {
+            $theme = array_merge($theme, [
+                'selected_squadron_id' => $squadronId,
+                'primary_color' => $found['primary_color'],
+                'secondary_color' => $found['secondary_color'],
+                'accent_color' => $found['accent_color'],
+                'background_color' => $found['background_color'],
+                'text_color' => $found['text_color'],
+                'active_preset' => $found['name'],
+            ]);
+            saveTheme($theme);
+            $success = 'Squadron preset "' . htmlspecialchars($found['name']) . '" loaded.';
+        } else {
+            $success = 'Squadron preset not found.';
+        }
+    } elseif (isset($_POST['save_preset'])) {
+        $presetName = trim($_POST['preset_name'] ?? '');
+        if ($presetName !== '') {
+            $currentColors = [
+                'primary_color' => $_POST['primary_color'] ?? $theme['primary_color'],
+                'secondary_color' => $_POST['secondary_color'] ?? $theme['secondary_color'],
+                'accent_color' => $_POST['accent_color'] ?? $theme['accent_color'],
+                'background_color' => $_POST['background_color'] ?? $theme['background_color'],
+                'text_color' => $_POST['text_color'] ?? $theme['text_color'],
+            ];
+            savePreset($presetName, $currentColors);
+            $presets = loadPresets();
+            $success = 'Preset "' . htmlspecialchars($presetName) . '" saved.';
+        } else {
+            $success = 'Please enter a name for the preset.';
+        }
+    } elseif (isset($_POST['delete_preset'])) {
+        $presetName = $_POST['delete_preset'];
+        deletePreset($presetName);
+        $presets = loadPresets();
+        $success = 'Preset "' . htmlspecialchars($presetName) . '" deleted.';
     } else {
         $theme = [
             'selected_squadron_id' => isset($_POST['selected_squadron_id']) && $_POST['selected_squadron_id'] !== ''
                 ? (int) $_POST['selected_squadron_id']
                 : null,
+            'active_preset' => $theme['active_preset'] ?? null,
             'primary_color' => $_POST['primary_color'] ?? $theme['primary_color'],
             'secondary_color' => $_POST['secondary_color'] ?? $theme['secondary_color'],
             'accent_color' => $_POST['accent_color'] ?? $theme['accent_color'],
@@ -37,6 +106,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $success = 'Theme saved successfully.';
     }
 }
+
+$theme = loadTheme();
 
 $selectedSquadron = ($theme['selected_squadron_id'] && isset($squadronMap[$theme['selected_squadron_id']]))
     ? $squadronMap[$theme['selected_squadron_id']]
@@ -79,6 +150,21 @@ $selectedSquadron = ($theme['selected_squadron_id'] && isset($squadronMap[$theme
     .success { color: #1a7a1a; text-align: center; font-weight: bold; }
     .nav-link { display: block; text-align: center; margin-top: 20px; font-size: 0.9em; }
     .nav-link a { color: var(--primary-color); }
+
+    .preset-row { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+    .preset-row select { flex: 1; }
+    .preset-row input[type="text"] { flex: 1; padding: 8px; border-radius: 4px; border: 1px solid #ccc; }
+    .preset-btn { background: #667eea; color: #fff; white-space: nowrap; }
+    .preset-btn:hover { opacity: 0.9; }
+    .delete-preset-btn { background: #b00020; color: #fff; white-space: nowrap; }
+    .delete-preset-btn:hover { opacity: 0.9; }
+    .preset-meta { color: #777; font-size: 0.8em; margin-top: 6px; }
+    .squadron-preset-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; margin-top: 12px; }
+    .squadron-preset-card { border: 1px solid #ddd; border-radius: 6px; padding: 10px; }
+    .squadron-preset-card h4 { margin: 0 0 8px 0; font-size: 0.95em; }
+    .squadron-preset-swatches { display: flex; gap: 4px; margin-bottom: 8px; }
+    .squadron-preset-swatches span { flex: 1; height: 20px; border-radius: 3px; }
+    .squadron-preset-card button { width: 100%; }
 </style>
 </head>
 <body>
@@ -87,6 +173,59 @@ $selectedSquadron = ($theme['selected_squadron_id'] && isset($squadronMap[$theme
         <?php if ($success): ?>
             <p class="success"><?php echo htmlspecialchars($success); ?></p>
         <?php endif; ?>
+
+        <?php if (!empty($theme['active_preset'])): ?>
+            <p class="preset-meta" style="text-align:center;">Active preset: <strong><?php echo htmlspecialchars($theme['active_preset']); ?></strong></p>
+        <?php endif; ?>
+
+        <div class="card">
+            <h3>Saved Presets</h3>
+            <?php if (empty($presets)): ?>
+                <p class="preset-meta">No saved presets yet. Adjust colors below and use "Save as Preset".</p>
+            <?php else: ?>
+                <form method="post" action="admin-theme.php" class="preset-row">
+                    <select name="load_preset">
+                        <?php foreach ($presets as $presetName => $preset): ?>
+                            <option value="<?php echo htmlspecialchars($presetName); ?>">
+                                <?php echo htmlspecialchars($presetName); ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                    <button type="submit" class="preset-btn">Load</button>
+                </form>
+                <form method="post" action="admin-theme.php" class="preset-row" onsubmit="return confirm('Delete this preset?');">
+                    <select name="delete_preset">
+                        <?php foreach ($presets as $presetName => $preset): ?>
+                            <option value="<?php echo htmlspecialchars($presetName); ?>">
+                                <?php echo htmlspecialchars($presetName); ?> (updated <?php echo htmlspecialchars(substr($preset['updated_at'] ?? '', 0, 10)); ?>)
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                    <button type="submit" class="delete-preset-btn">Delete</button>
+                </form>
+            <?php endif; ?>
+        </div>
+
+        <div class="card">
+            <h3>Squadron Presets</h3>
+            <p class="preset-meta">Auto-generated color schemes based on each squadron's description.</p>
+            <div class="squadron-preset-grid">
+                <?php foreach ($squadronPresets as $sp): ?>
+                    <div class="squadron-preset-card">
+                        <h4><?php echo htmlspecialchars($sp['name']); ?></h4>
+                        <div class="squadron-preset-swatches">
+                            <span style="background: <?php echo htmlspecialchars($sp['primary_color']); ?>;"></span>
+                            <span style="background: <?php echo htmlspecialchars($sp['secondary_color']); ?>;"></span>
+                            <span style="background: <?php echo htmlspecialchars($sp['accent_color']); ?>;"></span>
+                        </div>
+                        <form method="post" action="admin-theme.php">
+                            <input type="hidden" name="load_squadron_preset" value="<?php echo htmlspecialchars((string) $sp['squadron_id']); ?>">
+                            <button type="submit" class="preset-btn">Load</button>
+                        </form>
+                    </div>
+                <?php endforeach; ?>
+            </div>
+        </div>
 
         <form method="post" action="admin-theme.php" id="theme-form">
             <div class="card">
@@ -143,6 +282,14 @@ $selectedSquadron = ($theme['selected_squadron_id'] && isset($squadronMap[$theme
                     <div class="swatch" id="swatch-accent" style="background: <?php echo htmlspecialchars($theme['accent_color']); ?>;">Accent</div>
                     <div class="swatch" id="swatch-background" style="background: <?php echo htmlspecialchars($theme['background_color']); ?>; color: #222; text-shadow: none;">Background</div>
                     <div class="swatch" id="swatch-text" style="background: <?php echo htmlspecialchars($theme['text_color']); ?>;">Text</div>
+                </div>
+            </div>
+
+            <div class="card">
+                <h3>Save as Preset</h3>
+                <div class="preset-row">
+                    <input type="text" name="preset_name" id="preset_name" placeholder="e.g. Mighty Mach One - Custom">
+                    <button type="submit" name="save_preset" value="1" class="preset-btn">Save as Preset</button>
                 </div>
             </div>
 
