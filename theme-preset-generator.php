@@ -82,11 +82,48 @@ function generatePresetFromSquadron($squadron) {
 }
 
 function getAllPresetNames($squadrons) {
+    require_once __DIR__ . '/presets-manager.php';
     $presets = [];
     foreach ($squadrons as $squadron) {
-        $presets[] = generatePresetFromSquadron($squadron);
+        $customKey = 'squadron_' . $squadron['id'];
+        $customPreset = loadPreset($customKey);
+
+        if ($customPreset) {
+            // Use customized version
+            $presets[] = array_merge($customPreset, ['is_customized' => true]);
+        } else {
+            // Use auto-generated default
+            $presets[] = generatePresetFromSquadron($squadron);
+        }
     }
     return $presets;
+}
+
+function getSquadronPreset($squadronId, $squadrons) {
+    require_once __DIR__ . '/presets-manager.php';
+
+    // Look for a custom-edited version first
+    $customKey = 'squadron_' . $squadronId;
+    $custom = loadPreset($customKey);
+    if ($custom) {
+        return array_merge(generatePresetFromSquadron(findSquadronById($squadronId, $squadrons)), $custom);
+    }
+
+    // Otherwise return the auto-generated default
+    return generatePresetFromSquadron(findSquadronById($squadronId, $squadrons));
+}
+
+function findSquadronById($id, $squadrons) {
+    foreach ($squadrons as $s) {
+        if ($s['id'] == $id) return $s;
+    }
+    return null;
+}
+
+function isSquadronPresetCustomized($squadronId) {
+    require_once __DIR__ . '/presets-manager.php';
+    $customKey = 'squadron_' . $squadronId;
+    return loadPreset($customKey) !== null;
 }
 
 ?>
