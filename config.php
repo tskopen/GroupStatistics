@@ -55,6 +55,9 @@ function initDataStore() {
             'background_color' => '#f4f4f4',
             'text_color' => '#222222',
         ],
+        // theme-presets.json persists in /data/ (mounted volume)
+        // Stores user presets (custom names) and squadron preset customizations (squadron_X keys)
+        // Survives Railway redeploys and container restarts
         'theme-presets.json' => [],
         'notification-subscriptions.json' => ['subscriptions' => []],
         'vapid-keys.json' => [],

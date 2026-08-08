@@ -56,11 +56,18 @@ function getSquadronIdFromPresetKey($key) {
     return null;
 }
 
-function saveSquadronPreset($squadronId, $colors) {
+function saveSquadronPreset($squadronId, $colors, $squadronName = null) {
     $key = 'squadron_' . $squadronId;
     $presets = loadPresets();
+
+    // Use provided squadron name or fetch from existing preset
+    $name = $squadronName ?? ($presets[$key]['squadron_name'] ?? 'Squadron ' . $squadronId);
+    $displayName = $name . ' (Customized)';
+
     $presets[$key] = [
-        'name' => 'Squadron ' . $squadronId . ' (Custom)',
+        'name' => $displayName,
+        'display_name' => $displayName,
+        'squadron_name' => $name,
         'squadron_id' => $squadronId,
         'primary_color' => $colors['primary_color'] ?? '#002147',
         'secondary_color' => $colors['secondary_color'] ?? '#003366',

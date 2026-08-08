@@ -184,7 +184,11 @@ usort(
     <?php if ($bracketsByTournament || $regularEvents): ?>
     <h2>🔥 Recent Events &amp; Results</h2>
     <div class="events-grid">
+        <?php /* Tournaments are shown first (most recent competitions), followed by
+                 regular events. Both lists are pre-sorted newest-first above, so within
+                 each section the most recent activity always appears first. */ ?>
         <?php foreach ($bracketsByTournament as $tournament): ?>
+        <!-- Tournaments (newest first) -->
         <div class="tournament-card">
             <div class="tournament-header">🏆 <?php echo htmlspecialchars($tournament['tournament_name']); ?></div>
             <div class="tournament-body">
@@ -234,6 +238,7 @@ usort(
         <?php endforeach; ?>
 
         <?php foreach ($regularEvents as $event): ?>
+        <!-- Regular events (newest first) -->
         <div class="event-card">
             <div class="event-header"><?php echo strtoupper($event['event_type'] ?? 'Event'); ?></div>
             <div class="event-body regular-event">

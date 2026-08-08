@@ -89,11 +89,18 @@ function getAllPresetNames($squadrons) {
         $customPreset = loadPreset($customKey);
 
         if ($customPreset) {
-            // Use customized version
-            $presets[] = array_merge($customPreset, ['is_customized' => true]);
+            // Keep squadron name + (Customized) indicator
+            $customPreset['display_name'] = $squadron['name'] . ' (Customized)';
+            $customPreset['squadron_name'] = $squadron['name'];
+            $customPreset['squadron_id'] = $squadron['id'];
+            $customPreset['is_customized'] = true;
+            $presets[] = $customPreset;
         } else {
-            // Use auto-generated default
-            $presets[] = generatePresetFromSquadron($squadron);
+            // Auto-generated default keeps squadron name
+            $auto = generatePresetFromSquadron($squadron);
+            $auto['display_name'] = $squadron['name'];
+            $auto['squadron_name'] = $squadron['name'];
+            $presets[] = $auto;
         }
     }
     return $presets;
