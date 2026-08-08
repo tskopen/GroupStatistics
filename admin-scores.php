@@ -45,20 +45,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         require __DIR__ . '/notifications-helper.php';
         $notifications = sendNotificationForScore($scoreData);
 
-        // Log notification request (for async processing)
-        $notificationLog = (getenv('DATA_DIR') ?: '/data') . '/notification-queue.json';
-        $queue = file_exists($notificationLog) ? json_decode(file_get_contents($notificationLog), true) ?? [] : [];
-        $queue[] = [
-            'squadronId' => $squadronId,
-            'value' => $value,
-            'timestamp' => date('c'),
-            'notifications_to_send' => count($notifications),
-        ];
-        file_put_contents($notificationLog, json_encode($queue, JSON_PRETTY_PRINT));
+        // Send via web-push library
+        if (!empty($notifications)) {
+            $subscriptionsJson = escapeshellarg(json_encode(array_map(fn($n) => [
+                'endpoint' => $n['endpoint'],
+                'auth' => $n['auth'],
+                'p256dh' => $n['p256dh']
+            ], $notifications)));
 
-        // In production: send via web-push library here
-        // For now: log that notifications would be sent
-        error_log('Notification event queued for squadron ' . $squadronId);
+            $payloadJson = escapeshellarg(json_encode($notifications[0]['payload']));
+
+            // Execute in background (non-blocking)
+            exec("node /app/send-push.js " . $subscriptionsJson . " " . $payloadJson . " > /dev/null 2>&1 &");
+            error_log('Push notification sent for squadron ' . $squadronId);
+        }
 
         $success = true;
     }
