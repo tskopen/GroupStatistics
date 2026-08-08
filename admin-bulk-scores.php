@@ -36,7 +36,7 @@ if ($_POST) {
 
         require __DIR__ . '/push-service.php';
 
-        // Send notifications for each scored squadron via native PHP push service
+        // Send notifications for each scored squadron via Web Push Protocol
         foreach ($newScores as $scoreData) {
             $notifications = sendNotificationForScore($scoreData);
 

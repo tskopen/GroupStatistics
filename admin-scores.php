@@ -46,7 +46,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         require __DIR__ . '/push-service.php';
         $notifications = sendNotificationForScore($scoreData);
 
-        // Send via native PHP push service (FCM/WNS)
+        // Send via native PHP push service (Web Push Protocol)
         if (!empty($notifications)) {
             $result = sendPushNotifications($notifications);
             error_log('Push delivery for squadron ' . $squadronId . ': ' . $result['sent'] . ' sent, ' . $result['failed'] . ' failed');
