@@ -1,6 +1,0 @@
-{
-  "name": "squadron-tracker",
-  "dependencies": {
-    "web-push": "^3.6.7"
-  }
-}
