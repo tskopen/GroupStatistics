@@ -90,6 +90,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         deletePreset($presetName);
         $presets = loadPresets();
         $success = 'Preset "' . htmlspecialchars($presetName) . '" deleted.';
+    } elseif (isset($_POST['save_squadron_preset'])) {
+        $squadronId = (int) $_POST['edit_squadron_id'];
+        $colors = [
+            'primary_color' => $_POST['edit_primary_color'] ?? $theme['primary_color'],
+            'secondary_color' => $_POST['edit_secondary_color'] ?? $theme['secondary_color'],
+            'accent_color' => $_POST['edit_accent_color'] ?? $theme['accent_color'],
+            'background_color' => $_POST['edit_background_color'] ?? $theme['background_color'],
+            'text_color' => $_POST['edit_text_color'] ?? $theme['text_color'],
+        ];
+        saveSquadronPreset($squadronId, $colors);
+        $squadronPresets = getAllPresetNames($squadrons);
+        $success = 'Squadron preset updated.';
+    } elseif (isset($_POST['reset_squadron_preset'])) {
+        $squadronId = (int) $_POST['edit_squadron_id'];
+        resetSquadronPreset($squadronId);
+        $squadronPresets = getAllPresetNames($squadrons);
+        $success = 'Squadron preset reset to default.';
     } else {
         $theme = [
             'selected_squadron_id' => isset($_POST['selected_squadron_id']) && $_POST['selected_squadron_id'] !== ''
@@ -218,12 +235,62 @@ $selectedSquadron = ($theme['selected_squadron_id'] && isset($squadronMap[$theme
                             <span style="background: <?php echo htmlspecialchars($sp['secondary_color']); ?>;"></span>
                             <span style="background: <?php echo htmlspecialchars($sp['accent_color']); ?>;"></span>
                         </div>
-                        <form method="post" action="admin-theme.php">
-                            <input type="hidden" name="load_squadron_preset" value="<?php echo htmlspecialchars((string) $sp['squadron_id']); ?>">
-                            <button type="submit" class="preset-btn">Load</button>
-                        </form>
+                        <div style="display:flex; gap:6px; margin-bottom:8px;">
+                            <form method="post" action="admin-theme.php" style="flex:1;">
+                                <input type="hidden" name="load_squadron_preset" value="<?php echo htmlspecialchars((string) $sp['squadron_id']); ?>">
+                                <button type="submit" class="preset-btn" style="width:100%;">Load</button>
+                            </form>
+                            <button type="button" onclick="openEditModal(<?php echo $sp['squadron_id']; ?>, <?php echo htmlspecialchars(json_encode($sp)); ?>)" style="background:#667eea; color:#fff; padding:8px 12px; border:none; border-radius:4px; cursor:pointer;">✏️ Edit</button>
+                        </div>
+                        <?php if (isset($sp['is_customized']) && $sp['is_customized']): ?>
+                            <p style="color:#ff9800; font-size:0.75em; margin:4px 0;">✓ Customized</p>
+                        <?php endif; ?>
                     </div>
                 <?php endforeach; ?>
+            </div>
+        </div>
+
+        <!-- Edit Squadron Preset Modal -->
+        <div id="edit-squadron-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:1000;">
+            <div style="background:#fff; max-width:500px; margin:50px auto; border-radius:6px; padding:20px;">
+                <h3>Edit Squadron Preset</h3>
+                <form method="post" action="admin-theme.php" id="edit-squadron-form">
+                    <input type="hidden" name="edit_squadron_id" id="edit_squadron_id">
+
+                    <label>Squadron: <span id="edit-squadron-name"></span></label>
+
+                    <!-- Color pickers for editing -->
+                    <div style="margin-top:12px;">
+                        <label>Primary Color</label>
+                        <input type="color" name="edit_primary_color" id="edit_primary_color">
+                    </div>
+
+                    <div style="margin-top:12px;">
+                        <label>Secondary Color</label>
+                        <input type="color" name="edit_secondary_color" id="edit_secondary_color">
+                    </div>
+
+                    <div style="margin-top:12px;">
+                        <label>Accent Color</label>
+                        <input type="color" name="edit_accent_color" id="edit_accent_color">
+                    </div>
+
+                    <div style="margin-top:12px;">
+                        <label>Background Color</label>
+                        <input type="color" name="edit_background_color" id="edit_background_color">
+                    </div>
+
+                    <div style="margin-top:12px;">
+                        <label>Text Color</label>
+                        <input type="color" name="edit_text_color" id="edit_text_color">
+                    </div>
+
+                    <div style="display:flex; gap:10px; margin-top:20px;">
+                        <button type="submit" name="save_squadron_preset" class="preset-btn" style="flex:1;">Save Changes</button>
+                        <button type="button" onclick="resetSquadronPreset()" class="delete-preset-btn">Reset to Default</button>
+                        <button type="button" onclick="closeEditModal()" style="background:#999; color:#fff;">Cancel</button>
+                    </div>
+                </form>
             </div>
         </div>
 
@@ -340,6 +407,40 @@ $selectedSquadron = ($theme['selected_squadron_id'] && isset($squadronMap[$theme
             }
             html += '<p>' + squadron.description + '</p>';
             info.innerHTML = html;
+        }
+
+        function openEditModal(squadronId, preset) {
+            var squadron = squadronData[squadronId];
+            document.getElementById('edit_squadron_id').value = squadronId;
+            document.getElementById('edit-squadron-name').textContent = squadron ? squadron.name : 'Unknown';
+            document.getElementById('edit_primary_color').value = preset.primary_color;
+            document.getElementById('edit_secondary_color').value = preset.secondary_color;
+            document.getElementById('edit_accent_color').value = preset.accent_color;
+            document.getElementById('edit_background_color').value = preset.background_color;
+            document.getElementById('edit_text_color').value = preset.text_color;
+            document.getElementById('edit-squadron-modal').style.display = 'block';
+        }
+
+        function closeEditModal() {
+            document.getElementById('edit-squadron-modal').style.display = 'none';
+        }
+
+        function resetSquadronPreset() {
+            if (!confirm('Reset this squadron preset to its default colors?')) return;
+            var squadronId = document.getElementById('edit_squadron_id').value;
+            var form = document.createElement('form');
+            form.method = 'POST';
+            form.action = 'admin-theme.php';
+            form.innerHTML = '<input type="hidden" name="reset_squadron_preset" value="1"><input type="hidden" name="edit_squadron_id" value="' + squadronId + '">';
+            document.body.appendChild(form);
+            form.submit();
+        }
+
+        window.onclick = function(event) {
+            var modal = document.getElementById('edit-squadron-modal');
+            if (event.target == modal) {
+                modal.style.display = 'none';
+            }
         }
     </script>
 </body>
