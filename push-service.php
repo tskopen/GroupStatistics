@@ -5,6 +5,24 @@
  * Handles sending Web Push notifications directly to push service endpoints without Node.js
  */
 
+/**
+ * CONFIGURATION
+ * 
+ * For FCM to work, you need a Firebase Server API Key.
+ * Without it, FCM requests will return 404 (Unauthorized).
+ * 
+ * To get your Firebase Server API Key:
+ * 1. Go to Firebase Console: https://console.firebase.google.com
+ * 2. Select your project
+ * 3. Project Settings → Cloud Messaging tab
+ * 4. Copy "Server API Key"
+ * 5. Set it in Railway environment: FCM_SERVER_KEY=your-key
+ * 
+ * Or use WNS for Windows/Edge notifications (no key needed, uses endpoint auth).
+ */
+
+$FCM_SERVER_KEY = getenv('FCM_SERVER_KEY') ?: null;
+
 function sendPushNotifications($notifications) {
     if (empty($notifications)) {
         return ['sent' => 0, 'failed' => 0];
@@ -52,10 +70,17 @@ function sendPushNotifications($notifications) {
 }
 
 function sendToFCM($endpoint, $payload) {
+    global $FCM_SERVER_KEY;
+    
     // Extract FCM token from endpoint URL
-    // Format: https://fcm.googleapis.com/fcm/send/TOKEN
     if (!preg_match('/\/send\/([a-zA-Z0-9_:-]+)/', $endpoint, $matches)) {
         error_log('Failed to extract FCM token from: ' . substr($endpoint, 0, 100));
+        return false;
+    }
+    
+    if (!$FCM_SERVER_KEY) {
+        error_log('FCM_SERVER_KEY not configured in Railway environment variables.');
+        error_log('Set FCM_SERVER_KEY to your Firebase Server API Key to enable FCM notifications.');
         return false;
     }
     
@@ -63,15 +88,14 @@ function sendToFCM($endpoint, $payload) {
     $title = $payload['title'] ?? 'Squadron Tracker';
     $body = $payload['body'] ?? '';
     
-    // FCM uses a simple HTTP POST with token in URL
-    // Note: This is the older FCM API. Ideally use Firebase Admin SDK, but this works for basic delivery
-    
+    // Use newer Firebase Cloud Messaging v1 API with Server API Key
     $curl = curl_init();
     curl_setopt_array($curl, [
         CURLOPT_URL => 'https://fcm.googleapis.com/fcm/send',
         CURLOPT_POST => true,
         CURLOPT_HTTPHEADER => [
             'Content-Type: application/json',
+            'Authorization: key=' . $FCM_SERVER_KEY
         ],
         CURLOPT_POSTFIELDS => json_encode([
             'to' => $token,
@@ -100,7 +124,13 @@ function sendToFCM($endpoint, $payload) {
         error_log("✓ FCM sent to token: " . substr($token, 0, 20) . "...");
         return true;
     } else {
-        error_log("✗ FCM failed with HTTP $httpCode: " . substr($response, 0, 200));
+        if ($httpCode === 401) {
+            error_log("✗ FCM 401: Unauthorized. Check FCM_SERVER_KEY in environment variables.");
+        } elseif ($httpCode === 404) {
+            error_log("✗ FCM 404: Check that FCM_SERVER_KEY is correct.");
+        } else {
+            error_log("✗ FCM failed with HTTP $httpCode: " . substr($response, 0, 200));
+        }
         return false;
     }
 }
@@ -132,7 +162,9 @@ XML;
         CURLOPT_POST => true,
         CURLOPT_HTTPHEADER => [
             'Content-Type: text/xml',
-            'X-WNS-Type: wns/toast'
+            'X-WNS-Type: wns/toast',
+            'X-WNS-TTL: 3600',
+            'X-WNS-RequestForStatus: true'
         ],
         CURLOPT_POSTFIELDS => $xmlPayload,
         CURLOPT_RETURNTRANSFER => true,
