@@ -90,7 +90,7 @@ $subscriberCount = count($subscriptions['subscriptions'] ?? []);
                         <summary>View notification details</summary>
                         <pre><?php echo htmlspecialchars(json_encode($result['notifications'], JSON_PRETTY_PRINT)); ?></pre>
                     </details>
-                    <p style="font-size:0.85em; color:#666;"><em>Note: Demo mode builds payloads. Wire up web-push library with real VAPID keys to deliver.</em></p>
+                    <p style="font-size:0.85em; color:#666;"><em>Note: Attempting to send via Firebase Cloud Messaging and Windows Notification Service. Check Railway logs for delivery status.</em></p>
                 <?php endif; ?>
             </div>
         <?php endif; ?>
