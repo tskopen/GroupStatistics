@@ -18,6 +18,7 @@ if (!defined('DATA_DIR')) {
 function getDefaultTheme() {
     return [
         'selected_squadron_id' => null,
+        'active_preset' => null,
         'primary_color' => '#002147',
         'secondary_color' => '#003366',
         'accent_color' => '#667eea',
@@ -56,4 +57,22 @@ function saveTheme($theme) {
     $defaults = getDefaultTheme();
     $theme = array_merge($defaults, is_array($theme) ? $theme : []);
     return file_put_contents($path, json_encode($theme, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+}
+
+/**
+ * Get the name of the currently active preset, if any.
+ */
+function getActivePreset() {
+    $theme = loadTheme();
+    return $theme['active_preset'] ?? null;
+}
+
+/**
+ * Record which preset is currently active so it can be displayed
+ * elsewhere in the app (e.g. admin UI, footer badges).
+ */
+function setActivePreset($presetName) {
+    $theme = loadTheme();
+    $theme['active_preset'] = $presetName;
+    saveTheme($theme);
 }
