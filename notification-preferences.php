@@ -139,18 +139,42 @@
                 // Get VAPID public key from server
                 const vapidResp = await fetch('get-vapid-key.php');
                 if (!vapidResp.ok) {
-                    throw new Error('Failed to fetch VAPID key: ' + vapidResp.status);
+                    throw new Error('Failed to fetch VAPID key: HTTP ' + vapidResp.status);
                 }
                 const vapidData = await vapidResp.json();
 
                 // Validate public key exists and is not empty
                 if (!vapidData.publicKey || vapidData.publicKey === '') {
-                    throw new Error('Invalid VAPID public key from server');
+                    throw new Error('Invalid VAPID public key from server: empty');
+                }
+
+                // Log the key for debugging (first 20 chars only for security)
+                console.log('Using VAPID key: ' + vapidData.publicKey.substring(0, 20) + '...');
+
+                // Validate key format (should be base64url, 80+ chars for 65 bytes)
+                if (!/^[A-Za-z0-9_-]+$/.test(vapidData.publicKey)) {
+                    throw new Error('Invalid VAPID key format: contains invalid characters');
+                }
+
+                if (vapidData.publicKey.length < 80) {
+                    throw new Error('Invalid VAPID key length: ' + vapidData.publicKey.length + ' (expected 87-88)');
+                }
+
+                let applicationServerKey;
+                try {
+                    applicationServerKey = urlBase64ToUint8Array(vapidData.publicKey);
+                } catch (e) {
+                    throw new Error('Failed to decode VAPID key: ' + e.message);
+                }
+
+                // Validate decoded key is 65 bytes
+                if (applicationServerKey.length !== 65) {
+                    throw new Error('Decoded VAPID key is ' + applicationServerKey.length + ' bytes, expected 65');
                 }
 
                 const subscription = await registration.pushManager.subscribe({
                     userVisibleOnly: true,
-                    applicationServerKey: urlBase64ToUint8Array(vapidData.publicKey)
+                    applicationServerKey: applicationServerKey
                 });
 
                 // Send subscription to server
@@ -167,10 +191,11 @@
                     showStatus('Notifications enabled!', 'success');
                     await savePreferences();
                 } else {
-                    throw new Error('Failed to subscribe');
+                    throw new Error('Failed to subscribe on server');
                 }
             } catch (error) {
                 console.error('Subscribe error:', error);
+                console.error('Error stack:', error.stack);
                 showStatus('Failed to enable notifications: ' + error.message, 'error');
                 document.getElementById('enable-notifications').checked = false;
             }
@@ -215,13 +240,28 @@
                 throw new Error('Invalid VAPID public key: not a string');
             }
 
-            const padding = '='.repeat((4 - base64String.length % 4) % 4);
-            const base64 = (base64String + padding).replace(/\-/g, '+').replace(/_/g, '/');
-            const rawData = window.atob(base64);
+            if (base64String.length === 0) {
+                throw new Error('Invalid VAPID public key: empty string');
+            }
+
+            // Base64url uses - and _ instead of + and /
+            // Don't add padding; let atob handle it
+            const base64 = base64String
+                .replace(/\-/g, '+')
+                .replace(/_/g, '/');
+
+            let rawData;
+            try {
+                rawData = window.atob(base64);
+            } catch (e) {
+                throw new Error('Failed to decode base64: ' + e.message);
+            }
+
             const outputArray = new Uint8Array(rawData.length);
             for (let i = 0; i < rawData.length; ++i) {
                 outputArray[i] = rawData.charCodeAt(i);
             }
+
             return outputArray;
         }
 
