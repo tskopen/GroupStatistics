@@ -15,20 +15,31 @@ if ($_POST) {
     $eventType = $_POST['event_type'] ?? 'other';
     
     if ($eventName) {
+        require __DIR__ . '/notifications-helper.php';
+        $newScores = [];
         foreach ($squadrons as $s) {
             $sid = $s['id'];
             $scoreVal = isset($_POST["score_$sid"]) ? (float)$_POST["score_$sid"] : 0;
             if ($scoreVal > 0) {
-                $scores[] = [
+                $scoreData = [
                     'squadron_id' => $sid,
                     'event_name' => $eventName,
                     'event_type' => $eventType,
                     'value' => $scoreVal,
                     'timestamp' => date('c')
                 ];
+                $scores[] = $scoreData;
+                $newScores[] = $scoreData;
             }
         }
         writeJson(DATA_DIR . '/scores.json', $scores);
+
+        // Notify subscribers following each scoring squadron.
+        // In production these would be dispatched via a push service.
+        foreach ($newScores as $scoreData) {
+            sendNotificationForScore($scoreData);
+        }
+
         $success = "Event '$eventName' recorded for all squadrons!";
     }
 }

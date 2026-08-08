@@ -56,6 +56,8 @@ function initDataStore() {
             'text_color' => '#222222',
         ],
         'theme-presets.json' => [],
+        'notification-subscriptions.json' => ['subscriptions' => []],
+        'vapid-keys.json' => [],
     ];
 
     foreach ($defaults as $filename => $defaultData) {

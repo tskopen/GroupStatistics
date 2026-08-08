@@ -33,13 +33,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = 'Please fill out all fields correctly.';
     } else {
         $scores = readJson($scoresFile);
-        $scores[] = [
+        $scoreData = [
             'squadron_id' => $squadronId,
             'event_type' => $eventType,
             'value' => (float) $value,
             'timestamp' => date('c'),
         ];
+        $scores[] = $scoreData;
         writeJson($scoresFile, $scores);
+
+        require __DIR__ . '/notifications-helper.php';
+        $notifications = sendNotificationForScore($scoreData);
+
+        // In production, send these via a push service
+        // For now, they're queued for async processing
+
         $success = true;
     }
 }

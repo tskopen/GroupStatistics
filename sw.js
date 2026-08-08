@@ -145,3 +145,50 @@ self.addEventListener('fetch', (event) => {
     // Default: network-first for everything else so data stays fresh.
     event.respondWith(networkFirst(request));
 });
+
+// Push notification received from the server.
+self.addEventListener('push', (event) => {
+    const data = event.data ? event.data.json() : {};
+    const options = {
+        body: data.body || 'Score update',
+        icon: data.icon || 'pwa-icon.php?size=192',
+        badge: data.badge || 'pwa-icon.php?size=192',
+        tag: data.tag || 'default',
+        data: data.data || {},
+    };
+    event.waitUntil(
+        self.registration.showNotification(data.title || 'Squadron Tracker', options)
+    );
+});
+
+// Focus/open the app when a notification is clicked.
+self.addEventListener('notificationclick', (event) => {
+    event.notification.close();
+    const url = event.notification.data.url || 'index.php';
+    event.waitUntil(
+        clients.matchAll({ type: 'window' }).then((clientList) => {
+            for (let i = 0; i < clientList.length; i++) {
+                if (clientList[i].url === url && 'focus' in clientList[i]) {
+                    return clientList[i].focus();
+                }
+            }
+            if (clients.openWindow) {
+                return clients.openWindow(url);
+            }
+        })
+    );
+});
+
+// Update badge count (shows number on app icon).
+self.addEventListener('message', (event) => {
+    if (event.data && event.data.type === 'UPDATE_BADGE') {
+        const count = event.data.count || 0;
+        if ('setAppBadge' in self.registration) {
+            if (count === 0) {
+                self.registration.clearAppBadge();
+            } else {
+                self.registration.setAppBadge(count);
+            }
+        }
+    }
+});
