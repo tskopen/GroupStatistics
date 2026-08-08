@@ -105,10 +105,13 @@ function sendToFCM($endpoint, $payload) {
     
     // Determine which authentication method to use
     if ($firebaseServiceAccount) {
+        error_log('DEBUG: Using Firebase V1 API (Service Account)');
         return sendToFCMv1($token, $title, $body, $firebaseServiceAccount);
     } elseif ($FCM_SERVER_KEY) {
+        error_log('DEBUG: Using FCM Legacy API (Server Key)');
         return sendToFCMLegacy($token, $title, $body, $FCM_SERVER_KEY);
     } else {
+        error_log('ERROR: FCM not configured');
         error_log('FCM not configured. Provide either:');
         error_log('  1. /data/firebase-service-account.json (Service Account), or');
         error_log('  2. FCM_SERVER_KEY environment variable (Legacy Server API Key)');
@@ -120,6 +123,8 @@ function sendToFCM($endpoint, $payload) {
 function sendToFCMv1($token, $title, $body, $serviceAccount) {
     // Firebase Cloud Messaging API V1
     // Requires OAuth 2.0 access token from Service Account
+    
+    error_log('DEBUG: sendToFCMv1() called for token: ' . substr($token, 0, 30) . '...');
     
     $projectId = $serviceAccount['project_id'] ?? null;
     $privateKey = $serviceAccount['private_key'] ?? null;
@@ -136,6 +141,8 @@ function sendToFCMv1($token, $title, $body, $serviceAccount) {
         error_log('Failed to obtain FCM access token');
         return false;
     }
+    
+    error_log('DEBUG: Calling FCM V1 API for project: ' . $projectId);
     
     // Call FCM V1 API
     $curl = curl_init();
@@ -180,7 +187,9 @@ function sendToFCMv1($token, $title, $body, $serviceAccount) {
     } else {
         $responseData = json_decode($response, true);
         $errorMsg = $responseData['error']['message'] ?? 'Unknown error';
-        error_log("✗ FCM V1 failed with HTTP $httpCode: $errorMsg");
+        error_log("✗ FCM V1 failed with HTTP $httpCode");
+        error_log("  Error: " . $errorMsg);
+        error_log("  Full response: " . substr($response, 0, 500));
         return false;
     }
 }
@@ -246,10 +255,18 @@ function getFCMAccessToken($serviceAccount) {
     $claim64 = base64_encode($claim);
     $signature = '';
     
-    $key = $serviceAccount['private_key'];
-    openssl_sign($header64 . '.' . $claim64, $signature, $key, 'sha256');
+    // FIX: Convert escaped newlines (\n as string) to actual newlines
+    $key = str_replace('\\n', "\n", $serviceAccount['private_key']);
+    
+    // FIX: Check if signing succeeded
+    if (!openssl_sign($header64 . '.' . $claim64, $signature, $key, 'sha256')) {
+        error_log('ERROR: openssl_sign() failed - invalid Firebase private key format');
+        error_log('  Check that firebase-service-account.json is valid JSON');
+        return null;
+    }
     
     $jwt = $header64 . '.' . $claim64 . '.' . base64_encode($signature);
+    error_log('DEBUG: JWT generated successfully');
     
     // Exchange JWT for access token
     $curl = curl_init();
@@ -265,8 +282,17 @@ function getFCMAccessToken($serviceAccount) {
     ]);
     
     $response = json_decode(curl_exec($curl), true);
+    $httpCode = curl_getinfo($curl, CURLINFO_HTTP_CODE);
     curl_close($curl);
     
+    // FIX: Log OAuth token response
+    if ($httpCode !== 200) {
+        error_log('ERROR: OAuth token request failed: HTTP ' . $httpCode);
+        error_log('  Response: ' . json_encode($response));
+        return null;
+    }
+    
+    error_log('DEBUG: OAuth access token obtained');
     return $response['access_token'] ?? null;
 }
 
