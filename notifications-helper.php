@@ -56,13 +56,16 @@ function addSubscription($endpoint, $auth, $p256dh, $squadrons = []) {
 }
 
 // Send notification to matching subscriptions
-function sendNotificationForScore($scoreData) {
+function sendNotificationForScore($scoreData, $customMessage = null) {
     $data = loadSubscriptions();
     $squadronId = $scoreData['squadron_id'] ?? null;
 
-    if (!$squadronId) return;
+    if (!$squadronId) return [];
 
     $notifications = [];
+    $defaultBody = 'Squadron ' . $squadronId . ' scored ' . ($scoreData['value'] ?? 0) . ' points!';
+    $body = !empty($customMessage) ? $customMessage : $defaultBody;
+
     foreach ($data['subscriptions'] as $sub) {
         // Send to users who follow this squadron or follow all scores
         if (empty($sub['squadrons']) || in_array($squadronId, $sub['squadrons'])) {
@@ -72,7 +75,7 @@ function sendNotificationForScore($scoreData) {
                 'p256dh' => $sub['p256dh'],
                 'payload' => [
                     'title' => 'Score Update',
-                    'body' => 'Squadron ' . $scoreData['squadron_id'] . ' scored ' . ($scoreData['value'] ?? 0) . ' points!',
+                    'body' => $body,
                     'icon' => 'pwa-icon.php?size=192',
                     'badge' => 'pwa-icon.php?size=192',
                     'tag' => 'score-update-' . time(),

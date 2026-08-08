@@ -37,7 +37,9 @@ if ($_POST) {
         // Notify subscribers following each scoring squadron.
         // In production these would be dispatched via a push service.
         foreach ($newScores as $scoreData) {
-            sendNotificationForScore($scoreData);
+            $notifications = sendNotificationForScore($scoreData);
+            // Queue notifications
+            error_log('Notification queued for bulk score event');
         }
 
         $success = "Event '$eventName' recorded for all squadrons!";
