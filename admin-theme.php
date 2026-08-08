@@ -92,6 +92,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $success = 'Preset "' . htmlspecialchars($presetName) . '" deleted.';
     } elseif (isset($_POST['save_squadron_preset'])) {
         $squadronId = (int) $_POST['edit_squadron_id'];
+        $squadronName = null;
+
+        // Find squadron name from squadrons list
+        foreach ($squadrons as $s) {
+            if ($s['id'] == $squadronId) {
+                $squadronName = $s['name'];
+                break;
+            }
+        }
+
         $colors = [
             'primary_color' => $_POST['edit_primary_color'] ?? $theme['primary_color'],
             'secondary_color' => $_POST['edit_secondary_color'] ?? $theme['secondary_color'],
@@ -99,7 +109,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'background_color' => $_POST['edit_background_color'] ?? $theme['background_color'],
             'text_color' => $_POST['edit_text_color'] ?? $theme['text_color'],
         ];
-        saveSquadronPreset($squadronId, $colors);
+        saveSquadronPreset($squadronId, $colors, $squadronName);
         $squadronPresets = getAllPresetNames($squadrons);
         $success = 'Squadron preset updated.';
     } elseif (isset($_POST['reset_squadron_preset'])) {
@@ -229,7 +239,7 @@ $selectedSquadron = ($theme['selected_squadron_id'] && isset($squadronMap[$theme
             <div class="squadron-preset-grid">
                 <?php foreach ($squadronPresets as $sp): ?>
                     <div class="squadron-preset-card">
-                        <h4><?php echo htmlspecialchars($sp['name']); ?></h4>
+                        <h4><?php echo htmlspecialchars($sp['display_name'] ?? $sp['name']); ?></h4>
                         <div class="squadron-preset-swatches">
                             <span style="background: <?php echo htmlspecialchars($sp['primary_color']); ?>;"></span>
                             <span style="background: <?php echo htmlspecialchars($sp['secondary_color']); ?>;"></span>
