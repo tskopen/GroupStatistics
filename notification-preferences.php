@@ -138,7 +138,15 @@
             try {
                 // Get VAPID public key from server
                 const vapidResp = await fetch('get-vapid-key.php');
+                if (!vapidResp.ok) {
+                    throw new Error('Failed to fetch VAPID key: ' + vapidResp.status);
+                }
                 const vapidData = await vapidResp.json();
+
+                // Validate public key exists and is not empty
+                if (!vapidData.publicKey || vapidData.publicKey === '') {
+                    throw new Error('Invalid VAPID public key from server');
+                }
 
                 const subscription = await registration.pushManager.subscribe({
                     userVisibleOnly: true,
@@ -202,6 +210,11 @@
         }
 
         function urlBase64ToUint8Array(base64String) {
+            // Validate input
+            if (!base64String || typeof base64String !== 'string') {
+                throw new Error('Invalid VAPID public key: not a string');
+            }
+
             const padding = '='.repeat((4 - base64String.length % 4) % 4);
             const base64 = (base64String + padding).replace(/\-/g, '+').replace(/_/g, '/');
             const rawData = window.atob(base64);

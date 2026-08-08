@@ -61,6 +61,7 @@ function initDataStore() {
         'theme-presets.json' => [],
         'notification-subscriptions.json' => ['subscriptions' => []],
         'vapid-keys.json' => [],
+        'notification-queue.json' => [],
     ];
 
     foreach ($defaults as $filename => $defaultData) {

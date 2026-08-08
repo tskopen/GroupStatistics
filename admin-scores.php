@@ -45,8 +45,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         require __DIR__ . '/notifications-helper.php';
         $notifications = sendNotificationForScore($scoreData);
 
-        // In production, send these via a push service
-        // For now, they're queued for async processing
+        // Log notification request (for async processing)
+        $notificationLog = (getenv('DATA_DIR') ?: '/data') . '/notification-queue.json';
+        $queue = file_exists($notificationLog) ? json_decode(file_get_contents($notificationLog), true) ?? [] : [];
+        $queue[] = [
+            'squadronId' => $squadronId,
+            'value' => $value,
+            'timestamp' => date('c'),
+            'notifications_to_send' => count($notifications),
+        ];
+        file_put_contents($notificationLog, json_encode($queue, JSON_PRETTY_PRINT));
+
+        // In production: send via web-push library here
+        // For now: log that notifications would be sent
+        error_log('Notification event queued for squadron ' . $squadronId);
 
         $success = true;
     }
