@@ -34,6 +34,7 @@ if (isset($_GET['logout'])) {
         <a class="button" href="admin-bracket.php">Manage Bracket</a>
         <a class="button" href="admin-squadrons.php">Manage Squadrons</a>
         <a class="button" href="admin-theme.php">Theme Settings</a>
+        <a class="button" href="admin-test-notification.php">Send Test Notification</a>
         <div class="logout">
             <a href="admin-panel.php?logout=1">Log Out</a>
         </div>

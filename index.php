@@ -254,6 +254,7 @@ usort(
     
     <div class="footer">
         <a href="admin-login.php">Admin Login</a>
+        <a href="notification-preferences.php" style="margin-left:10px;">🔔 Notifications</a>
         <?php if (!empty($theme['active_preset'])): ?>
             <p style="color: #999; font-size: 0.75em; margin-top: 10px;">Theme: <?php echo htmlspecialchars($theme['active_preset']); ?></p>
         <?php endif; ?>
@@ -262,7 +263,13 @@ usort(
 <script>
 if ('serviceWorker' in navigator) {
     window.addEventListener('load', function () {
-        navigator.serviceWorker.register('sw.js').catch(function (err) {
+        navigator.serviceWorker.register('sw.js').then(function (registration) {
+            // Clear the app icon badge whenever the tracker is opened,
+            // since the user has now seen the latest scores.
+            navigator.serviceWorker.ready.then(function (reg) {
+                reg.active && reg.active.postMessage({ type: 'UPDATE_BADGE', count: 0 });
+            });
+        }).catch(function (err) {
             console.error('Service worker registration failed:', err);
         });
     });
