@@ -46,6 +46,14 @@ function initDataStore() {
         'scores.json' => [],
         'competitions.json' => [],
         'brackets.json' => [],
+        'theme-config.json' => [
+            'selected_squadron_id' => null,
+            'primary_color' => '#002147',
+            'secondary_color' => '#003366',
+            'accent_color' => '#667eea',
+            'background_color' => '#f4f4f4',
+            'text_color' => '#222222',
+        ],
     ];
 
     foreach ($defaults as $filename => $defaultData) {

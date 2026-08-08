@@ -1,5 +1,7 @@
 <?php
 require __DIR__ . '/config.php';
+require __DIR__ . '/theme-loader.php';
+$theme = loadTheme();
 
 $squadrons = readJson(DATA_DIR . '/squadrons.json');
 $scores = readJson(DATA_DIR . '/scores.json');
@@ -87,14 +89,21 @@ usort(
 <meta name="apple-mobile-web-app-title" content="Squadron Tracker">
 <link rel="apple-touch-icon" href="pwa-icon.php?size=192">
 <style>
+    :root {
+        --primary-color: <?php echo htmlspecialchars($theme['primary_color']); ?>;
+        --secondary-color: <?php echo htmlspecialchars($theme['secondary_color']); ?>;
+        --accent-color: <?php echo htmlspecialchars($theme['accent_color']); ?>;
+        --background-color: <?php echo htmlspecialchars($theme['background_color']); ?>;
+        --text-color: <?php echo htmlspecialchars($theme['text_color']); ?>;
+    }
     * { box-sizing: border-box; }
-    body { font-family: Arial, sans-serif; background: #f4f4f4; margin: 0; padding: 20px; color: #222; }
+    body { font-family: Arial, sans-serif; background: var(--background-color); margin: 0; padding: 20px; color: var(--text-color); }
     .container { max-width: 1200px; margin: 0 auto; }
-    h1 { text-align: center; color: #002147; margin-bottom: 30px; }
-    h2 { color: #003366; border-bottom: 2px solid #003366; padding-bottom: 8px; margin-top: 30px; }
+    h1 { text-align: center; color: var(--primary-color); margin-bottom: 30px; }
+    h2 { color: var(--primary-color); border-bottom: 2px solid var(--primary-color); padding-bottom: 8px; margin-top: 30px; }
     
     .rankings-table { width: 100%; border-collapse: collapse; background: #fff; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 30px; }
-    .rankings-table th { background: #002147; color: #fff; padding: 12px; text-align: left; }
+    .rankings-table th { background: var(--primary-color); color: #fff; padding: 12px; text-align: left; }
     .rankings-table td { padding: 12px; border-bottom: 1px solid #ddd; }
     .rankings-table tr:nth-child(2) { background: #fff8dc; font-weight: bold; }
     .rankings-table tr:hover { background: #f9f9f9; }
@@ -109,13 +118,13 @@ usort(
     .event-card { background: #fff; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); overflow: hidden; transition: transform 0.2s, box-shadow 0.2s; }
     .event-card:hover { transform: translateY(-4px); box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
     
-    .event-header { background: #003366; color: #fff; padding: 12px; font-weight: bold; font-size: 0.9em; text-align: center; }
+    .event-header { background: var(--secondary-color); color: #fff; padding: 12px; font-weight: bold; font-size: 0.9em; text-align: center; }
     .event-body { padding: 15px; }
     
     /* Tournament card */
     .tournament-card { background: #fff; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); overflow: hidden; grid-column: span 2; }
     @media (max-width: 768px) { .tournament-card { grid-column: 1 / -1; } }
-    .tournament-header { background: #002147; color: #fff; padding: 16px; font-weight: bold; font-size: 1.3em; text-align: center; }
+    .tournament-header { background: var(--primary-color); color: #fff; padding: 16px; font-weight: bold; font-size: 1.3em; text-align: center; }
     .tournament-body { padding: 15px; }
     
     .tournament-match { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px; margin-bottom: 10px; border-radius: 6px; background: #f9f9f9; }
@@ -130,7 +139,7 @@ usort(
     .match-vs-label { font-weight: bold; color: #999; font-size: 0.9em; }
     .match-points { font-size: 0.75em; color: #666; margin-top: 4px; text-align: center; }
     
-    .match-winner { background: #ffd700; }
+    .match-winner { background: var(--accent-color); }
     .match-winner-check { color: #28a745; font-weight: bold; margin-left: 6px; }
     
     /* Regular event card */
