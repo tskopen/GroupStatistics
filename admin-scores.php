@@ -43,21 +43,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         writeJson($scoresFile, $scores);
 
         require __DIR__ . '/notifications-helper.php';
+        require __DIR__ . '/push-service.php';
         $notifications = sendNotificationForScore($scoreData);
 
-        // Send via web-push library
+        // Send via native PHP push service (FCM/WNS)
         if (!empty($notifications)) {
-            $subscriptionsJson = escapeshellarg(json_encode(array_map(fn($n) => [
-                'endpoint' => $n['endpoint'],
-                'auth' => $n['auth'],
-                'p256dh' => $n['p256dh']
-            ], $notifications)));
-
-            $payloadJson = escapeshellarg(json_encode($notifications[0]['payload']));
-
-            // Execute in background (non-blocking)
-            exec("node /app/send-push.js " . $subscriptionsJson . " " . $payloadJson . " > /dev/null 2>&1 &");
-            error_log('Push notification sent for squadron ' . $squadronId);
+            $result = sendPushNotifications($notifications);
+            error_log('Push delivery for squadron ' . $squadronId . ': ' . $result['sent'] . ' sent, ' . $result['failed'] . ' failed');
         }
 
         $success = true;

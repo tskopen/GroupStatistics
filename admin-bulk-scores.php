@@ -34,24 +34,17 @@ if ($_POST) {
         }
         writeJson(DATA_DIR . '/scores.json', $scores);
 
-        // Send notifications for each scored squadron via web-push
+        require __DIR__ . '/push-service.php';
+
+        // Send notifications for each scored squadron via native PHP push service
         foreach ($newScores as $scoreData) {
             $notifications = sendNotificationForScore($scoreData);
 
             if (!empty($notifications)) {
-                $subscriptionsJson = escapeshellarg(json_encode(array_map(fn($n) => [
-                    'endpoint' => $n['endpoint'],
-                    'auth' => $n['auth'],
-                    'p256dh' => $n['p256dh']
-                ], $notifications)));
-
-                $payloadJson = escapeshellarg(json_encode($notifications[0]['payload']));
-
-                // Execute in background (non-blocking)
-                exec("node /app/send-push.js " . $subscriptionsJson . " " . $payloadJson . " > /dev/null 2>&1 &");
+                $result = sendPushNotifications($notifications);
+                error_log('Bulk event ' . $eventName . ' - squadron ' . $scoreData['squadron_id'] . ': ' . $result['sent'] . ' sent, ' . $result['failed'] . ' failed');
             }
         }
-        error_log('Push notifications sent for bulk event: ' . $eventName);
 
         $success = "Event '$eventName' recorded for all squadrons!";
     }
