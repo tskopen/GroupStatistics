@@ -49,7 +49,7 @@ foreach ($brackets as $bracket) {
                 'team1_score' => $matchup['team1_score'] ?? '-',
                 'team2_score' => $matchup['team2_score'] ?? '-',
                 'winner_id' => $matchup['winner_id'] ?? null,
-                'value' => $matchup['value'] ?? 0,
+                'value' => $matchup['points'] ?? 0,
             ];
         }
     }
