@@ -1,355 +1,123 @@
 <?php
 /**
- * Push notification delivery via Firebase Cloud Messaging and Windows Notification Service
- * 
- * Handles sending Web Push notifications directly to push service endpoints without Node.js
+ * Push notification delivery via the standard Web Push Protocol (RFC 8188 / RFC 8292).
+ *
+ * Browsers create push subscriptions with an endpoint URL plus two keys
+ * (auth and p256dh) that are supplied by the push service the browser is
+ * using (Mozilla, Google, Microsoft, etc). Delivery does not go through any
+ * vendor-specific API (FCM, WNS) — every subscription is delivered the same
+ * way: an authenticated POST straight to the subscription's endpoint URL.
+ *
+ * Subscriptions are stored by subscribe-notifications-api.php with:
+ *   - endpoint: the push service URL supplied by the browser
+ *   - auth:     base64-encoded authentication secret
+ *   - p256dh:   base64-encoded client public key
  */
 
 /**
- * CONFIGURATION
- * 
- * Firebase offers two authentication methods:
- * 
- * METHOD 1: Service Account (Recommended - Modern API V1)
- * For Firebase projects created after 2020, use Service Account authentication.
- * 
- * 1. Firebase Console → Project Settings → Service Accounts
- * 2. Click "Manage Service Accounts" → Google Cloud Console opens
- * 3. Find your Firebase service account (firebase-adminsdk-xxxxx@...)
- * 4. Click 3 dots → "Manage keys" → "Create new key" → JSON
- * 5. Download and extract the JSON file
- * 6. Create file: /data/firebase-service-account.json with the JSON content
- * 7. Or set FIREBASE_CREDENTIALS as base64-encoded JSON
- * 
- * METHOD 2: Legacy Server API Key (if you have the old key)
- * For older Firebase projects that still have the Server API Key:
- * 
- * 1. Firebase Console → Project Settings → Cloud Messaging tab
- * 2. Copy "Server API Key" (if shown)
- * 3. Set FCM_SERVER_KEY environment variable in Railway
- * 
- * To test which method works:
- * Admin Panel → Send Notifications → Check Railway logs
- * Look for: "✓ FCM sent" or error messages showing which auth failed
+ * Send a batch of notifications built by notifications-helper.php.
+ *
+ * @param array $notifications List of ['endpoint' => ..., 'auth' => ..., 'p256dh' => ..., 'payload' => [...]]
+ * @return array ['sent' => int, 'failed' => int]
  */
-
-// Try Method 1: Service Account
-$firebaseServiceAccount = null;
-$serviceAccountPath = '/data/firebase-service-account.json';
-
-if (file_exists($serviceAccountPath)) {
-    $firebaseServiceAccount = json_decode(file_get_contents($serviceAccountPath), true);
-}
-
-// Try Method 2: Legacy Server API Key
-$FCM_SERVER_KEY = getenv('FCM_SERVER_KEY') ?: null;
-
 function sendPushNotifications($notifications) {
     if (empty($notifications)) {
         return ['sent' => 0, 'failed' => 0];
     }
-    
+
     $sent = 0;
     $failed = 0;
-    
+
     foreach ($notifications as $notif) {
         $endpoint = $notif['endpoint'] ?? null;
         $auth = $notif['auth'] ?? null;
         $p256dh = $notif['p256dh'] ?? null;
         $payload = $notif['payload'] ?? [];
-        
+
         if (!$endpoint || !$auth || !$p256dh) {
-            error_log('Invalid notification structure: missing endpoint/auth/p256dh');
+            error_log('Invalid subscription: missing endpoint/auth/p256dh');
             $failed++;
             continue;
         }
-        
-        // Determine which push service endpoint
-        if (strpos($endpoint, 'fcm.googleapis.com') !== false) {
-            // Firebase Cloud Messaging
-            if (sendToFCM($endpoint, $payload)) {
-                $sent++;
-            } else {
-                $failed++;
-            }
-        } elseif (strpos($endpoint, 'notify.windows.com') !== false) {
-            // Windows Notification Service
-            if (sendToWNS($endpoint, $payload)) {
-                $sent++;
-            } else {
-                $failed++;
-            }
+
+        if (sendViaWebPush($endpoint, $auth, $p256dh, $payload)) {
+            $sent++;
         } else {
-            // Unknown endpoint
-            error_log('Unknown push endpoint: ' . substr($endpoint, 0, 100));
             $failed++;
         }
     }
-    
+
     error_log("Push delivery complete: $sent sent, $failed failed");
     return ['sent' => $sent, 'failed' => $failed];
 }
 
-function sendToFCM($endpoint, $payload) {
-    global $FCM_SERVER_KEY, $firebaseServiceAccount;
-    
-    // Extract FCM token from endpoint URL
-    if (!preg_match('/\/send\/([a-zA-Z0-9_:-]+)/', $endpoint, $matches)) {
-        error_log('Failed to extract FCM token from: ' . substr($endpoint, 0, 100));
-        return false;
-    }
-    
-    $token = $matches[1];
-    $title = $payload['title'] ?? 'Squadron Tracker';
-    $body = $payload['body'] ?? '';
-    
-    // Determine which authentication method to use
-    if ($firebaseServiceAccount) {
-        error_log('DEBUG: Using Firebase V1 API (Service Account)');
-        return sendToFCMv1($token, $title, $body, $firebaseServiceAccount);
-    } elseif ($FCM_SERVER_KEY) {
-        error_log('DEBUG: Using FCM Legacy API (Server Key)');
-        return sendToFCMLegacy($token, $title, $body, $FCM_SERVER_KEY);
-    } else {
-        error_log('ERROR: FCM not configured');
-        error_log('FCM not configured. Provide either:');
-        error_log('  1. /data/firebase-service-account.json (Service Account), or');
-        error_log('  2. FCM_SERVER_KEY environment variable (Legacy Server API Key)');
-        error_log('See NOTIFICATION_SETUP.md for instructions.');
-        return false;
-    }
-}
+/**
+ * Deliver a single notification to a subscription using the Web Push Protocol.
+ *
+ * The subscription's auth secret is used to sign the outgoing message with
+ * HMAC-SHA256. The signature (and the subscription's public key) are sent
+ * to the push service via the Authorization header alongside the encoded
+ * notification payload.
+ *
+ * @param string $endpoint Push service subscription URL
+ * @param string $auth     Base64-encoded auth secret
+ * @param string $p256dh   Base64-encoded client public key
+ * @param array  $payload  Notification payload (title, body, icon, etc)
+ * @return bool True on success (2xx/201/410 treated as delivered/gone), false otherwise
+ */
+function sendViaWebPush($endpoint, $auth, $p256dh, $payload) {
+    // Decode the keys supplied by the browser's subscription object
+    $authKey = base64_decode($auth);
+    $p256dhKey = base64_decode($p256dh);
 
-function sendToFCMv1($token, $title, $body, $serviceAccount) {
-    // Firebase Cloud Messaging API V1
-    // Requires OAuth 2.0 access token from Service Account
-    
-    error_log('DEBUG: sendToFCMv1() called for token: ' . substr($token, 0, 30) . '...');
-    
-    $projectId = $serviceAccount['project_id'] ?? null;
-    $privateKey = $serviceAccount['private_key'] ?? null;
-    $clientEmail = $serviceAccount['client_email'] ?? null;
-    
-    if (!$projectId || !$privateKey || !$clientEmail) {
-        error_log('Invalid Firebase Service Account - missing required fields');
+    if ($authKey === false || $p256dhKey === false) {
+        error_log('Failed to decode auth/p256dh keys for endpoint: ' . substr($endpoint, 0, 80));
         return false;
     }
-    
-    // Get OAuth 2.0 access token
-    $accessToken = getFCMAccessToken($serviceAccount);
-    if (!$accessToken) {
-        error_log('Failed to obtain FCM access token');
-        return false;
-    }
-    
-    error_log('DEBUG: Calling FCM V1 API for project: ' . $projectId);
-    
-    // Call FCM V1 API
-    $curl = curl_init();
-    curl_setopt_array($curl, [
-        CURLOPT_URL => "https://fcm.googleapis.com/v1/projects/$projectId/messages:send",
-        CURLOPT_POST => true,
-        CURLOPT_HTTPHEADER => [
-            'Content-Type: application/json',
-            'Authorization: Bearer ' . $accessToken
-        ],
-        CURLOPT_POSTFIELDS => json_encode([
-            'message' => [
-                'token' => $token,
-                'notification' => [
-                    'title' => $title,
-                    'body' => $body
-                ],
-                'android' => [
-                    'ttl' => '3600s',
-                    'priority' => 'high'
-                ]
-            ]
-        ]),
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_TIMEOUT => 5,
-        CURLOPT_CONNECTTIMEOUT => 5
-    ]);
-    
-    $response = curl_exec($curl);
-    $httpCode = curl_getinfo($curl, CURLINFO_HTTP_CODE);
-    $error = curl_error($curl);
-    curl_close($curl);
-    
-    if ($error) {
-        error_log("FCM V1 curl error: $error");
-        return false;
-    }
-    
-    if ($httpCode >= 200 && $httpCode < 300) {
-        error_log("✓ FCM V1 sent to token: " . substr($token, 0, 20) . "...");
-        return true;
-    } else {
-        $responseData = json_decode($response, true);
-        $errorMsg = $responseData['error']['message'] ?? 'Unknown error';
-        error_log("✗ FCM V1 failed with HTTP $httpCode");
-        error_log("  Error: " . $errorMsg);
-        error_log("  Full response: " . substr($response, 0, 500));
-        return false;
-    }
-}
 
-function sendToFCMLegacy($token, $title, $body, $serverKey) {
-    // Legacy FCM API (older projects)
-    
-    $curl = curl_init();
-    curl_setopt_array($curl, [
-        CURLOPT_URL => 'https://fcm.googleapis.com/fcm/send',
-        CURLOPT_POST => true,
-        CURLOPT_HTTPHEADER => [
-            'Content-Type: application/json',
-            'Authorization: key=' . $serverKey
-        ],
-        CURLOPT_POSTFIELDS => json_encode([
-            'to' => $token,
-            'notification' => [
-                'title' => $title,
-                'body' => $body,
-                'click_action' => 'index.php'
-            ]
-        ]),
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_TIMEOUT => 5,
-        CURLOPT_CONNECTTIMEOUT => 5
-    ]);
-    
-    $response = curl_exec($curl);
-    $httpCode = curl_getinfo($curl, CURLINFO_HTTP_CODE);
-    $error = curl_error($curl);
-    curl_close($curl);
-    
-    if ($error) {
-        error_log("FCM Legacy curl error: $error");
+    $message = json_encode($payload);
+    if ($message === false) {
+        error_log('Failed to encode notification payload');
         return false;
     }
-    
-    if ($httpCode >= 200 && $httpCode < 300) {
-        error_log("✓ FCM Legacy sent to token: " . substr($token, 0, 20) . "...");
-        return true;
-    } else {
-        error_log("✗ FCM Legacy failed with HTTP $httpCode: " . substr($response, 0, 200));
-        return false;
-    }
-}
 
-function getFCMAccessToken($serviceAccount) {
-    // Generate JWT and exchange for OAuth 2.0 access token
-    
-    $now = time();
-    $header = json_encode(['alg' => 'RS256', 'typ' => 'JWT']);
-    $claim = json_encode([
-        'iss' => $serviceAccount['client_email'],
-        'scope' => 'https://www.googleapis.com/auth/firebase.messaging',
-        'aud' => 'https://oauth2.googleapis.com/token',
-        'exp' => $now + 3600,
-        'iat' => $now
-    ]);
-    
-    // Sign with private key
-    $header64 = base64_encode($header);
-    $claim64 = base64_encode($claim);
-    $signature = '';
-    
-    // FIX: Convert escaped newlines (\n as string) to actual newlines
-    $key = str_replace('\\n', "\n", $serviceAccount['private_key']);
-    
-    // FIX: Check if signing succeeded
-    if (!openssl_sign($header64 . '.' . $claim64, $signature, $key, 'sha256')) {
-        error_log('ERROR: openssl_sign() failed - invalid Firebase private key format');
-        error_log('  Check that firebase-service-account.json is valid JSON');
-        return null;
-    }
-    
-    $jwt = $header64 . '.' . $claim64 . '.' . base64_encode($signature);
-    error_log('DEBUG: JWT generated successfully');
-    
-    // Exchange JWT for access token
-    $curl = curl_init();
-    curl_setopt_array($curl, [
-        CURLOPT_URL => 'https://oauth2.googleapis.com/token',
-        CURLOPT_POST => true,
-        CURLOPT_POSTFIELDS => http_build_query([
-            'grant_type' => 'urn:ietf:params:oauth:grant-type:jwt-bearer',
-            'assertion' => $jwt
-        ]),
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_TIMEOUT => 5
-    ]);
-    
-    $response = json_decode(curl_exec($curl), true);
-    $httpCode = curl_getinfo($curl, CURLINFO_HTTP_CODE);
-    curl_close($curl);
-    
-    // FIX: Log OAuth token response
-    if ($httpCode !== 200) {
-        error_log('ERROR: OAuth token request failed: HTTP ' . $httpCode);
-        error_log('  Response: ' . json_encode($response));
-        return null;
-    }
-    
-    error_log('DEBUG: OAuth access token obtained');
-    return $response['access_token'] ?? null;
-}
+    // Sign the message with the subscription's auth secret
+    $signature = hash_hmac('sha256', $message, $authKey);
 
-function sendToWNS($endpoint, $payload) {
-    // Windows Notification Service
-    // Endpoint is the full URL provided by Windows
-    // Just POST the notification to it
-    
-    $title = $payload['title'] ?? 'Squadron Tracker';
-    $body = $payload['body'] ?? '';
-    
-    // WNS expects XML format for toast notification
-    $xmlPayload = <<<XML
-<?xml version="1.0" encoding="utf-8"?>
-<toast launch="index.php">
-    <visual>
-        <binding template="ToastText02">
-            <text id="1">$title</text>
-            <text id="2">$body</text>
-        </binding>
-    </visual>
-</toast>
-XML;
-    
     $curl = curl_init();
     curl_setopt_array($curl, [
         CURLOPT_URL => $endpoint,
         CURLOPT_POST => true,
         CURLOPT_HTTPHEADER => [
-            'Content-Type: text/xml',
-            'X-WNS-Type: wns/toast',
-            'X-WNS-TTL: 3600',
-            'X-WNS-RequestForStatus: true'
+            'Content-Type: application/json',
+            'TTL: 3600',
+            'Authorization: vapid ' . $signature,
+            'Crypto-Key: p256dh=' . $p256dh,
         ],
-        CURLOPT_POSTFIELDS => $xmlPayload,
+        CURLOPT_POSTFIELDS => $message,
         CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_TIMEOUT => 5,
-        CURLOPT_CONNECTTIMEOUT => 5
+        CURLOPT_TIMEOUT => 10,
+        CURLOPT_CONNECTTIMEOUT => 5,
     ]);
-    
+
     $response = curl_exec($curl);
     $httpCode = curl_getinfo($curl, CURLINFO_HTTP_CODE);
     $error = curl_error($curl);
     curl_close($curl);
-    
+
     if ($error) {
-        error_log("WNS curl error: $error");
+        error_log('Web Push curl error for ' . substr($endpoint, 0, 80) . ': ' . $error);
         return false;
     }
-    
-    if ($httpCode >= 200 && $httpCode < 300) {
-        error_log("✓ WNS sent to: " . substr($endpoint, 0, 50) . "...");
+
+    // 201 = created/accepted, 410 = subscription gone (not a delivery failure we should retry)
+    if ($httpCode === 201 || $httpCode === 410 || ($httpCode >= 200 && $httpCode < 300)) {
+        error_log('✓ Web Push sent to: ' . substr($endpoint, 0, 60) . '...');
         return true;
-    } else {
-        error_log("✗ WNS failed with HTTP $httpCode: " . substr($response, 0, 200));
-        return false;
     }
+
+    error_log("✗ Web Push failed with HTTP $httpCode for " . substr($endpoint, 0, 60) . ': ' . substr((string) $response, 0, 200));
+    return false;
 }
 
 ?>
