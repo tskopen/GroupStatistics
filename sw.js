@@ -20,18 +20,17 @@ const PRECACHE_URLS = [
 ========================= */
 
 self.addEventListener('install', event => {
-    event.waitUntil(
-        caches.open(CACHE_NAME).then(cache =>
-            Promise.all(
-                PRECACHE_URLS.map(url =>
-                    cache.add(url).catch(err => {
-                        console.warn('Precache failed:', url, err);
-                    })
-                )
-            )
-        )
-    );
+    const precachePromise = caches.open(CACHE_NAME).then(cache => {
+        // Fire off precache without waiting for completion
+        // Individual URL failures won't block the install
+        PRECACHE_URLS.forEach(url => {
+            cache.add(url).catch(err => {
+                console.warn('Precache failed:', url, err);
+            });
+        });
+    });
 
+    event.waitUntil(precachePromise);
     self.skipWaiting();
 });
 
