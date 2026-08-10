@@ -3,9 +3,6 @@
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/vendor/autoload.php';
 
-use Minishlink\WebPush\WebPush;
-use Minishlink\WebPush\Subscription;
-
 /*
 |--------------------------------------------------------------------------
 | Subscription Storage
@@ -90,41 +87,6 @@ function addSubscription(
 
 /*
 |--------------------------------------------------------------------------
-| Web Push Sender
-|--------------------------------------------------------------------------
-*/
-
-function createWebPush(): WebPush
-{
-    return new WebPush([
-        'VAPID' => [
-            'subject' => VAPID_SUBJECT,
-            'publicKey' => VAPID_PUBLIC_KEY,
-            'privateKey' => VAPID_PRIVATE_KEY
-        ]
-    ]);
-}
-
-function sendPushToSubscription(
-    WebPush $webPush,
-    array $sub,
-    array $payload
-): void {
-
-    $subscription = Subscription::create([
-        'endpoint' => $sub['endpoint'],
-        'publicKey' => $sub['p256dh'],
-        'authToken' => $sub['auth']
-    ]);
-
-    $webPush->queueNotification(
-        $subscription,
-        json_encode($payload)
-    );
-}
-
-/*
-|--------------------------------------------------------------------------
 | Score Notification Sender
 |--------------------------------------------------------------------------
 */
@@ -161,79 +123,28 @@ function sendNotificationForScore(
         ]
     ];
 
-    $webPush = createWebPush();
-
     $matched = [];
 
     foreach ($subscriptions['subscriptions'] as $sub) {
 
-        $followsAll =
-            empty($sub['squadrons']);
+        $followsAll = empty($sub['squadrons']);
 
-        $followsSquadron =
-            in_array(
-                $squadronId,
-                $sub['squadrons'] ?? []
-            );
+        $followsSquadron = in_array(
+            $squadronId,
+            $sub['squadrons'] ?? []
+        );
 
         if (!$followsAll && !$followsSquadron) {
             continue;
         }
 
-        sendPushToSubscription(
-            $webPush,
-            $sub,
-            $payload
-        );
-
+        // Include all subscription fields required by push-service.php
         $matched[] = [
             'endpoint' => $sub['endpoint'],
+            'auth' => $sub['auth'],
+            'p256dh' => $sub['p256dh'],
             'payload' => $payload
         ];
-    }
-
-    /*
-    -----------------------------------------------------------------------
-    Send everything
-    -----------------------------------------------------------------------
-    */
-
-    $staleEndpoints = [];
-
-    foreach ($webPush->flush() as $report) {
-
-        $endpoint = (string)$report
-            ->getRequest()
-            ->getUri();
-
-        if ($report->isSuccess()) {
-
-            error_log(
-                'PUSH SUCCESS: ' . $endpoint
-            );
-
-        } else {
-
-            $reason = $report->getReason();
-
-            error_log(
-                'PUSH FAILED: ' .
-                $endpoint .
-                ' | ' .
-                $reason
-            );
-
-            if (
-                stripos($reason, '410') !== false ||
-                stripos($reason, '404') !== false
-            ) {
-                $staleEndpoints[] = $endpoint;
-            }
-        }
-    }
-
-    if (!empty($staleEndpoints)) {
-        removeExpiredSubscriptions($staleEndpoints);
     }
 
     return $matched;

@@ -1,12 +1,6 @@
 <?php
 
 define('DATA_DIR', getenv('DATA_DIR') ?: __DIR__ . '/data');
-
-define('VAPID_SUBJECT', 'mailto:admin@example.com');
-
-define('VAPID_PUBLIC_KEY', 'YOUR_PUBLIC_KEY');
-
-define('VAPID_PRIVATE_KEY', 'YOUR_PRIVATE_KEY');
 /**
  * Central configuration for persistent data storage.
  *
