@@ -2,7 +2,7 @@
  * USAFA Squadron Tracker PWA Service Worker
  */
 
-const CACHE_VERSION = 'v2';
+const CACHE_VERSION = 'v3';
 const CACHE_NAME = `squadron-tracker-${CACHE_VERSION}`;
 
 const PRECACHE_URLS = [
