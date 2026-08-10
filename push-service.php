@@ -141,7 +141,7 @@ function sendViaWebPush($endpoint, $auth, $p256dh, $payload) {
 
 /**
  * Create VAPID JWT token per RFC 8292
- * Uses OpenSSL ECDSA signing with the private key
+ * Converts base64url VAPID key to PEM format for OpenSSL signing
  */
 function createVapidJwt($endpoint, $privateKey) {
     $header = [
@@ -164,9 +164,24 @@ function createVapidJwt($endpoint, $privateKey) {
     $payloadEncoded = rtrim(strtr(base64_encode(json_encode($payload)), '+/', '-_'), '=');
     $signatureInput = $headerEncoded . '.' . $payloadEncoded;
 
-    // Sign with ES256 using the private key
+    // Convert base64url VAPID private key to PEM format
+    // The key is stored as base64url, need to decode it first
+    $keyDer = base64_decode(strtr($privateKey, '-_', '+/'));
+
+    if ($keyDer === false) {
+        error_log('Failed to decode VAPID private key from base64url');
+        return false;
+    }
+
+    // Wrap DER key in PEM format for OpenSSL
+    // P-256 ECDSA private key
+    $keyPem = "-----BEGIN EC PRIVATE KEY-----\n";
+    $keyPem .= wordwrap(base64_encode($keyDer), 64, "\n", true);
+    $keyPem .= "\n-----END EC PRIVATE KEY-----";
+
+    // Sign with ES256 using the PEM-formatted key
     $signature = '';
-    if (!openssl_sign($signatureInput, $signature, $privateKey, OPENSSL_ALGO_SHA256)) {
+    if (!openssl_sign($signatureInput, $signature, $keyPem, OPENSSL_ALGO_SHA256)) {
         error_log('Failed to sign VAPID JWT with private key');
         return false;
     }
