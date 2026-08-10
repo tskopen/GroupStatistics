@@ -6,6 +6,61 @@ require __DIR__ . '/notifications-helper.php';
 $method = $_SERVER['REQUEST_METHOD'];
 $action = $_GET['action'] ?? '';
 
+// Client-side diagnostics: allows a subscribed user to send an immediate
+// test push to themselves to verify end-to-end delivery, without waiting
+// for a real score event or going through the admin panel.
+if ($method === 'POST' && $action === 'test_notification') {
+    $data = json_decode(file_get_contents('php://input'), true);
+    $endpoint = $data['endpoint'] ?? null;
+
+    if (!$endpoint) {
+        http_response_code(400);
+        echo json_encode(['success' => false, 'message' => 'Missing endpoint']);
+        exit;
+    }
+
+    $subs = loadSubscriptions();
+    $target = null;
+
+    foreach ($subs['subscriptions'] as $sub) {
+        if ($sub['endpoint'] === $endpoint) {
+            $target = $sub;
+            break;
+        }
+    }
+
+    if (!$target) {
+        http_response_code(404);
+        echo json_encode(['success' => false, 'message' => 'Subscription not found on server']);
+        exit;
+    }
+
+    require __DIR__ . '/push-service.php';
+
+    $payload = [
+        'title' => 'Test Notification',
+        'body' => 'This is a test notification triggered from your device.',
+        'icon' => '/pwa-icon.php?size=192',
+        'badge' => '/pwa-icon.php?size=192',
+        'tag' => 'user-test-' . time(),
+        'data' => [
+            'type' => 'test_notification',
+            'squadron_id' => 0,
+            'url' => '/index.php'
+        ]
+    ];
+
+    $ok = sendViaWebPush($target['endpoint'], $target['auth'], $target['p256dh'], $payload);
+
+    if ($ok) {
+        echo json_encode(['success' => true, 'message' => 'Test notification sent']);
+    } else {
+        http_response_code(502);
+        echo json_encode(['success' => false, 'message' => 'Delivery failed — check Railway logs for "[push]" entries']);
+    }
+    exit;
+}
+
 if ($method === 'POST') {
     if ($action === 'subscribe') {
         $data = json_decode(file_get_contents('php://input'), true);

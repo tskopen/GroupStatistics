@@ -22,11 +22,12 @@
  */
 function sendPushNotifications($notifications) {
     if (empty($notifications)) {
-        return ['sent' => 0, 'failed' => 0];
+        return ['sent' => 0, 'failed' => 0, 'results' => []];
     }
 
     $sent = 0;
     $failed = 0;
+    $results = [];
 
     foreach ($notifications as $notif) {
         $endpoint = $notif['endpoint'] ?? null;
@@ -35,20 +36,32 @@ function sendPushNotifications($notifications) {
         $payload = $notif['payload'] ?? [];
 
         if (!$endpoint || !$auth || !$p256dh) {
-            error_log('Invalid subscription: missing endpoint/auth/p256dh');
+            error_log('[push] ✗ Invalid subscription: missing endpoint/auth/p256dh');
             $failed++;
+            $results[] = [
+                'endpoint' => $endpoint ? substr($endpoint, 0, 60) : '(missing)',
+                'status' => 'failed',
+                'reason' => 'missing endpoint/auth/p256dh'
+            ];
             continue;
         }
 
-        if (sendViaWebPush($endpoint, $auth, $p256dh, $payload)) {
+        $ok = sendViaWebPush($endpoint, $auth, $p256dh, $payload);
+
+        if ($ok) {
             $sent++;
         } else {
             $failed++;
         }
+
+        $results[] = [
+            'endpoint' => substr($endpoint, 0, 60),
+            'status' => $ok ? 'sent' : 'failed'
+        ];
     }
 
-    error_log("Push delivery complete: $sent sent, $failed failed");
-    return ['sent' => $sent, 'failed' => $failed];
+    error_log("[push] Push delivery complete: $sent sent, $failed failed");
+    return ['sent' => $sent, 'failed' => $failed, 'results' => $results];
 }
 
 /**
@@ -66,31 +79,37 @@ function sendPushNotifications($notifications) {
  * @return bool True on success (2xx/201/410 treated as delivered/gone), false otherwise
  */
 function sendViaWebPush($endpoint, $auth, $p256dh, $payload) {
+    $endpointPreview = substr($endpoint, 0, 60);
+
+    error_log("[push] → Starting delivery to endpoint: {$endpointPreview}...");
+
     // Decode the keys supplied by the browser's subscription object
     $authKey = base64_decode($auth);
     $p256dhKey = base64_decode($p256dh);
 
     if ($authKey === false || $p256dhKey === false) {
-        error_log('Failed to decode auth/p256dh keys for endpoint: ' . substr($endpoint, 0, 80));
+        error_log('[push] ✗ Failed to decode auth/p256dh keys for endpoint: ' . substr($endpoint, 0, 80));
         return false;
     }
 
+    error_log('[push] ✓ auth/p256dh keys decoded successfully for ' . $endpointPreview . '...');
+
     $message = json_encode($payload);
     if ($message === false) {
-        error_log('Failed to encode notification payload');
+        error_log('[push] ✗ Failed to encode notification payload for ' . $endpointPreview . '...');
         return false;
     }
 
     // Load VAPID keys from persistent storage
     $vapidFile = (getenv('DATA_DIR') ?: '/data') . '/vapid-keys.json';
     if (!file_exists($vapidFile)) {
-        error_log('VAPID keys file not found');
+        error_log('[push] ✗ VAPID keys file not found at ' . $vapidFile);
         return false;
     }
 
     $vapidData = json_decode(file_get_contents($vapidFile), true);
     if (empty($vapidData['publicKey']) || empty($vapidData['privateKey'])) {
-        error_log('VAPID keys not configured');
+        error_log('[push] ✗ VAPID keys not configured (missing publicKey/privateKey)');
         return false;
     }
 
@@ -100,19 +119,32 @@ function sendViaWebPush($endpoint, $auth, $p256dh, $payload) {
     // Create VAPID JWT per RFC 8292
     $vapidJwt = createVapidJwt($endpoint, $privateKey);
     if (!$vapidJwt) {
-        error_log('Failed to create VAPID JWT');
+        error_log('[push] ✗ Failed to create VAPID JWT for ' . $endpointPreview . '...');
         return false;
     }
+
+    error_log('[push] ✓ VAPID JWT created for ' . $endpointPreview . '... (public key prefix: ' . substr($publicKey, 0, 20) . '...)');
+
+    $requestHeaders = [
+        'Content-Type: application/json',
+        'TTL: 3600',
+        'Authorization: vapid t=' . $vapidJwt . ',k=' . $publicKey,  // FIXED: Proper VAPID format
+    ];
+
+    // Sanitized copy of headers for logging (hide key material)
+    $sanitizedHeaders = [
+        'Content-Type: application/json',
+        'TTL: 3600',
+        'Authorization: vapid t=<redacted>,k=<redacted>',
+    ];
+
+    error_log('[push] → Sending curl request to ' . $endpointPreview . '... headers: ' . implode(' | ', $sanitizedHeaders));
 
     $curl = curl_init();
     curl_setopt_array($curl, [
         CURLOPT_URL => $endpoint,
         CURLOPT_POST => true,
-        CURLOPT_HTTPHEADER => [
-            'Content-Type: application/json',
-            'TTL: 3600',
-            'Authorization: vapid t=' . $vapidJwt . ',k=' . $publicKey,  // FIXED: Proper VAPID format
-        ],
+        CURLOPT_HTTPHEADER => $requestHeaders,
         CURLOPT_POSTFIELDS => $message,
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_TIMEOUT => 10,
@@ -124,18 +156,28 @@ function sendViaWebPush($endpoint, $auth, $p256dh, $payload) {
     $error = curl_error($curl);
     curl_close($curl);
 
+    error_log("[push] ← Response for {$endpointPreview}...: HTTP {$httpCode}");
+
     if ($error) {
-        error_log('Web Push curl error for ' . substr($endpoint, 0, 80) . ': ' . $error);
+        error_log('[push] ✗ Web Push curl error for ' . $endpointPreview . '...: ' . $error . ' | headers sent: ' . implode(' | ', $sanitizedHeaders));
         return false;
     }
 
     // 201 = created/accepted, 410 = subscription gone (not a delivery failure we should retry)
     if ($httpCode === 201 || $httpCode === 410 || ($httpCode >= 200 && $httpCode < 300)) {
-        error_log('✓ Web Push sent to: ' . substr($endpoint, 0, 60) . '...');
+        error_log('[push] ✓ Web Push sent to: ' . $endpointPreview . '...');
         return true;
     }
 
-    error_log("✗ Web Push failed with HTTP $httpCode for " . substr($endpoint, 0, 60) . ': ' . substr((string) $response, 0, 200));
+    if ($httpCode >= 400) {
+        error_log(
+            "[push] ✗ Web Push failed with HTTP {$httpCode} for {$endpointPreview}... " .
+            'full response: ' . (string) $response . ' | headers sent: ' . implode(' | ', $sanitizedHeaders)
+        );
+        return false;
+    }
+
+    error_log("[push] ✗ Web Push failed with unexpected HTTP $httpCode for " . $endpointPreview . '...: ' . substr((string) $response, 0, 200));
     return false;
 }
 
