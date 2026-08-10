@@ -192,52 +192,14 @@ self.addEventListener('fetch', event => {
    PUSH NOTIFICATIONS
 ========================= */
 
-self.addEventListener('push', event => {
-    console.log('Push event received');
+self.addEventListener('push', (event) => {
+    const data = event.data ? event.data.json() : {};
 
-    let data = {};
-
-    try {
-        if (event.data) {
-            const rawPayload = event.data.text();
-
-            console.log('Push payload:', rawPayload);
-
-            try {
-                data = JSON.parse(rawPayload);
-            } catch {
-                data = {
-                    title: 'Squadron Tracker',
-                    body: rawPayload
-                };
-            }
-        }
-    } catch (err) {
-        console.error('Push processing error:', err);
-    }
-
-    const options = {
-        body: data.body || 'Score update available',
-        icon: data.icon || '/pwa-icon.php?size=192',
-        badge: data.badge || '/pwa-icon.php?size=192',
-        tag: data.tag || `update-${Date.now()}`,
-        renotify: true,
-        requireInteraction: false,
-        data: {
-            url: data?.data?.url || '/index.php',
-            squadron_id: data?.data?.squadron_id || null,
-            type: data?.data?.type || null
-        }
-    };
-
-    event.waitUntil(
-        self.registration.showNotification(
-            data.title || 'Squadron Tracker',
-            options
-        )
+    self.registration.showNotification(
+        data.title,
+        { body: data.body }
     );
 });
-
 /* =========================
    NOTIFICATION CLICK
 ========================= */
