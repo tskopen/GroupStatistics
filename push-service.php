@@ -141,54 +141,37 @@ function sendViaWebPush($endpoint, $auth, $p256dh, $payload) {
 
 /**
  * Create VAPID JWT token per RFC 8292
+ * Uses OpenSSL ECDSA signing with the private key
  */
 function createVapidJwt($endpoint, $privateKey) {
-    // JWT Header
     $header = [
         'typ' => 'JWT',
         'alg' => 'ES256'
     ];
 
-    // JWT Payload
     $now = time();
     $url = parse_url($endpoint);
     $aud = $url['scheme'] . '://' . $url['host'];
 
     $payload = [
         'aud' => $aud,
-        'exp' => $now + 86400,  // 24 hours from now
+        'exp' => $now + 86400, // 24 hours
         'sub' => 'mailto:admin@example.com'
     ];
 
-    // Encode header and payload
+    // Encode header and payload using base64url
     $headerEncoded = rtrim(strtr(base64_encode(json_encode($header)), '+/', '-_'), '=');
     $payloadEncoded = rtrim(strtr(base64_encode(json_encode($payload)), '+/', '-_'), '=');
-
     $signatureInput = $headerEncoded . '.' . $payloadEncoded;
 
-    // Sign with ES256 (ECDSA with SHA-256)
-    // Decode the private key from base64url format
-    $privateKeyDer = base64_decode(strtr($privateKey, '-_', '+/'));
-
-    // Create OpenSSL key resource from DER format
-    $key = openssl_pkey_new([
-        'private_key_type' => OPENSSL_KEYTYPE_EC,
-        'curve_name' => 'prime256v1'  // P-256 / secp256r1
-    ]);
-
-    if (!$key) {
-        error_log('Failed to create OpenSSL key for VAPID signing');
-        return false;
-    }
-
-    // Sign the message
+    // Sign with ES256 using the private key
     $signature = '';
     if (!openssl_sign($signatureInput, $signature, $privateKey, OPENSSL_ALGO_SHA256)) {
-        error_log('Failed to sign VAPID JWT');
+        error_log('Failed to sign VAPID JWT with private key');
         return false;
     }
 
-    // Convert DER signature to JWT format (raw R and S values)
+    // Encode signature using base64url
     $signatureEncoded = rtrim(strtr(base64_encode($signature), '+/', '-_'), '=');
 
     return $headerEncoded . '.' . $payloadEncoded . '.' . $signatureEncoded;
