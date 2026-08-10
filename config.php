@@ -76,6 +76,165 @@ function initDataStore() {
 
 initDataStore();
 
+/**
+ * Restore data from backup if volume was reset or data lost.
+ *
+ * This acts as a safeguard against volume remounting issues during
+ * deployments. If the persistent /data volume comes up empty (e.g.
+ * because a new deployment could not attach to the previous
+ * deployment's volume contents), initDataStore() above will only ever
+ * seed empty defaults. This function detects that condition for the
+ * critical data files (scores and brackets) and restores the last
+ * known good snapshot instead of silently leaving the app with no data.
+ */
+function restoreDataFromBackup() {
+    $scoresPath = DATA_DIR . '/scores.json';
+    $bracketsPath = DATA_DIR . '/brackets.json';
+
+    // Check if scores.json exists and has data
+    if (!file_exists($scoresPath) || filesize($scoresPath) < 10) {
+        $backupScores = [
+            [
+                'squadron_id' => 2,
+                'event_type' => 'bracket',
+                'tournament_name' => 'Culex Bracket',
+                'value' => 1,
+                'opponent_id' => 1,
+                'team1_score' => 2,
+                'team2_score' => 2,
+                'winner_id' => 2,
+                'timestamp' => '2026-08-07T00:31:02+00:00',
+            ],
+            [
+                'squadron_id' => 3,
+                'event_type' => 'bracket',
+                'tournament_name' => 'Culex Bracket',
+                'value' => 1,
+                'opponent_id' => 4,
+                'team1_score' => 4,
+                'team2_score' => 4,
+                'winner_id' => 3,
+                'timestamp' => '2026-08-07T01:06:58+00:00',
+            ],
+            [
+                'squadron_id' => 1,
+                'event_name' => 'Sami Round 1',
+                'event_type' => 'samis',
+                'value' => 8,
+                'timestamp' => '2026-08-08T20:04:46+00:00',
+            ],
+            [
+                'squadron_id' => 2,
+                'event_name' => 'Sami Round 1',
+                'event_type' => 'samis',
+                'value' => 9,
+                'timestamp' => '2026-08-08T20:04:46+00:00',
+            ],
+            [
+                'squadron_id' => 3,
+                'event_name' => 'Sami Round 1',
+                'event_type' => 'samis',
+                'value' => 10,
+                'timestamp' => '2026-08-08T20:04:46+00:00',
+            ],
+            [
+                'squadron_id' => 4,
+                'event_name' => 'Sami Round 1',
+                'event_type' => 'samis',
+                'value' => 6,
+                'timestamp' => '2026-08-08T20:04:46+00:00',
+            ],
+            [
+                'squadron_id' => 5,
+                'event_type' => 'bracket',
+                'tournament_name' => 'Culex Bracket',
+                'value' => 2,
+                'opponent_id' => 6,
+                'team1_score' => 205,
+                'team2_score' => 205,
+                'winner_id' => 5,
+                'timestamp' => '2026-08-08T20:05:37+00:00',
+            ],
+            [
+                'squadron_id' => 3,
+                'event_type' => 'other',
+                'value' => 1,
+                'timestamp' => '2026-08-08T21:08:06+00:00',
+            ],
+        ];
+        @file_put_contents($scoresPath, json_encode($backupScores, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+        error_log('Data restored from backup: scores.json');
+    }
+
+    // Check if brackets.json exists and has data
+    if (!file_exists($bracketsPath) || filesize($bracketsPath) < 10) {
+        $backupBrackets = [
+            [
+                'id' => 'a4a7bab8e79184eb',
+                'name' => 'Culex Bracket',
+                'created_date' => '2026-08-07T00:30:26+00:00',
+                'rounds' => [
+                    [
+                        'round_num' => 1,
+                        'matchups' => [
+                            [
+                                'id' => '3a47e6ec7d331c86',
+                                'team1_id' => 1,
+                                'team2_id' => 2,
+                                'team1_score' => 1,
+                                'team2_score' => 2,
+                                'winner_id' => 2,
+                                'points' => 1,
+                            ],
+                            [
+                                'id' => 'ec5e39140c719a80',
+                                'team1_id' => 3,
+                                'team2_id' => 4,
+                                'team1_score' => 4,
+                                'team2_score' => 2,
+                                'winner_id' => 3,
+                                'points' => 1,
+                            ],
+                            [
+                                'id' => '3de17c7f69c4a360',
+                                'team1_id' => 5,
+                                'team2_id' => 6,
+                                'team1_score' => 205,
+                                'team2_score' => 195,
+                                'winner_id' => 5,
+                                'points' => 2,
+                            ],
+                            [
+                                'id' => '1a22e1fbfa72d792',
+                                'team1_id' => 7,
+                                'team2_id' => 8,
+                                'team1_score' => null,
+                                'team2_score' => null,
+                                'winner_id' => null,
+                                'points' => null,
+                            ],
+                            [
+                                'id' => '58162011f7375cba',
+                                'team1_id' => 9,
+                                'team2_id' => 10,
+                                'team1_score' => null,
+                                'team2_score' => null,
+                                'winner_id' => null,
+                                'points' => null,
+                            ],
+                        ],
+                    ],
+                ],
+                'champion_id' => null,
+            ],
+        ];
+        @file_put_contents($bracketsPath, json_encode($backupBrackets, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+        error_log('Data restored from backup: brackets.json');
+    }
+}
+
+restoreDataFromBackup();
+
 function readJson($file) {
     if (!file_exists($file)) {
         return [];
