@@ -1,112 +1,148 @@
 /**
- * Service worker for the USAFA Group 1 Squadron Tracker PWA.
- *
- * Strategy:
- *  - App shell pages (index.php, bracket.php, admin-login.php) and static
- *    assets are pre-cached on install.
- *  - Dynamic/data-bearing requests use a network-first strategy so scores
- *    and brackets are as fresh as possible, falling back to cache when
- *    offline.
- *  - Navigation requests fall back to a cached copy of the requested page,
- *    or to the cached index page, when the network is unavailable.
- *
- * Bump CACHE_VERSION whenever cached assets change so old caches are
- * cleaned up on activate.
+ * USAFA Squadron Tracker PWA Service Worker
  */
 
-const CACHE_VERSION = 'v1';
+const CACHE_VERSION = 'v2';
 const CACHE_NAME = `squadron-tracker-${CACHE_VERSION}`;
 
 const PRECACHE_URLS = [
-    'index.php',
-    'bracket.php',
-    'admin-login.php',
-    'manifest.json',
-    'pwa-icon.php?size=192',
-    'pwa-icon.php?size=512',
+    '/',
+    '/index.php',
+    '/bracket.php',
+    '/admin-login.php',
+    '/manifest.json',
+    '/pwa-icon.php?size=192',
+    '/pwa-icon.php?size=512'
 ];
 
-self.addEventListener('install', (event) => {
+/* =========================
+   INSTALL
+========================= */
+
+self.addEventListener('install', event => {
     event.waitUntil(
-        caches.open(CACHE_NAME).then((cache) => {
-            return Promise.all(
-                PRECACHE_URLS.map((url) =>
-                    cache.add(url).catch(() => {
-                        // Ignore individual failures (e.g. GD unavailable for icons)
-                        // so install doesn't fail entirely.
+        caches.open(CACHE_NAME).then(cache =>
+            Promise.all(
+                PRECACHE_URLS.map(url =>
+                    cache.add(url).catch(err => {
+                        console.warn('Precache failed:', url, err);
                     })
                 )
-            );
-        })
-    );
-    self.skipWaiting();
-});
-
-self.addEventListener('activate', (event) => {
-    event.waitUntil(
-        caches.keys().then((keys) =>
-            Promise.all(
-                keys
-                    .filter((key) => key.startsWith('squadron-tracker-') && key !== CACHE_NAME)
-                    .map((key) => caches.delete(key))
             )
         )
     );
+
+    self.skipWaiting();
+});
+
+/* =========================
+   ACTIVATE
+========================= */
+
+self.addEventListener('activate', event => {
+    event.waitUntil(
+        caches.keys().then(keys =>
+            Promise.all(
+                keys
+                    .filter(
+                        key =>
+                            key.startsWith('squadron-tracker-') &&
+                            key !== CACHE_NAME
+                    )
+                    .map(key => caches.delete(key))
+            )
+        )
+    );
+
     self.clients.claim();
 });
 
+/* =========================
+   HELPERS
+========================= */
+
 function isNavigationRequest(request) {
-    return request.mode === 'navigate' ||
-        (request.method === 'GET' && request.headers.get('accept') && request.headers.get('accept').includes('text/html'));
+    return (
+        request.mode === 'navigate' ||
+        (
+            request.method === 'GET' &&
+            request.headers.get('accept') &&
+            request.headers.get('accept').includes('text/html')
+        )
+    );
 }
 
-// Network-first: try the network, cache the fresh response, fall back to
-// cache (and then to a generic offline response) if the network fails.
 async function networkFirst(request) {
     const cache = await caches.open(CACHE_NAME);
+
     try {
-        const networkResponse = await fetch(request);
-        if (networkResponse && networkResponse.ok) {
-            cache.put(request, networkResponse.clone());
+        const response = await fetch(request);
+
+        if (response && response.ok) {
+            cache.put(request, response.clone());
         }
-        return networkResponse;
+
+        return response;
     } catch (err) {
         const cached = await cache.match(request);
+
         if (cached) {
             return cached;
         }
+
         if (isNavigationRequest(request)) {
-            const fallback = await cache.match('index.php');
+            const fallback = await cache.match('/index.php');
+
             if (fallback) {
                 return fallback;
             }
         }
+
         return new Response(
-            '<h1>Offline</h1><p>You are offline and this page has not been cached yet.</p>',
-            { headers: { 'Content-Type': 'text/html' } }
+            `
+            <html>
+            <body>
+                <h1>Offline</h1>
+                <p>No network connection available.</p>
+            </body>
+            </html>
+            `,
+            {
+                headers: {
+                    'Content-Type': 'text/html'
+                }
+            }
         );
     }
 }
 
-// Cache-first: serve from cache when available, otherwise fetch and cache.
 async function cacheFirst(request) {
     const cache = await caches.open(CACHE_NAME);
+
     const cached = await cache.match(request);
+
     if (cached) {
         return cached;
     }
+
     try {
-        const networkResponse = await fetch(request);
-        if (networkResponse && networkResponse.ok) {
-            cache.put(request, networkResponse.clone());
+        const response = await fetch(request);
+
+        if (response && response.ok) {
+            cache.put(request, response.clone());
         }
-        return networkResponse;
+
+        return response;
     } catch (err) {
-        return cached || Response.error();
+        return Response.error();
     }
 }
 
-self.addEventListener('fetch', (event) => {
+/* =========================
+   FETCH
+========================= */
+
+self.addEventListener('fetch', event => {
     const { request } = event;
 
     if (request.method !== 'GET') {
@@ -115,24 +151,31 @@ self.addEventListener('fetch', (event) => {
 
     const url = new URL(request.url);
 
-    // Only handle same-origin requests.
     if (url.origin !== self.location.origin) {
         return;
     }
 
     const path = url.pathname;
 
-    // App shell / dynamic pages that hold live scores & brackets: network-first.
-    const dynamicPages = ['index.php', 'bracket.php', 'admin-login.php', 'admin-panel.php'];
-    const isDynamicPage = dynamicPages.some((page) => path.endsWith(page)) || path === '/' || path.endsWith('/');
+    const dynamicPages = [
+        'index.php',
+        'bracket.php',
+        'admin-login.php',
+        'admin-panel.php'
+    ];
+
+    const isDynamicPage =
+        dynamicPages.some(page => path.endsWith(page)) ||
+        path === '/' ||
+        path.endsWith('/');
 
     if (isDynamicPage || isNavigationRequest(request)) {
         event.respondWith(networkFirst(request));
         return;
     }
 
-    // Static assets (images, icons, manifest, css/js): cache-first.
-    const isStaticAsset = /\.(png|jpg|jpeg|gif|svg|webp|ico|css|js|woff2?|ttf)$/i.test(path) ||
+    const isStaticAsset =
+        /\.(png|jpg|jpeg|gif|svg|webp|ico|css|js|woff2?|ttf)$/i.test(path) ||
         path.endsWith('manifest.json') ||
         path.includes('pwa-icon.php') ||
         path.includes('image.php');
@@ -142,53 +185,120 @@ self.addEventListener('fetch', (event) => {
         return;
     }
 
-    // Default: network-first for everything else so data stays fresh.
     event.respondWith(networkFirst(request));
 });
 
-// Push notification received from the server.
-self.addEventListener('push', (event) => {
-    const data = event.data ? event.data.json() : {};
+/* =========================
+   PUSH NOTIFICATIONS
+========================= */
+
+self.addEventListener('push', event => {
+    console.log('Push event received');
+
+    let data = {};
+
+    try {
+        if (event.data) {
+            const rawPayload = event.data.text();
+
+            console.log('Push payload:', rawPayload);
+
+            try {
+                data = JSON.parse(rawPayload);
+            } catch {
+                data = {
+                    title: 'Squadron Tracker',
+                    body: rawPayload
+                };
+            }
+        }
+    } catch (err) {
+        console.error('Push processing error:', err);
+    }
+
     const options = {
-        body: data.body || 'Score update',
-        icon: data.icon || 'pwa-icon.php?size=192',
-        badge: data.badge || 'pwa-icon.php?size=192',
-        tag: data.tag || 'default',
-        data: data.data || {},
+        body: data.body || 'Score update available',
+        icon: data.icon || '/pwa-icon.php?size=192',
+        badge: data.badge || '/pwa-icon.php?size=192',
+        tag: data.tag || `update-${Date.now()}`,
+        renotify: true,
+        requireInteraction: false,
+        data: {
+            url: data?.data?.url || '/index.php',
+            squadron_id: data?.data?.squadron_id || null,
+            type: data?.data?.type || null
+        }
     };
+
     event.waitUntil(
-        self.registration.showNotification(data.title || 'Squadron Tracker', options)
+        self.registration.showNotification(
+            data.title || 'Squadron Tracker',
+            options
+        )
     );
 });
 
-// Focus/open the app when a notification is clicked.
-self.addEventListener('notificationclick', (event) => {
+/* =========================
+   NOTIFICATION CLICK
+========================= */
+
+self.addEventListener('notificationclick', event => {
     event.notification.close();
-    const url = event.notification.data.url || 'index.php';
+
+    const targetUrl = new URL(
+        event.notification?.data?.url || '/index.php',
+        self.location.origin
+    ).href;
+
     event.waitUntil(
-        clients.matchAll({ type: 'window' }).then((clientList) => {
-            for (let i = 0; i < clientList.length; i++) {
-                if (clientList[i].url === url && 'focus' in clientList[i]) {
-                    return clientList[i].focus();
+        clients.matchAll({
+            type: 'window',
+            includeUncontrolled: true
+        }).then(clientList => {
+
+            for (const client of clientList) {
+                if (client.url === targetUrl && 'focus' in client) {
+                    return client.focus();
                 }
             }
+
             if (clients.openWindow) {
-                return clients.openWindow(url);
+                return clients.openWindow(targetUrl);
             }
         })
     );
 });
 
-// Update badge count (shows number on app icon).
-self.addEventListener('message', (event) => {
-    if (event.data && event.data.type === 'UPDATE_BADGE') {
-        const count = event.data.count || 0;
+/* =========================
+   BADGE SUPPORT
+========================= */
+
+self.addEventListener('message', event => {
+    if (!event.data) {
+        return;
+    }
+
+    if (event.data.type === 'UPDATE_BADGE') {
+        const count = Number(event.data.count || 0);
+
         if ('setAppBadge' in self.registration) {
-            if (count === 0) {
+            if (count <= 0) {
                 self.registration.clearAppBadge();
             } else {
                 self.registration.setAppBadge(count);
             }
         }
     }
+});
+
+/* =========================
+   ERROR LOGGING
+========================= */
+
+self.addEventListener('error', event => {
+    console.error('Service Worker Error:', event.error);
+});
+
+self.addEventListener('unhandledrejection', event => {
+    console.error('Unhandled Promise Rejection:', event.reason);
 });
