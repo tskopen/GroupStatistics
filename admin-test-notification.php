@@ -36,6 +36,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $allNotifications = array_merge($allNotifications, $notifications);
     }
     
+    // Actually send the notifications via Web Push Protocol
+    require __DIR__ . '/push-service.php';
+    if (!empty($allNotifications)) {
+        $sendResult = sendPushNotifications($allNotifications);
+        error_log('Admin test sent: ' . $sendResult['sent'] . ' success, ' . $sendResult['failed'] . ' failed');
+    }
+    
     $result = [
         'target_squadrons' => count($targetSquadrons),
         'matched_subscribers' => count($allNotifications),
