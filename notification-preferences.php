@@ -38,6 +38,14 @@
                 <label>Follow Squadrons:</label>
                 <div class="checkbox-group" id="squadron-list"></div>
                 <button onclick="savePreferences()">Save Preferences</button>
+
+                <div id="subscription-diagnostics" style="display:none; margin-top:16px; padding:12px; background:#f9f9f9; border-radius:4px; font-size:0.85em; color:#444;">
+                    <strong>Subscription diagnostics</strong>
+                    <div>Endpoint: <code id="diag-endpoint-hash"></code>...</div>
+                    <div>VAPID key used: <code id="diag-vapid-key"></code>...</div>
+                    <button id="test-notification-btn" onclick="sendTestNotification()" style="margin-top:10px; background:#0c5460;">Test Notification</button>
+                    <div id="test-notification-result" style="margin-top:8px;"></div>
+                </div>
             </div>
 
             <div id="disabled-message" style="display:none; padding:12px; background:#e9ecef; border-radius:4px;">
@@ -54,6 +62,7 @@
         let registration = null;
         let currentSubscription = null;
         let squadrons = [];
+        let lastVapidKeyPrefix = '';
 
         async function init() {
             // Load squadrons
@@ -89,10 +98,68 @@
                 checkbox.checked = true;
                 document.getElementById('preferences').style.display = 'block';
                 document.getElementById('disabled-message').style.display = 'none';
+                await showSubscriptionDiagnostics();
             } else {
                 checkbox.checked = false;
                 document.getElementById('preferences').style.display = 'none';
                 document.getElementById('disabled-message').style.display = 'block';
+            }
+        }
+
+        // Client-side subscription diagnostics: immediately re-fetch the
+        // current subscription from the pushManager and surface identifying
+        // details so the user (and support staff) can confirm the browser
+        // actually holds a live push subscription tied to the expected
+        // VAPID key.
+        async function showSubscriptionDiagnostics() {
+            if (!registration) return;
+
+            const sub = await registration.pushManager.getSubscription();
+
+            if (!sub) {
+                document.getElementById('subscription-diagnostics').style.display = 'none';
+                return;
+            }
+
+            currentSubscription = sub;
+
+            document.getElementById('diag-endpoint-hash').textContent = sub.endpoint.substring(0, 20);
+            document.getElementById('diag-vapid-key').textContent = lastVapidKeyPrefix || '(unknown - key not refetched this session)';
+            document.getElementById('subscription-diagnostics').style.display = 'block';
+        }
+
+        // Sends an immediate test push through the server so the user can
+        // verify end-to-end delivery without waiting for a real score event.
+        async function sendTestNotification() {
+            const resultEl = document.getElementById('test-notification-result');
+            const btn = document.getElementById('test-notification-btn');
+
+            if (!currentSubscription) {
+                resultEl.textContent = 'No active subscription to test.';
+                return;
+            }
+
+            btn.disabled = true;
+            resultEl.textContent = 'Sending test notification...';
+
+            try {
+                const resp = await fetch('subscribe-notifications-api.php?action=test_notification', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ endpoint: currentSubscription.endpoint })
+                });
+
+                const data = await resp.json();
+
+                if (resp.ok && data.success) {
+                    resultEl.innerHTML = '<span style="color:#155724;">✓ Test notification sent — check your device.</span>';
+                } else {
+                    resultEl.innerHTML = '<span style="color:#721c24;">✗ ' + (data.message || 'Test failed') + '</span>';
+                }
+            } catch (err) {
+                resultEl.innerHTML = '<span style="color:#721c24;">✗ Request failed: ' + err.message + '</span>';
+            } finally {
+                btn.disabled = false;
             }
         }
 
@@ -127,6 +194,7 @@
                     currentSubscription = null;
                     document.getElementById('preferences').style.display = 'none';
                     document.getElementById('disabled-message').style.display = 'block';
+                    document.getElementById('subscription-diagnostics').style.display = 'none';
                     showStatus('Notifications disabled', 'info');
                 }
             }
@@ -150,6 +218,7 @@
 
                 // Log the key for debugging (first 20 chars only for security)
                 console.log('Using VAPID key: ' + vapidData.publicKey.substring(0, 20) + '...');
+                lastVapidKeyPrefix = vapidData.publicKey.substring(0, 20);
 
                 // Validate key format (should be base64url, 80+ chars for 65 bytes)
                 if (!/^[A-Za-z0-9_-]+$/.test(vapidData.publicKey)) {
@@ -190,6 +259,7 @@
                     document.getElementById('disabled-message').style.display = 'none';
                     showStatus('Notifications enabled!', 'success');
                     await savePreferences();
+                    await showSubscriptionDiagnostics();
                 } else {
                     throw new Error('Failed to subscribe on server');
                 }

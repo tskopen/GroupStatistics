@@ -122,6 +122,14 @@ function sendNotificationForScore(
         ]
     ];
 
+    if (!isValidNotificationPayload($payload)) {
+        error_log(
+            '[notifications-helper] ⚠ Skipping send: incomplete payload for squadron ' .
+            $squadronId . ': ' . json_encode($payload)
+        );
+        return [];
+    }
+
     $matched = [];
 
     foreach ($subscriptions['subscriptions'] as $sub) {
@@ -147,6 +155,50 @@ function sendNotificationForScore(
     }
 
     return $matched;
+}
+
+/**
+ * Validate a notification payload before it is handed off to push-service.php.
+ *
+ * Ensures 'title' and 'body' are non-empty strings, and that 'data' (when
+ * present) is an array containing the fields required by the client's
+ * notificationclick handler (type, squadron_id, url).
+ *
+ * @param array $payload
+ * @return bool
+ */
+function isValidNotificationPayload(array $payload): bool
+{
+    $title = $payload['title'] ?? null;
+    $body = $payload['body'] ?? null;
+
+    if (!is_string($title) || trim($title) === '') {
+        error_log('[notifications-helper] ⚠ Invalid payload: "title" must be a non-empty string');
+        return false;
+    }
+
+    if (!is_string($body) || trim($body) === '') {
+        error_log('[notifications-helper] ⚠ Invalid payload: "body" must be a non-empty string');
+        return false;
+    }
+
+    $data = $payload['data'] ?? null;
+
+    if (!is_array($data)) {
+        error_log('[notifications-helper] ⚠ Invalid payload: "data" must be an object/array');
+        return false;
+    }
+
+    $requiredDataFields = ['type', 'squadron_id', 'url'];
+
+    foreach ($requiredDataFields as $field) {
+        if (!array_key_exists($field, $data) || $data[$field] === null || $data[$field] === '') {
+            error_log("[notifications-helper] ⚠ Invalid payload: \"data.$field\" is missing or empty");
+            return false;
+        }
+    }
+
+    return true;
 }
 
 /*
