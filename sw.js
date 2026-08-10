@@ -193,11 +193,43 @@ self.addEventListener('fetch', event => {
 ========================= */
 
 self.addEventListener('push', (event) => {
-    const data = event.data ? event.data.json() : {};
 
-    self.registration.showNotification(
-        data.title,
-        { body: data.body }
+    console.log('Push event received');
+
+    let data = {};
+
+    if (event.data) {
+
+        const raw = event.data.text();
+
+        console.log('Raw payload:', raw);
+
+        try {
+
+            data = JSON.parse(raw);
+
+        } catch (err) {
+
+            console.warn('Payload was not JSON');
+
+            data = {
+                title: 'Squadron Tracker',
+                body: raw
+            };
+        }
+    }
+
+    event.waitUntil(
+        self.registration.showNotification(
+            data.title || 'Squadron Tracker',
+            {
+                body: data.body || 'New update available',
+                icon: '/pwa-icon.php?size=192',
+                badge: '/pwa-icon.php?size=192',
+                tag: data.tag || `push-${Date.now()}`,
+                data: data.data || {}
+            }
+        )
     );
 });
 /* =========================
