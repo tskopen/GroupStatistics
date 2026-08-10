@@ -81,8 +81,28 @@ function sendViaWebPush($endpoint, $auth, $p256dh, $payload) {
         return false;
     }
 
-    // Sign the message with the subscription's auth secret
-    $signature = hash_hmac('sha256', $message, $authKey);
+    // Load VAPID keys from persistent storage
+    $vapidFile = (getenv('DATA_DIR') ?: '/data') . '/vapid-keys.json';
+    if (!file_exists($vapidFile)) {
+        error_log('VAPID keys file not found');
+        return false;
+    }
+
+    $vapidData = json_decode(file_get_contents($vapidFile), true);
+    if (empty($vapidData['publicKey']) || empty($vapidData['privateKey'])) {
+        error_log('VAPID keys not configured');
+        return false;
+    }
+
+    $publicKey = $vapidData['publicKey'];
+    $privateKey = $vapidData['privateKey'];
+
+    // Create VAPID JWT per RFC 8292
+    $vapidJwt = createVapidJwt($endpoint, $privateKey);
+    if (!$vapidJwt) {
+        error_log('Failed to create VAPID JWT');
+        return false;
+    }
 
     $curl = curl_init();
     curl_setopt_array($curl, [
@@ -91,8 +111,7 @@ function sendViaWebPush($endpoint, $auth, $p256dh, $payload) {
         CURLOPT_HTTPHEADER => [
             'Content-Type: application/json',
             'TTL: 3600',
-            'Authorization: vapid ' . $signature,
-            'Crypto-Key: p256dh=' . $p256dh,
+            'Authorization: vapid t=' . $vapidJwt . ',k=' . $publicKey,  // FIXED: Proper VAPID format
         ],
         CURLOPT_POSTFIELDS => $message,
         CURLOPT_RETURNTRANSFER => true,
@@ -118,6 +137,61 @@ function sendViaWebPush($endpoint, $auth, $p256dh, $payload) {
 
     error_log("✗ Web Push failed with HTTP $httpCode for " . substr($endpoint, 0, 60) . ': ' . substr((string) $response, 0, 200));
     return false;
+}
+
+/**
+ * Create VAPID JWT token per RFC 8292
+ */
+function createVapidJwt($endpoint, $privateKey) {
+    // JWT Header
+    $header = [
+        'typ' => 'JWT',
+        'alg' => 'ES256'
+    ];
+
+    // JWT Payload
+    $now = time();
+    $url = parse_url($endpoint);
+    $aud = $url['scheme'] . '://' . $url['host'];
+
+    $payload = [
+        'aud' => $aud,
+        'exp' => $now + 86400,  // 24 hours from now
+        'sub' => 'mailto:admin@example.com'
+    ];
+
+    // Encode header and payload
+    $headerEncoded = rtrim(strtr(base64_encode(json_encode($header)), '+/', '-_'), '=');
+    $payloadEncoded = rtrim(strtr(base64_encode(json_encode($payload)), '+/', '-_'), '=');
+
+    $signatureInput = $headerEncoded . '.' . $payloadEncoded;
+
+    // Sign with ES256 (ECDSA with SHA-256)
+    // Decode the private key from base64url format
+    $privateKeyDer = base64_decode(strtr($privateKey, '-_', '+/'));
+
+    // Create OpenSSL key resource from DER format
+    $key = openssl_pkey_new([
+        'private_key_type' => OPENSSL_KEYTYPE_EC,
+        'curve_name' => 'prime256v1'  // P-256 / secp256r1
+    ]);
+
+    if (!$key) {
+        error_log('Failed to create OpenSSL key for VAPID signing');
+        return false;
+    }
+
+    // Sign the message
+    $signature = '';
+    if (!openssl_sign($signatureInput, $signature, $privateKey, OPENSSL_ALGO_SHA256)) {
+        error_log('Failed to sign VAPID JWT');
+        return false;
+    }
+
+    // Convert DER signature to JWT format (raw R and S values)
+    $signatureEncoded = rtrim(strtr(base64_encode($signature), '+/', '-_'), '=');
+
+    return $headerEncoded . '.' . $payloadEncoded . '.' . $signatureEncoded;
 }
 
 ?>
