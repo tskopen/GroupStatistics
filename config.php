@@ -18,6 +18,270 @@ if (!defined('IMAGES_DIR')) {
     define('IMAGES_DIR', DATA_DIR . '/images');
 }
 
+if (!defined('DB_PATH')) {
+    define('DB_PATH', DATA_DIR . '/squadron-tracker.db');
+}
+
+/**
+ * Return a shared PDO connection to the SQLite database.
+ *
+ * The connection is created once per request and reused for all
+ * subsequent calls, avoiding the overhead of repeatedly opening the
+ * SQLite file.
+ */
+function getDb() {
+    static $pdo = null;
+    if ($pdo === null) {
+        $pdo = new PDO('sqlite:' . DB_PATH);
+        $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+        $pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+    }
+    return $pdo;
+}
+
+/**
+ * Create the SQLite schema if it does not already exist, migrate any
+ * legacy JSON data into it on first run, and seed default lookup
+ * tables (event type configuration and admin settings).
+ */
+function initDatabase() {
+    $db = getDb();
+
+    $db->exec('
+        CREATE TABLE IF NOT EXISTS squadrons (
+            id INTEGER PRIMARY KEY,
+            name TEXT NOT NULL,
+            description TEXT,
+            icon_filename TEXT,
+            created_at DATETIME
+        )
+    ');
+
+    $db->exec('
+        CREATE TABLE IF NOT EXISTS events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            squadron_id INTEGER,
+            event_type TEXT,
+            event_name TEXT,
+            value REAL,
+            points_awarded REAL,
+            timestamp DATETIME,
+            created_at DATETIME,
+            FOREIGN KEY (squadron_id) REFERENCES squadrons(id)
+        )
+    ');
+
+    $db->exec('
+        CREATE TABLE IF NOT EXISTS brackets (
+            id TEXT PRIMARY KEY,
+            name TEXT,
+            created_date DATETIME,
+            updated_at DATETIME,
+            champion_id INTEGER,
+            rounds JSON,
+            FOREIGN KEY (champion_id) REFERENCES squadrons(id)
+        )
+    ');
+
+    $db->exec('
+        CREATE TABLE IF NOT EXISTS intramural_games (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            sport TEXT,
+            team1_id INTEGER,
+            team2_id INTEGER,
+            team1_score INTEGER,
+            team2_score INTEGER,
+            winner_id INTEGER,
+            game_date DATE,
+            points_team1 REAL,
+            points_team2 REAL,
+            timestamp DATETIME,
+            created_at DATETIME,
+            FOREIGN KEY (team1_id) REFERENCES squadrons(id),
+            FOREIGN KEY (team2_id) REFERENCES squadrons(id),
+            FOREIGN KEY (winner_id) REFERENCES squadrons(id)
+        )
+    ');
+
+    $db->exec('
+        CREATE TABLE IF NOT EXISTS intramural_wl_records (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            squadron_id INTEGER,
+            sport TEXT,
+            wins INTEGER DEFAULT 0,
+            losses INTEGER DEFAULT 0,
+            points_awarded REAL DEFAULT 0,
+            updated_at DATETIME,
+            FOREIGN KEY (squadron_id) REFERENCES squadrons(id),
+            UNIQUE(squadron_id, sport)
+        )
+    ');
+
+    $db->exec('
+        CREATE TABLE IF NOT EXISTS event_type_config (
+            event_type TEXT PRIMARY KEY,
+            display_name TEXT,
+            description TEXT,
+            emoji TEXT
+        )
+    ');
+
+    $db->exec('
+        CREATE TABLE IF NOT EXISTS admin_config (
+            key TEXT PRIMARY KEY,
+            value TEXT
+        )
+    ');
+
+    migrateFromJson();
+    seedDefaultConfig();
+}
+
+/**
+ * Migrate legacy JSON "database" files into the SQLite database.
+ *
+ * This only runs once: after a successful migration the JSON files
+ * are renamed to *.bak so subsequent requests skip this step. It is
+ * safe to call on every boot since it no-ops once the .bak markers
+ * exist.
+ */
+function migrateFromJson() {
+    $squadronsPath = DATA_DIR . '/squadrons.json';
+    $scoresPath = DATA_DIR . '/scores.json';
+    $bracketsPath = DATA_DIR . '/brackets.json';
+
+    $squadronsBak = $squadronsPath . '.bak';
+    $scoresBak = $scoresPath . '.bak';
+    $bracketsBak = $bracketsPath . '.bak';
+
+    // If migration already happened (any .bak marker present), skip.
+    if (file_exists($squadronsBak) || file_exists($scoresBak) || file_exists($bracketsBak)) {
+        return;
+    }
+
+    // Nothing to migrate if none of the legacy files exist.
+    if (!file_exists($squadronsPath) && !file_exists($scoresPath) && !file_exists($bracketsPath)) {
+        return;
+    }
+
+    $db = getDb();
+
+    try {
+        $db->beginTransaction();
+
+        if (file_exists($squadronsPath)) {
+            $squadrons = readJson($squadronsPath);
+            $stmt = $db->prepare('
+                INSERT OR IGNORE INTO squadrons (id, name, description, icon_filename, created_at)
+                VALUES (?, ?, ?, ?, ?)
+            ');
+            foreach ($squadrons as $s) {
+                $stmt->execute([
+                    $s['id'] ?? null,
+                    $s['name'] ?? null,
+                    $s['description'] ?? null,
+                    $s['icon'] ?? null,
+                    $s['created_at'] ?? date('c'),
+                ]);
+            }
+        }
+
+        if (file_exists($scoresPath)) {
+            $scores = readJson($scoresPath);
+            $stmt = $db->prepare('
+                INSERT INTO events (squadron_id, event_type, event_name, value, points_awarded, timestamp, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            ');
+            foreach ($scores as $score) {
+                $value = isset($score['value']) ? (float) $score['value'] : 0;
+                $pointsAwarded = isset($score['points_awarded']) ? (float) $score['points_awarded'] : $value;
+                $stmt->execute([
+                    $score['squadron_id'] ?? null,
+                    $score['event_type'] ?? null,
+                    $score['event_name'] ?? null,
+                    $value,
+                    $pointsAwarded,
+                    $score['timestamp'] ?? date('c'),
+                    date('c'),
+                ]);
+            }
+        }
+
+        if (file_exists($bracketsPath)) {
+            $brackets = readJson($bracketsPath);
+            $stmt = $db->prepare('
+                INSERT OR IGNORE INTO brackets (id, name, created_date, updated_at, champion_id, rounds)
+                VALUES (?, ?, ?, ?, ?, ?)
+            ');
+            foreach ($brackets as $bracket) {
+                $stmt->execute([
+                    $bracket['id'] ?? null,
+                    $bracket['name'] ?? null,
+                    $bracket['created_date'] ?? $bracket['created_at'] ?? date('c'),
+                    $bracket['updated_at'] ?? $bracket['created_date'] ?? date('c'),
+                    $bracket['champion_id'] ?? null,
+                    json_encode($bracket['rounds'] ?? []),
+                ]);
+            }
+        }
+
+        $db->commit();
+
+        // Mark migration complete by renaming legacy JSON files.
+        if (file_exists($squadronsPath)) {
+            @rename($squadronsPath, $squadronsBak);
+        }
+        if (file_exists($scoresPath)) {
+            @rename($scoresPath, $scoresBak);
+        }
+        if (file_exists($bracketsPath)) {
+            @rename($bracketsPath, $bracketsBak);
+        }
+
+        error_log('Migration from JSON to SQLite completed successfully.');
+    } catch (Exception $e) {
+        if ($db->inTransaction()) {
+            $db->rollBack();
+        }
+        error_log('Migration from JSON to SQLite failed: ' . $e->getMessage());
+    }
+}
+
+/**
+ * Seed default event type configuration and admin settings if they
+ * are not already present in the database.
+ */
+function seedDefaultConfig() {
+    $db = getDb();
+
+    $eventTypeDefaults = [
+        ['samis', 'SAMIS Scores', 'Weekly SAMIs', '📊'],
+        ['pft', 'Physical Fitness Test', 'PFT scores', '💪'],
+        ['other', 'Other Event', 'Miscellaneous points', '📌'],
+        ['bracket', 'Bracket Tournament', 'Tournament bracket event', '🏆'],
+        ['intramural', 'Intramural', 'Intramural game results', '🏀'],
+    ];
+
+    $stmt = $db->prepare('
+        INSERT OR IGNORE INTO event_type_config (event_type, display_name, description, emoji)
+        VALUES (?, ?, ?, ?)
+    ');
+    foreach ($eventTypeDefaults as $config) {
+        $stmt->execute($config);
+    }
+
+    $adminConfigDefaults = [
+        'intramural_win_points' => '5',
+        'intramural_loss_points' => '-1',
+        'intramural_bonus_0_6_points' => '10',
+    ];
+
+    $stmt = $db->prepare('INSERT OR IGNORE INTO admin_config (key, value) VALUES (?, ?)');
+    foreach ($adminConfigDefaults as $key => $value) {
+        $stmt->execute([$key, $value]);
+    }
+}
+
 /**
  * Ensure the persistent data directory (and images subdirectory) exist,
  * and seed default JSON files on first run so the app has something to
@@ -234,6 +498,8 @@ function restoreDataFromBackup() {
 }
 
 restoreDataFromBackup();
+
+initDatabase();
 
 function readJson($file) {
     if (!file_exists($file)) {
