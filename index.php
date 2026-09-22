@@ -67,9 +67,48 @@ $regularEvents = array_values(array_filter(
     fn($event) => ($event['event_type'] ?? 'other') !== 'bracket'
 ));
 
+// Group SAMI events by event_name into a single card per round.
+$samisByEvent = [];
+$samisGroups = [];
+foreach ($regularEvents as $event) {
+    if (($event['event_type'] ?? '') !== 'samis') {
+        continue;
+    }
+    $eventName = $event['event_name'] ?? 'Samis';
+    if (!isset($samisGroups[$eventName])) {
+        $samisGroups[$eventName] = [
+            'event_name' => $eventName,
+            'results' => [],
+            'latest_timestamp' => 0,
+        ];
+    }
+    $samisGroups[$eventName]['results'][] = [
+        'squadron_id' => $event['squadron_id'] ?? null,
+        'value' => $event['value'] ?? null,
+        'timestamp' => $event['timestamp'] ?? null,
+    ];
+    $ts = strtotime($event['timestamp'] ?? '') ?: 0;
+    if ($ts > $samisGroups[$eventName]['latest_timestamp']) {
+        $samisGroups[$eventName]['latest_timestamp'] = $ts;
+    }
+}
+$samisByEvent = array_values($samisGroups);
+
+// Non-SAMI regular events stay in regularEvents (no change to their display).
+$regularEvents = array_values(array_filter(
+    $regularEvents,
+    fn($event) => ($event['event_type'] ?? '') !== 'samis'
+));
+
 // Sort tournaments by most recent first
 usort(
     $bracketsByTournament,
+    fn($a, $b) => ($b['latest_timestamp'] ?? 0) <=> ($a['latest_timestamp'] ?? 0)
+);
+
+// Sort samis groups by most recent first
+usort(
+    $samisByEvent,
     fn($a, $b) => ($b['latest_timestamp'] ?? 0) <=> ($a['latest_timestamp'] ?? 0)
 );
 ?>
@@ -142,6 +181,21 @@ usort(
     .match-winner { background: var(--accent-color); }
     .match-winner-check { color: #28a745; font-weight: bold; margin-left: 6px; }
     
+    /* SAMI card (all squadron results for one SAMI round grouped together) */
+    .sami-card { background: #fff; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); overflow: hidden; grid-column: span 2; }
+    @media (max-width: 768px) { .sami-card { grid-column: 1 / -1; } }
+    .sami-header { background: var(--secondary-color); color: #fff; padding: 16px; font-weight: bold; font-size: 1.3em; text-align: center; }
+    .sami-body { padding: 15px; }
+    
+    .sami-result { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px; margin-bottom: 10px; border-radius: 6px; background: #f9f9f9; }
+    .sami-result:last-child { margin-bottom: 0; }
+    .sami-result-icon { width: 45px; height: 45px; border-radius: 4px; object-fit: cover; flex-shrink: 0; }
+    .sami-result-info { flex: 1; display: flex; align-items: center; gap: 10px; }
+    .sami-result-name { font-weight: bold; font-size: 0.95em; text-align: left; }
+    .sami-result-score { font-weight: bold; font-size: 1.3em; color: #28a745; text-align: right; }
+    
+    .sami-timestamp { font-size: 0.75em; color: #666; margin-top: 10px; text-align: center; }
+    
     /* Regular event card */
     .regular-event { text-align: center; }
     .regular-event-icon { width: 60px; height: 60px; margin: 0 auto 10px; border-radius: 4px; object-fit: cover; }
@@ -181,7 +235,7 @@ usort(
         <?php $rank++; endforeach; ?>
     </table>
     
-    <?php if ($bracketsByTournament || $regularEvents): ?>
+    <?php if ($bracketsByTournament || $samisByEvent || $regularEvents): ?>
     <h2>🔥 Recent Events &amp; Results</h2>
     <div class="events-grid">
         <?php /* Tournaments are shown first (most recent competitions), followed by
@@ -233,6 +287,33 @@ usort(
                 </div>
                 <div class="match-points">+<?php echo $pointsAwarded; ?> pts</div>
                 <?php endforeach; ?>
+            </div>
+        </div>
+        <?php endforeach; ?>
+
+        <?php foreach ($samisByEvent as $sami): ?>
+        <!-- SAMI events (all squadrons for one round, newest first) -->
+        <div class="sami-card">
+            <div class="sami-header">🏅 <?php echo htmlspecialchars($sami['event_name']); ?></div>
+            <div class="sami-body">
+                <?php foreach ($sami['results'] as $result):
+                    $squad = $squadronMap[$result['squadron_id']] ?? null;
+                ?>
+                <div class="sami-result">
+                    <div class="sami-result-info">
+                        <?php if ($squad && !empty($squad['icon'])): ?>
+                            <img src="<?php echo htmlspecialchars(iconUrl($squad['icon'])); ?>" alt="icon" class="sami-result-icon">
+                        <?php else: ?>
+                            <div class="sami-result-icon" style="background:#ccc;"></div>
+                        <?php endif; ?>
+                        <span class="sami-result-name"><?php echo htmlspecialchars($squad['name'] ?? 'Unknown'); ?></span>
+                    </div>
+                    <div class="sami-result-score"><?php echo htmlspecialchars((string)($result['value'] ?? 'N/A')); ?></div>
+                </div>
+                <?php endforeach; ?>
+                <?php if ($sami['latest_timestamp']): ?>
+                <div class="sami-timestamp">Recorded <?php echo htmlspecialchars(date('M j, Y g:i A', $sami['latest_timestamp'])); ?></div>
+                <?php endif; ?>
             </div>
         </div>
         <?php endforeach; ?>
