@@ -16,6 +16,11 @@ $squadrons = readJson($squadronsFile);
 require __DIR__ . '/db-migrate.php';
 $eventTypes = dbFetchAll("SELECT event_type, display_name FROM event_type_config ORDER BY display_name ASC");
 $eventTypeOptions = array_map(fn($et) => $et['event_type'], $eventTypes);
+$db = getDb();
+$stmt = $db->prepare("SELECT * FROM squadrons ORDER BY id");
+$stmt->execute();
+$squadrons = $stmt->fetchAll();
+$eventTypes = ['bracket', 'pft', 'samis', 'other'];
 
 $success = false;
 $error = '';
@@ -54,17 +59,49 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         ];
         $scores[] = $scoreData;
         writeJson($scoresFile, $scores);
+        try {
+            $db->beginTransaction();
 
-        require __DIR__ . '/notifications-helper.php';
-        require __DIR__ . '/push-service.php';
-        $notifications = sendNotificationForScore($scoreData);
+            $stmt = $db->prepare("
+                INSERT INTO events (squadron_id, event_type, event_name, value, points_awarded, timestamp)
+                VALUES (?, ?, ?, ?, ?, ?)
+            ");
+            $stmt->execute([
+                $squadronId,
+                $eventType,
+                $_POST['event_name'] ?? null,
+                (float) $value,
+                (float) ($_POST['points_awarded'] ?? 0),
+                date('c')
+            ]);
 
         if (!empty($notifications)) {
             $result = sendPushNotifications($notifications);
             error_log('Push delivery for squadron ' . $squadronId . ': ' . $result['sent'] . ' sent, ' . $result['failed'] . ' failed');
         }
+            $db->commit();
+            $success = true;
 
-        $success = true;
+            $scoreData = [
+                'squadron_id' => $squadronId,
+                'event_type' => $eventType,
+                'value' => (float) $value,
+                'timestamp' => date('c'),
+            ];
+
+            require __DIR__ . '/notifications-helper.php';
+            require __DIR__ . '/push-service.php';
+            $notifications = sendNotificationForScore($scoreData);
+
+            // Send via native PHP push service (Web Push Protocol)
+            if (!empty($notifications)) {
+                $result = sendPushNotifications($notifications);
+                error_log('Push delivery for squadron ' . $squadronId . ': ' . $result['sent'] . ' sent, ' . $result['failed'] . ' failed');
+            }
+        } catch (Exception $e) {
+            $db->rollBack();
+            $error = 'Database error: ' . $e->getMessage();
+        }
     }
 }
 ?>
@@ -119,6 +156,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             <label for="event_name">Event Name (optional, auto-filled from type)</label>
             <input type="text" id="event_name" name="event_name" placeholder="e.g., SAMI Round 1">
+
+            <label for="points_awarded">Points Awarded</label>
+            <input type="number" id="points_awarded" name="points_awarded" step="any" value="0" required>
 
             <button type="submit">Save Score</button>
         </form>

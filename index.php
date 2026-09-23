@@ -3,9 +3,26 @@ require __DIR__ . '/config.php';
 require __DIR__ . '/theme-loader.php';
 $theme = loadTheme();
 
-$squadrons = readJson(DATA_DIR . '/squadrons.json');
-$scores = readJson(DATA_DIR . '/scores.json');
-$brackets = readJson(DATA_DIR . '/brackets.json');
+$db = getDb();
+
+// Fetch squadrons
+$stmt = $db->prepare("SELECT * FROM squadrons ORDER BY id");
+$stmt->execute();
+$squadrons = $stmt->fetchAll();
+
+// Fetch scores (all events)
+$stmt = $db->prepare("SELECT * FROM events ORDER BY timestamp DESC");
+$stmt->execute();
+$scores = $stmt->fetchAll();
+
+// Fetch brackets
+$stmt = $db->prepare("SELECT * FROM brackets ORDER BY updated_at DESC");
+$stmt->execute();
+$bracketsData = $stmt->fetchAll();
+$brackets = array_map(function($b) {
+    $b['rounds'] = json_decode($b['rounds'], true) ?? [];
+    return $b;
+}, $bracketsData);
 
 // Build squadron map
 $squadronMap = [];
@@ -17,9 +34,9 @@ foreach ($squadrons as $s) {
 $totals = array_fill_keys(array_keys($squadronMap), 0);
 foreach ($scores as $score) {
     $sid = $score['squadron_id'] ?? null;
-    $value = isset($score['value']) ? (float)$score['value'] : 0;
+    $points = isset($score['points_awarded']) ? (float)$score['points_awarded'] : 0;
     if ($sid && isset($totals[$sid])) {
-        $totals[$sid] += $value;
+        $totals[$sid] += $points;
     }
 }
 
@@ -223,8 +240,8 @@ usort(
         <tr>
             <td>#<?php echo $rank; ?></td>
             <td>
-                <?php if (!empty($s['icon'])): ?>
-                    <img src="<?php echo htmlspecialchars(iconUrl($s['icon'])); ?>" alt="icon" class="icon">
+                <?php if (!empty($s['icon_filename'])): ?>
+                    <img src="<?php echo htmlspecialchars(iconUrl($s['icon_filename'])); ?>" alt="icon" class="icon">
                 <?php else: ?>
                     <span class="icon-placeholder"></span>
                 <?php endif; ?>
@@ -256,8 +273,8 @@ usort(
                 ?>
                 <div class="tournament-match">
                     <div class="match-team <?php echo $t1IsWinner ? 'match-winner' : ''; ?>">
-                        <?php if ($t1 && !empty($t1['icon'])): ?>
-                            <img src="<?php echo htmlspecialchars(iconUrl($t1['icon'])); ?>" alt="icon" class="match-team-icon">
+                        <?php if ($t1 && !empty($t1['icon_filename'])): ?>
+                            <img src="<?php echo htmlspecialchars(iconUrl($t1['icon_filename'])); ?>" alt="icon" class="match-team-icon">
                         <?php else: ?>
                             <div class="match-team-icon" style="background:#ccc;"></div>
                         <?php endif; ?>
@@ -274,8 +291,8 @@ usort(
                     </div>
 
                     <div class="match-team team-right <?php echo $t2IsWinner ? 'match-winner' : ''; ?>">
-                        <?php if ($t2 && !empty($t2['icon'])): ?>
-                            <img src="<?php echo htmlspecialchars(iconUrl($t2['icon'])); ?>" alt="icon" class="match-team-icon">
+                        <?php if ($t2 && !empty($t2['icon_filename'])): ?>
+                            <img src="<?php echo htmlspecialchars(iconUrl($t2['icon_filename'])); ?>" alt="icon" class="match-team-icon">
                         <?php else: ?>
                             <div class="match-team-icon" style="background:#ccc;"></div>
                         <?php endif; ?>
@@ -301,8 +318,8 @@ usort(
                 ?>
                 <div class="sami-result">
                     <div class="sami-result-info">
-                        <?php if ($squad && !empty($squad['icon'])): ?>
-                            <img src="<?php echo htmlspecialchars(iconUrl($squad['icon'])); ?>" alt="icon" class="sami-result-icon">
+                        <?php if ($squad && !empty($squad['icon_filename'])): ?>
+                            <img src="<?php echo htmlspecialchars(iconUrl($squad['icon_filename'])); ?>" alt="icon" class="sami-result-icon">
                         <?php else: ?>
                             <div class="sami-result-icon" style="background:#ccc;"></div>
                         <?php endif; ?>
@@ -324,8 +341,8 @@ usort(
             <div class="event-header"><?php echo strtoupper($event['event_type'] ?? 'Event'); ?></div>
             <div class="event-body regular-event">
                 <?php $squad = $squadronMap[$event['squadron_id']] ?? null; ?>
-                <?php if ($squad && !empty($squad['icon'])): ?>
-                    <img src="<?php echo htmlspecialchars(iconUrl($squad['icon'])); ?>" alt="icon" class="regular-event-icon">
+                <?php if ($squad && !empty($squad['icon_filename'])): ?>
+                    <img src="<?php echo htmlspecialchars(iconUrl($squad['icon_filename'])); ?>" alt="icon" class="regular-event-icon">
                 <?php else: ?>
                     <div class="regular-event-icon" style="background:#ccc;"></div>
                 <?php endif; ?>
