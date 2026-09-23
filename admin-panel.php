@@ -6,12 +6,7 @@ if (empty($_SESSION['admin'])) {
 }
 if (isset($_GET['logout'])) {
     session_unset();
-    session_destroy();        
-         <a class="button" href="admin-bracket.php">Manage Bracket</a>
-        <a class="button" href="admin-squadrons.php">Manage Squadrons</a>
-        <a class="button" href="admin-config.php">⚙️ Scoring Configuration</a>
-        <a class="button" href="admin-intramural-sports.php">🏆 Intramural Sports</a>
-        <a class="button" href="admin-intramural-games.php">🎮 Intramural Games</a>
+    session_destroy();
     header('Location: admin-login.php');
     exit;
 }
@@ -40,6 +35,7 @@ if (isset($_GET['logout'])) {
         <a class="button" href="admin-squadrons.php">Manage Squadrons</a>
         <a class="button" href="admin-config.php">⚙️ Scoring Configuration</a>
         <a class="button" href="admin-intramural-sports.php">🏆 Intramural Sports</a>
+        <a class="button" href="admin-intramural-games.php">🎮 Intramural Games</a>
         <a class="button" href="admin-theme.php">Theme Settings</a>
         <a class="button" href="admin-test-notification.php">Send Notifications</a>
         <a class="button" href="debug-vapid.php" style="background: #666;">Debug VAPID Key</a>
