@@ -21,71 +21,106 @@ $success = false;
 $error = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $squadronId = isset($_POST['squadron_id']) ? (int) $_POST['squadron_id'] : 0;
-    $eventType = $_POST['event_type'] ?? '';
-    $eventName = $_POST['event_name'] ?? '';
-    $value = isset($_POST['value']) ? (float)$_POST['value'] : 0;
+    $action = $_POST['action'] ?? 'add_event';
 
-    // Validate squadron
-    $validSquadron = false;
-    foreach ($squadrons as $s) {
-        if ($s['id'] === $squadronId) {
-            $validSquadron = true;
-            break;
-        }
-    }
+    if ($action === 'delete_event') {
+        $eventId = (int) ($_POST['event_id'] ?? 0);
 
-    // Validate event type
-    $validEventType = false;
-    foreach ($eventTypes as $et) {
-        if ($et['event_type'] === $eventType) {
-            $validEventType = true;
-            break;
-        }
-    }
+        if (!$eventId) {
+            $error = 'Invalid event ID.';
+        } else {
+            try {
+                $db->beginTransaction();
 
-    if (!$validSquadron) {
-        $error = 'Invalid squadron.';
-    } elseif (!$validEventType) {
-        $error = 'Invalid event type.';
-    } else {
-        try {
-            $db->beginTransaction();
+                // Get the event first so we can confirm the delete
+                $stmt = $db->prepare("SELECT * FROM events WHERE id = ?");
+                $stmt->execute([$eventId]);
+                $event = $stmt->fetch();
 
-            $stmt = $db->prepare("
-                INSERT INTO events (squadron_id, event_type, event_name, value, points_awarded, timestamp)
-                VALUES (?, ?, ?, ?, ?, ?)
-            ");
-            $stmt->execute([
-                $squadronId,
-                $eventType,
-                $eventName ?: ucfirst($eventType),
-                $value,
-                $value,
-                date('c')
-            ]);
+                if (!$event) {
+                    throw new Exception('Event not found.');
+                }
 
-            $db->commit();
-            $success = true;
+                // Delete the event
+                $stmt = $db->prepare("DELETE FROM events WHERE id = ?");
+                $stmt->execute([$eventId]);
 
-            $scoreData = [
-                'squadron_id' => $squadronId,
-                'event_type' => $eventType,
-                'value' => $value,
-                'timestamp' => date('c'),
-            ];
-
-            require __DIR__ . '/notifications-helper.php';
-            require __DIR__ . '/push-service.php';
-            $notifications = sendNotificationForScore($scoreData);
-
-            if (!empty($notifications)) {
-                $result = sendPushNotifications($notifications);
-                error_log('Push delivery for squadron ' . $squadronId . ': ' . $result['sent'] . ' sent, ' . $result['failed'] . ' failed');
+                $db->commit();
+                $success = true;
+            } catch (Exception $e) {
+                if ($db->inTransaction()) {
+                    $db->rollBack();
+                }
+                $error = 'Failed to delete event: ' . $e->getMessage();
             }
-        } catch (Exception $e) {
-            $db->rollBack();
-            $error = 'Database error: ' . $e->getMessage();
+        }
+    } else {
+        $squadronId = isset($_POST['squadron_id']) ? (int) $_POST['squadron_id'] : 0;
+        $eventType = $_POST['event_type'] ?? '';
+        $eventName = $_POST['event_name'] ?? '';
+        $value = isset($_POST['value']) ? (float)$_POST['value'] : 0;
+
+        // Validate squadron
+        $validSquadron = false;
+        foreach ($squadrons as $s) {
+            if ($s['id'] === $squadronId) {
+                $validSquadron = true;
+                break;
+            }
+        }
+
+        // Validate event type
+        $validEventType = false;
+        foreach ($eventTypes as $et) {
+            if ($et['event_type'] === $eventType) {
+                $validEventType = true;
+                break;
+            }
+        }
+
+        if (!$validSquadron) {
+            $error = 'Invalid squadron.';
+        } elseif (!$validEventType) {
+            $error = 'Invalid event type.';
+        } else {
+            try {
+                $db->beginTransaction();
+
+                $stmt = $db->prepare("
+                    INSERT INTO events (squadron_id, event_type, event_name, value, points_awarded, timestamp)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                ");
+                $stmt->execute([
+                    $squadronId,
+                    $eventType,
+                    $eventName ?: ucfirst($eventType),
+                    $value,
+                    $value,
+                    date('c')
+                ]);
+
+                $db->commit();
+                $success = true;
+
+                $scoreData = [
+                    'squadron_id' => $squadronId,
+                    'event_type' => $eventType,
+                    'value' => $value,
+                    'timestamp' => date('c'),
+                ];
+
+                require __DIR__ . '/notifications-helper.php';
+                require __DIR__ . '/push-service.php';
+                $notifications = sendNotificationForScore($scoreData);
+
+                if (!empty($notifications)) {
+                    $result = sendPushNotifications($notifications);
+                    error_log('Push delivery for squadron ' . $squadronId . ': ' . $result['sent'] . ' sent, ' . $result['failed'] . ' failed');
+                }
+            } catch (Exception $e) {
+                $db->rollBack();
+                $error = 'Database error: ' . $e->getMessage();
+            }
         }
     }
 }
@@ -148,6 +183,49 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             <button type="submit">Save Score</button>
         </form>
+
+        <?php
+        // Fetch recent events
+        $stmt = $db->prepare("
+            SELECT e.id, e.squadron_id, e.event_type, e.event_name, e.value, e.points_awarded, e.timestamp,
+                   s.name AS squadron_name, s.icon_filename
+            FROM events e
+            JOIN squadrons s ON e.squadron_id = s.id
+            ORDER BY e.timestamp DESC
+            LIMIT 30
+        ");
+        $stmt->execute();
+        $recentEvents = $stmt->fetchAll();
+        ?>
+
+        <?php if (!empty($recentEvents)): ?>
+            <h2 style="margin-top: 40px;">Recent Events</h2>
+            <table style="width: 100%; border-collapse: collapse; background: #fff; margin-top: 20px;">
+                <tr style="background: #002147; color: #fff;">
+                    <th style="padding: 12px; text-align: left;">Squadron</th>
+                    <th style="padding: 12px; text-align: left;">Event</th>
+                    <th style="padding: 12px; text-align: center;">Score</th>
+                    <th style="padding: 12px; text-align: left;">Date</th>
+                    <th style="padding: 12px; text-align: center;">Action</th>
+                </tr>
+                <?php foreach ($recentEvents as $event): ?>
+                <tr style="border-bottom: 1px solid #ddd;">
+                    <td style="padding: 12px;"><?php echo htmlspecialchars($event['squadron_name']); ?></td>
+                    <td style="padding: 12px;"><?php echo htmlspecialchars($event['event_name'] ?? $event['event_type']); ?></td>
+                    <td style="padding: 12px; text-align: center;"><?php echo htmlspecialchars((string)$event['value']); ?></td>
+                    <td style="padding: 12px;"><?php echo htmlspecialchars(date('M j, Y', strtotime($event['timestamp']))); ?></td>
+                    <td style="padding: 12px; text-align: center;">
+                        <form method="post" action="admin-scores.php" style="display: inline;">
+                            <input type="hidden" name="action" value="delete_event">
+                            <input type="hidden" name="event_id" value="<?php echo htmlspecialchars((string)$event['id']); ?>">
+                            <button type="submit" style="background: #b00020; color: #fff; padding: 6px 10px; border: none; border-radius: 3px; cursor: pointer; font-size: 0.85em;" onclick="return confirm('Delete this event? This cannot be undone.');">Delete</button>
+                        </form>
+                    </td>
+                </tr>
+                <?php endforeach; ?>
+            </table>
+        <?php endif; ?>
+
         <div class="nav-link">
             <a href="admin-panel.php">&larr; Back to Admin Panel</a>
         </div>
