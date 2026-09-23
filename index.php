@@ -24,6 +24,15 @@ $brackets = array_map(function($b) {
     return $b;
 }, $bracketsData);
 
+// Fetch intramural records
+$stmt = $db->prepare("SELECT squadron_id, COALESCE(SUM(points_awarded), 0) as total FROM intramural_wl_records GROUP BY squadron_id");
+$stmt->execute();
+$intramuralsData = $stmt->fetchAll();
+$intramurals = [];
+foreach ($intramuralsData as $row) {
+    $intramurals[$row['squadron_id']] = $row['total'];
+}
+
 // Build squadron map
 $squadronMap = [];
 foreach ($squadrons as $s) {
@@ -38,6 +47,11 @@ foreach ($scores as $score) {
     if ($sid && isset($totals[$sid])) {
         $totals[$sid] += $points;
     }
+}
+// Add intramural points to totals
+foreach ($squadrons as $s) {
+    $intramural_pts = $intramurals[$s['id']] ?? 0;
+    $totals[$s['id']] += $intramural_pts;
 }
 
 // Build rankings
