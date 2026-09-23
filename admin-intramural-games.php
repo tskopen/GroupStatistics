@@ -88,7 +88,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     ");
                     $team1Wins = ($team1Score > $team2Score) ? 1 : 0;
                     $team1Losses = ($team1Score < $team2Score) ? 1 : 0;
-                    $stmtUpdate->execute([$team1Wins, $team1Losses, $pointsTeam1, date('c'), $team1Id, $sportId]);
+                    $stmtUpdate->execute([$team1Wins, $team1Losses, $pointsTeam1, date('c'), $team1Id, $sport['id']]);
                 } else {
                     $stmtInsert = $db->prepare("
                         INSERT INTO intramural_wl_records (squadron_id, sport_id, wins, losses, points_awarded, updated_at)
@@ -96,7 +96,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     ");
                     $team1Wins = ($team1Score > $team2Score) ? 1 : 0;
                     $team1Losses = ($team1Score < $team2Score) ? 1 : 0;
-                    $stmtInsert->execute([$team1Id, $sportId, $team1Wins, $team1Losses, $pointsTeam1, date('c')]);
+                    $stmtInsert->execute([$team1Id, $sport['id'], $team1Wins, $team1Losses, $pointsTeam1, date('c')]);
                 }
 
                 $stmtCheck = $db->prepare("SELECT id FROM intramural_wl_records WHERE squadron_id = ? AND sport_id = ?");
@@ -111,7 +111,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     ");
                     $team2Wins = ($team2Score > $team1Score) ? 1 : 0;
                     $team2Losses = ($team2Score < $team1Score) ? 1 : 0;
-                    $stmtUpdate->execute([$team2Wins, $team2Losses, $pointsTeam2, date('c'), $team2Id, $sportId]);
+                    $stmtUpdate->execute([$team2Wins, $team2Losses, $pointsTeam2, date('c'), $team2Id, $sport['id']]);
                 } else {
                     $stmtInsert = $db->prepare("
                         INSERT INTO intramural_wl_records (squadron_id, sport_id, wins, losses, points_awarded, updated_at)
@@ -119,7 +119,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     ");
                     $team2Wins = ($team2Score > $team1Score) ? 1 : 0;
                     $team2Losses = ($team2Score < $team1Score) ? 1 : 0;
-                    $stmtInsert->execute([$team2Id, $sportId, $team2Wins, $team2Losses, $pointsTeam2, date('c')]);
+                    $stmtInsert->execute([$team2Id, $sport['id'], $team2Wins, $team2Losses, $pointsTeam2, date('c')]);
                 }
 
                 $db->commit();
@@ -255,7 +255,7 @@ $recentGames = $stmt->fetchAll();
             <?php endif; ?>
             <?php foreach ($recentGames as $game): ?>
                 <div class="game-card">
-                    <h4><?php if (!empty($game['emoji'])): ?><?php echo htmlspecialchars($game['emoji']); ?> <?php endif; ?><?php echo htmlspecialchars($game['sport_name']); ?> - <?php echo htmlspecialchars(date('M j, Y', strtotime($game['game_date']))); ?></h4>
+                    <h4><?php echo htmlspecialchars($game['sport']); ?> - <?php echo htmlspecialchars(date('M j, Y', strtotime($game['game_date']))); ?></h4>
                     <div class="game-matchup">
                         <div class="team">
                             <?php if (!empty($game['team1_icon'])): ?>
