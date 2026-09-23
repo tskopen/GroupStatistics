@@ -125,10 +125,66 @@ foreach ($regularEvents as $event) {
 }
 $samisByEvent = array_values($samisGroups);
 
-// Non-SAMI regular events stay in regularEvents (no change to their display).
+// Group PFT events by event_name into a single card per PFT round
+$pftByEvent = [];
+$pftGroups = [];
+foreach ($regularEvents as $event) {
+    if (($event['event_type'] ?? '') !== 'pft') {
+        continue;
+    }
+    $eventName = $event['event_name'] ?? 'PFT';
+    if (!isset($pftGroups[$eventName])) {
+        $pftGroups[$eventName] = [
+            'event_name' => $eventName,
+            'event_type' => 'pft',
+            'results' => [],
+            'latest_timestamp' => 0,
+        ];
+    }
+    $pftGroups[$eventName]['results'][] = [
+        'squadron_id' => $event['squadron_id'] ?? null,
+        'value' => $event['value'] ?? null,
+        'timestamp' => $event['timestamp'] ?? null,
+    ];
+    $ts = strtotime($event['timestamp'] ?? '') ?: 0;
+    if ($ts > $pftGroups[$eventName]['latest_timestamp']) {
+        $pftGroups[$eventName]['latest_timestamp'] = $ts;
+    }
+}
+$pftByEvent = array_values($pftGroups);
+
+// Group other events by event_name into a single card per event
+$otherByEvent = [];
+$otherGroups = [];
+foreach ($regularEvents as $event) {
+    if (($event['event_type'] ?? '') !== 'other') {
+        continue;
+    }
+    $eventName = $event['event_name'] ?? 'Other Event';
+    if (!isset($otherGroups[$eventName])) {
+        $otherGroups[$eventName] = [
+            'event_name' => $eventName,
+            'event_type' => 'other',
+            'results' => [],
+            'latest_timestamp' => 0,
+        ];
+    }
+    $otherGroups[$eventName]['results'][] = [
+        'squadron_id' => $event['squadron_id'] ?? null,
+        'value' => $event['value'] ?? null,
+        'timestamp' => $event['timestamp'] ?? null,
+    ];
+    $ts = strtotime($event['timestamp'] ?? '') ?: 0;
+    if ($ts > $otherGroups[$eventName]['latest_timestamp']) {
+        $otherGroups[$eventName]['latest_timestamp'] = $ts;
+    }
+}
+$otherByEvent = array_values($otherGroups);
+
+// Non-SAMI/PFT/other regular events stay in regularEvents (no change to their display).
 $regularEvents = array_values(array_filter(
     $regularEvents,
-    fn($event) => ($event['event_type'] ?? '') !== 'samis'
+    fn($event) => !in_array($event['event_type'] ?? '', ['pft', 'other', 'samis'])
 ));
 
 // Sort tournaments by most recent first
@@ -140,6 +196,18 @@ usort(
 // Sort samis groups by most recent first
 usort(
     $samisByEvent,
+    fn($a, $b) => ($b['latest_timestamp'] ?? 0) <=> ($a['latest_timestamp'] ?? 0)
+);
+
+// Sort PFT groups by most recent first
+usort(
+    $pftByEvent,
+    fn($a, $b) => ($b['latest_timestamp'] ?? 0) <=> ($a['latest_timestamp'] ?? 0)
+);
+
+// Sort other groups by most recent first
+usort(
+    $otherByEvent,
     fn($a, $b) => ($b['latest_timestamp'] ?? 0) <=> ($a['latest_timestamp'] ?? 0)
 );
 ?>
@@ -282,7 +350,7 @@ usort(
     </p>
 <?php endif; ?>
             
-    <?php if ($bracketsByTournament || $samisByEvent || $regularEvents): ?>
+    <?php if ($bracketsByTournament || $samisByEvent || $pftByEvent || $otherByEvent || $regularEvents): ?>
     <h2>🔥 Recent Events &amp; Results</h2>
     <div class="events-grid">
         <?php /* Tournaments are shown first (most recent competitions), followed by
@@ -360,6 +428,60 @@ usort(
                 <?php endforeach; ?>
                 <?php if ($sami['latest_timestamp']): ?>
                 <div class="sami-timestamp">Recorded <?php echo htmlspecialchars(date('M j, Y g:i A', $sami['latest_timestamp'])); ?></div>
+                <?php endif; ?>
+            </div>
+        </div>
+        <?php endforeach; ?>
+
+        <?php foreach ($pftByEvent as $pft): ?>
+        <!-- PFT events (all squadrons for one round, newest first) -->
+        <div class="sami-card">
+            <div class="sami-header">💪 <?php echo htmlspecialchars($pft['event_name']); ?></div>
+            <div class="sami-body">
+                <?php foreach ($pft['results'] as $result):
+                    $squad = $squadronMap[$result['squadron_id']] ?? null;
+                ?>
+                <div class="sami-result">
+                    <div class="sami-result-info">
+                        <?php if ($squad && !empty($squad['icon_filename'])): ?>
+                            <img src="<?php echo htmlspecialchars(iconUrl($squad['icon_filename'])); ?>" alt="icon" class="sami-result-icon">
+                        <?php else: ?>
+                            <div class="sami-result-icon" style="background:#ccc;"></div>
+                        <?php endif; ?>
+                        <span class="sami-result-name"><?php echo htmlspecialchars($squad['name'] ?? 'Unknown'); ?></span>
+                    </div>
+                    <div class="sami-result-score"><?php echo htmlspecialchars((string)($result['value'] ?? 'N/A')); ?></div>
+                </div>
+                <?php endforeach; ?>
+                <?php if ($pft['latest_timestamp']): ?>
+                <div class="sami-timestamp">Recorded <?php echo htmlspecialchars(date('M j, Y g:i A', $pft['latest_timestamp'])); ?></div>
+                <?php endif; ?>
+            </div>
+        </div>
+        <?php endforeach; ?>
+
+        <?php foreach ($otherByEvent as $other): ?>
+        <!-- Other events (all squadrons for one event, newest first) -->
+        <div class="sami-card">
+            <div class="sami-header">📌 <?php echo htmlspecialchars($other['event_name']); ?></div>
+            <div class="sami-body">
+                <?php foreach ($other['results'] as $result):
+                    $squad = $squadronMap[$result['squadron_id']] ?? null;
+                ?>
+                <div class="sami-result">
+                    <div class="sami-result-info">
+                        <?php if ($squad && !empty($squad['icon_filename'])): ?>
+                            <img src="<?php echo htmlspecialchars(iconUrl($squad['icon_filename'])); ?>" alt="icon" class="sami-result-icon">
+                        <?php else: ?>
+                            <div class="sami-result-icon" style="background:#ccc;"></div>
+                        <?php endif; ?>
+                        <span class="sami-result-name"><?php echo htmlspecialchars($squad['name'] ?? 'Unknown'); ?></span>
+                    </div>
+                    <div class="sami-result-score"><?php echo htmlspecialchars((string)($result['value'] ?? 'N/A')); ?></div>
+                </div>
+                <?php endforeach; ?>
+                <?php if ($other['latest_timestamp']): ?>
+                <div class="sami-timestamp">Recorded <?php echo htmlspecialchars(date('M j, Y g:i A', $other['latest_timestamp'])); ?></div>
                 <?php endif; ?>
             </div>
         </div>
