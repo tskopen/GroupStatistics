@@ -11,6 +11,7 @@ $db = getDb();
 $stmt = $db->prepare("SELECT * FROM squadrons ORDER BY id");
 $stmt->execute();
 $squadrons = $stmt->fetchAll();
+
 // Fetch event types from database
 $stmt = $db->prepare("SELECT event_type, display_name, emoji FROM event_type_config ORDER BY display_name ASC");
 $stmt->execute();
@@ -22,8 +23,10 @@ $error = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $squadronId = isset($_POST['squadron_id']) ? (int) $_POST['squadron_id'] : 0;
     $eventType = $_POST['event_type'] ?? '';
-    $value = isset($_POST['value']) ? $_POST['value'] : '';
+    $eventName = $_POST['event_name'] ?? '';
+    $value = isset($_POST['value']) ? (float)$_POST['value'] : 0;
 
+    // Validate squadron
     $validSquadron = false;
     foreach ($squadrons as $s) {
         if ($s['id'] === $squadronId) {
@@ -32,10 +35,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
-    $validEventTypes = array_column($eventTypes, 'event_type');
+    // Validate event type
+    $validEventType = false;
+    foreach ($eventTypes as $et) {
+        if ($et['event_type'] === $eventType) {
+            $validEventType = true;
+            break;
+        }
+    }
 
-    if (!$validSquadron || !in_array($eventType, $validEventTypes, true) || $value === '' || !is_numeric($value)) {
-        $error = 'Please fill out all fields correctly.';
+    if (!$validSquadron) {
+        $error = 'Invalid squadron.';
+    } elseif (!$validEventType) {
+        $error = 'Invalid event type.';
     } else {
         try {
             $db->beginTransaction();
@@ -47,9 +59,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt->execute([
                 $squadronId,
                 $eventType,
-                $_POST['event_name'] ?? null,
-                (float) $value,
-                (float) $value,
+                $eventName ?: ucfirst($eventType),
+                $value,
+                $value,
                 date('c')
             ]);
 
@@ -59,7 +71,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $scoreData = [
                 'squadron_id' => $squadronId,
                 'event_type' => $eventType,
-                'value' => (float) $value,
+                'value' => $value,
                 'timestamp' => date('c'),
             ];
 
@@ -67,7 +79,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             require __DIR__ . '/push-service.php';
             $notifications = sendNotificationForScore($scoreData);
 
-            // Send via native PHP push service (Web Push Protocol)
             if (!empty($notifications)) {
                 $result = sendPushNotifications($notifications);
                 error_log('Push delivery for squadron ' . $squadronId . ': ' . $result['sent'] . ' sent, ' . $result['failed'] . ' failed');
@@ -89,7 +100,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     .panel { max-width: 500px; margin: 40px auto; background: #fff; padding: 30px; border-radius: 6px; box-shadow: 0 1px 4px rgba(0,0,0,0.15); }
     h1 { color: #002147; text-align: center; }
     label { display: block; margin-top: 12px; font-weight: bold; }
-    select, input[type="number"] { width: 100%; padding: 8px; margin-top: 4px; box-sizing: border-box; }
+    select, input[type="text"], input[type="number"] { width: 100%; padding: 8px; margin-top: 4px; box-sizing: border-box; border: 1px solid #ddd; border-radius: 4px; }
     button { margin-top: 18px; width: 100%; padding: 10px; background: #002147; color: #fff; border: none; border-radius: 4px; cursor: pointer; }
     button:hover { background: #003366; }
     .success { color: #1a7a1a; text-align: center; font-weight: bold; }
@@ -129,8 +140,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <?php endforeach; ?>
             </select>
 
+            <label for="event_name">Event Title (optional)</label>
+            <input type="text" id="event_name" name="event_name" placeholder="e.g., SAMI Round 1, PFT Cycle 2">
+
             <label for="value">Score Value</label>
-            <input type="number" id="value" name="value" step="any" required>
+            <input type="number" id="value" name="value" step="any" required placeholder="e.g., 10">
 
             <button type="submit">Save Score</button>
         </form>
