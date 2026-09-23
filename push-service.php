@@ -228,23 +228,33 @@ function createVapidJwt($endpoint, $privateKey) {
     $payloadEncoded = rtrim(strtr(base64_encode(json_encode($payload)), '+/', '-_'), '=');
     $signatureInput = $headerEncoded . '.' . $payloadEncoded;
 
-    // Convert base64url VAPID private key to PEM format
-    // The key is stored as base64url, need to decode it first
+    // RFC 8292: P-256 ECDSA private key is raw 32-byte scalar stored as base64url.
+    // OpenSSL requires a proper DER-encoded EC PRIVATE KEY structure (RFC 5915),
+    // not the raw scalar bytes wrapped in PEM headers.
     $keyDer = base64_decode(strtr($privateKey, '-_', '+/'));
 
-    if ($keyDer === false) {
-        error_log('Failed to decode VAPID private key from base64url');
-        error_log('[PUSH-DIAG] ✗ Private key base64 decode failed');
+    if ($keyDer === false || strlen($keyDer) !== 32) {
+        error_log('Failed to decode VAPID private key: invalid format or length (expected 32 bytes, got ' . ($keyDer === false ? 'false' : strlen($keyDer)) . ')');
+        error_log('[PUSH-DIAG] ✗ Private key format error: length=' . ($keyDer === false ? 'false' : strlen($keyDer)));
         return false;
     }
 
     error_log('[PUSH-DIAG] ✓ Private key decoded: ' . strlen($keyDer) . ' bytes');
 
-    // Wrap DER key in PEM format for OpenSSL
-    // P-256 ECDSA private key
+    // Build the minimal EC PRIVATE KEY DER structure (RFC 5915) and wrap it in PEM.
+    $derPrivateKey = buildEcPrivateKeyDer($keyDer);
+
+    if ($derPrivateKey === false) {
+        error_log('Failed to build EC private key DER structure');
+        error_log('[PUSH-DIAG] ✗ DER construction failed');
+        return false;
+    }
+
     $keyPem = "-----BEGIN EC PRIVATE KEY-----\n";
-    $keyPem .= wordwrap(base64_encode($keyDer), 64, "\n", true);
+    $keyPem .= wordwrap(base64_encode($derPrivateKey), 64, "\n", true);
     $keyPem .= "\n-----END EC PRIVATE KEY-----";
+
+    error_log('[PUSH-DIAG] ✓ EC private key DER built and wrapped in PEM format');
 
     // Sign with ES256 using the PEM-formatted key
     $signature = '';
@@ -263,6 +273,53 @@ function createVapidJwt($endpoint, $privateKey) {
     error_log('[PUSH-DIAG] JWT created: len=' . strlen($jwt) . ' format=<header>.<payload>.<sig>');
 
     return $jwt;
+}
+
+/**
+ * Build a minimal EC PRIVATE KEY DER structure for P-256 ECDSA
+ *
+ * RFC 5915: ECPrivateKey ::= SEQUENCE {
+ *   version        INTEGER { ecPrivkeyVer1(0) }
+ *   privateKey     OCTET STRING,
+ *   parameters [0] EXPLICIT ECDomainParameters OPTIONAL,
+ *   publicKey   [1] EXPLICIT BIT STRING OPTIONAL
+ * }
+ *
+ * For our purposes (signing only), we only need version and privateKey.
+ *
+ * @param string $privateScalar Raw 32-byte P-256 private key scalar
+ * @return string|false DER-encoded structure, or false on error
+ */
+function buildEcPrivateKeyDer($privateScalar) {
+    if (strlen($privateScalar) !== 32) {
+        return false;
+    }
+
+    // Version: INTEGER 1
+    // DER: tag=02 (INTEGER), length=01, value=01
+    $version = "\x02\x01\x01";
+
+    // PrivateKey: OCTET STRING (32 bytes)
+    // DER: tag=04 (OCTET STRING), length=20 (hex), value=(32 bytes)
+    $octetString = "\x04\x20" . $privateScalar; // 0x20 = 32 bytes
+
+    // SEQUENCE { version, octetString }
+    // DER: tag=30 (SEQUENCE), length=X, contents...
+    $sequenceContents = $version . $octetString;
+    $sequenceLength = strlen($sequenceContents);
+
+    // Encode length in DER format
+    // For lengths 0-127: single byte
+    // For lengths 128-255: 0x81 followed by single byte
+    if ($sequenceLength < 128) {
+        $lengthBytes = chr($sequenceLength);
+    } else {
+        $lengthBytes = "\x81" . chr($sequenceLength);
+    }
+
+    $der = "\x30" . $lengthBytes . $sequenceContents;
+
+    return $der;
 }
 
 ?>
