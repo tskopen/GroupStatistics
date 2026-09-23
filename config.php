@@ -82,6 +82,27 @@ function initDatabase() {
     ');
 
     $db->exec('
+        CREATE TABLE IF NOT EXISTS event_type_config (
+            event_type TEXT PRIMARY KEY,
+            display_name TEXT,
+            description TEXT,
+            emoji TEXT
+        )
+    ');
+
+    $db->exec('
+        CREATE TABLE IF NOT EXISTS intramural_sports (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            sport_name TEXT NOT NULL,
+            emoji TEXT,
+            points_win REAL DEFAULT 0,
+            points_loss REAL DEFAULT 0,
+            points_bonus_perfect REAL DEFAULT 0,
+            created_at DATETIME
+        )
+    ');
+
+    $db->exec('
         CREATE TABLE IF NOT EXISTS intramural_games (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             sport TEXT,
@@ -113,27 +134,6 @@ function initDatabase() {
             FOREIGN KEY (squadron_id) REFERENCES squadrons(id),
             FOREIGN KEY (sport_id) REFERENCES intramural_sports(id),
             UNIQUE(squadron_id, sport_id)
-        )
-    ');
-
-    $db->exec('
-        CREATE TABLE IF NOT EXISTS event_type_config (
-            event_type TEXT PRIMARY KEY,
-            display_name TEXT,
-            description TEXT,
-            emoji TEXT
-        )
-    ');
-
-    $db->exec('
-        CREATE TABLE IF NOT EXISTS intramural_sports (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            sport_name TEXT NOT NULL,
-            emoji TEXT,
-            points_win REAL DEFAULT 0,
-            points_loss REAL DEFAULT 0,
-            points_bonus_perfect REAL DEFAULT 0,
-            created_at DATETIME
         )
     ');
 
