@@ -135,11 +135,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 }
 
 $stmt = $db->prepare("
-    SELECT g.*, s.sport_name, s.emoji, 
+    SELECT g.id, g.sport, g.team1_id, g.team2_id, g.team1_score, g.team2_score, 
+           g.winner_id, g.points_team1, g.points_team2, g.game_date, g.timestamp, g.created_at,
            t1.name AS team1_name, t1.icon_filename AS team1_icon,
            t2.name AS team2_name, t2.icon_filename AS team2_icon
     FROM intramural_games g
-    JOIN intramural_sports s ON g.sport_id = s.id
     JOIN squadrons t1 ON g.team1_id = t1.id
     JOIN squadrons t2 ON g.team2_id = t2.id
     ORDER BY g.game_date DESC, g.created_at DESC
