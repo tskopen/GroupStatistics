@@ -105,13 +105,14 @@ function initDatabase() {
         CREATE TABLE IF NOT EXISTS intramural_wl_records (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             squadron_id INTEGER,
-            sport TEXT,
+            sport_id INTEGER,
             wins INTEGER DEFAULT 0,
             losses INTEGER DEFAULT 0,
             points_awarded REAL DEFAULT 0,
             updated_at DATETIME,
             FOREIGN KEY (squadron_id) REFERENCES squadrons(id),
-            UNIQUE(squadron_id, sport)
+            FOREIGN KEY (sport_id) REFERENCES intramural_sports(id),
+            UNIQUE(squadron_id, sport_id)
         )
     ');
 
