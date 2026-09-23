@@ -38,6 +38,132 @@ function getDb() {
 }
 
 /**
+ * CRITICAL: Detect and repair corrupted intramural schema.
+ *
+ * Some databases were created before the intramural_wl_records table
+ * gained its sport_id column, resulting in
+ * "SQLSTATE[HY000]: General error: 1 no such column: sport_id" errors
+ * when recording games. This function detects that condition, backs
+ * up any existing intramural data, rebuilds the tables with the
+ * correct schema, and restores the backed-up data.
+ */
+function repairIntramural() {
+    $db = getDb();
+
+    try {
+        // Check if intramural_wl_records has sport_id column
+        $stmt = $db->prepare('PRAGMA table_info(intramural_wl_records)');
+        $stmt->execute();
+        $columns = $stmt->fetchAll(PDO::FETCH_COLUMN, 1);
+
+        if (!in_array('sport_id', $columns)) {
+            error_log('CRITICAL: intramural_wl_records missing sport_id column - rebuilding schema');
+
+            try {
+                $db->beginTransaction();
+
+                // Back up existing games (in case any exist)
+                $stmt = $db->prepare('SELECT * FROM intramural_games');
+                $stmt->execute();
+                $gamesBackup = $stmt->fetchAll();
+
+                // Drop the corrupted tables
+                $db->exec('DROP TABLE IF EXISTS intramural_wl_records');
+                $db->exec('DROP TABLE IF EXISTS intramural_games');
+                $db->exec('DROP TABLE IF EXISTS intramural_sports');
+
+                error_log('Dropped corrupted intramural tables');
+
+                // Recreate them in correct order
+                $db->exec('
+                    CREATE TABLE IF NOT EXISTS intramural_sports (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        sport_name TEXT NOT NULL,
+                        emoji TEXT,
+                        points_win REAL DEFAULT 0,
+                        points_loss REAL DEFAULT 0,
+                        points_bonus_perfect REAL DEFAULT 0,
+                        created_at DATETIME
+                    )
+                ');
+
+                $db->exec('
+                    CREATE TABLE IF NOT EXISTS intramural_games (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        sport TEXT,
+                        team1_id INTEGER,
+                        team2_id INTEGER,
+                        team1_score INTEGER,
+                        team2_score INTEGER,
+                        winner_id INTEGER,
+                        game_date DATE,
+                        points_team1 REAL,
+                        points_team2 REAL,
+                        timestamp DATETIME,
+                        created_at DATETIME,
+                        FOREIGN KEY (team1_id) REFERENCES squadrons(id),
+                        FOREIGN KEY (team2_id) REFERENCES squadrons(id),
+                        FOREIGN KEY (winner_id) REFERENCES squadrons(id)
+                    )
+                ');
+
+                $db->exec('
+                    CREATE TABLE IF NOT EXISTS intramural_wl_records (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        squadron_id INTEGER,
+                        sport_id INTEGER,
+                        wins INTEGER DEFAULT 0,
+                        losses INTEGER DEFAULT 0,
+                        points_awarded REAL DEFAULT 0,
+                        updated_at DATETIME,
+                        FOREIGN KEY (squadron_id) REFERENCES squadrons(id),
+                        FOREIGN KEY (sport_id) REFERENCES intramural_sports(id),
+                        UNIQUE(squadron_id, sport_id)
+                    )
+                ');
+
+                // Restore backed-up games if they exist
+                if (!empty($gamesBackup)) {
+                    $stmt = $db->prepare('
+                        INSERT INTO intramural_games (sport, team1_id, team2_id, team1_score, team2_score, winner_id, game_date, points_team1, points_team2, timestamp, created_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ');
+
+                    foreach ($gamesBackup as $game) {
+                        $stmt->execute([
+                            $game['sport'],
+                            $game['team1_id'],
+                            $game['team2_id'],
+                            $game['team1_score'],
+                            $game['team2_score'],
+                            $game['winner_id'],
+                            $game['game_date'],
+                            $game['points_team1'],
+                            $game['points_team2'],
+                            $game['timestamp'],
+                            $game['created_at'],
+                        ]);
+                    }
+
+                    error_log('Restored ' . count($gamesBackup) . ' intramural games');
+                }
+
+                $db->commit();
+                error_log('Intramural schema rebuilt successfully');
+            } catch (Exception $e) {
+                if ($db->inTransaction()) {
+                    $db->rollBack();
+                }
+                error_log('Failed to repair intramural schema: ' . $e->getMessage());
+                throw $e;
+            }
+        }
+    } catch (Exception $e) {
+        error_log('Schema verification error: ' . $e->getMessage());
+    }
+}
+
+/**
  * Create the SQLite schema if it does not already exist, migrate any
  * legacy JSON data into it on first run, and seed default lookup
  * tables (event type configuration and admin settings).
@@ -143,6 +269,9 @@ function initDatabase() {
             value TEXT
         )
     ');
+
+    // Repair corrupted intramural schema if needed
+    repairIntramural();
 
     migrateFromJson();
     seedDefaultConfig();
