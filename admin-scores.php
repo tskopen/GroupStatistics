@@ -7,15 +7,6 @@ if (empty($_SESSION['admin'])) {
     exit;
 }
 
-$squadronsFile = DATA_DIR . '/squadrons.json';
-$scoresFile = DATA_DIR . '/scores.json';
-
-$squadrons = readJson($squadronsFile);
-
-// Fetch event types from database configuration
-require __DIR__ . '/db-migrate.php';
-$eventTypes = dbFetchAll("SELECT event_type, display_name FROM event_type_config ORDER BY display_name ASC");
-$eventTypeOptions = array_map(fn($et) => $et['event_type'], $eventTypes);
 $db = getDb();
 $stmt = $db->prepare("SELECT * FROM squadrons ORDER BY id");
 $stmt->execute();
@@ -28,9 +19,8 @@ $error = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $squadronId = isset($_POST['squadron_id']) ? (int) $_POST['squadron_id'] : 0;
     $eventType = $_POST['event_type'] ?? '';
-    $eventName = $_POST['event_name'] ?? '';
+    $value = isset($_POST['value']) ? $_POST['value'] : '';
 
-    // Validate squadron
     $validSquadron = false;
     foreach ($squadrons as $s) {
         if ($s['id'] === $squadronId) {
@@ -39,26 +29,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
-    // Validate event type exists in config
-    if (!in_array($eventType, $eventTypeOptions, true)) {
-        $error = 'Invalid event type.';
-    } elseif (!$validSquadron) {
-        $error = 'Invalid squadron.';
+    if (!$validSquadron || !in_array($eventType, $eventTypes, true) || $value === '' || !is_numeric($value)) {
+        $error = 'Please fill out all fields correctly.';
     } else {
-        // Fetch the configured point value for this event type
-        $config = dbFetchOne("SELECT points_awarded FROM event_type_config WHERE event_type = ?", [$eventType]);
-        $value = $config['points_awarded'] ?? 0;
-
-        $scores = readJson($scoresFile);
-        $scoreData = [
-            'squadron_id' => $squadronId,
-            'event_type' => $eventType,
-            'event_name' => $eventName ?: ucfirst($eventType),
-            'value' => $value,
-            'timestamp' => date('c'),
-        ];
-        $scores[] = $scoreData;
-        writeJson($scoresFile, $scores);
         try {
             $db->beginTransaction();
 
@@ -75,10 +48,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 date('c')
             ]);
 
-        if (!empty($notifications)) {
-            $result = sendPushNotifications($notifications);
-            error_log('Push delivery for squadron ' . $squadronId . ': ' . $result['sent'] . ' sent, ' . $result['failed'] . ' failed');
-        }
             $db->commit();
             $success = true;
 
@@ -148,14 +117,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <select id="event_type" name="event_type" required>
                 <option value="">-- Select Event Type --</option>
                 <?php foreach ($eventTypes as $type): ?>
-                    <option value="<?php echo htmlspecialchars($type['event_type']); ?>">
-                        <?php echo htmlspecialchars($type['display_name']); ?>
+                    <option value="<?php echo htmlspecialchars($type); ?>">
+                        <?php echo htmlspecialchars(strtoupper($type)); ?>
                     </option>
                 <?php endforeach; ?>
             </select>
 
-            <label for="event_name">Event Name (optional, auto-filled from type)</label>
-            <input type="text" id="event_name" name="event_name" placeholder="e.g., SAMI Round 1">
+            <label for="value">Score Value</label>
+            <input type="number" id="value" name="value" step="any" required>
 
             <label for="points_awarded">Points Awarded</label>
             <input type="number" id="points_awarded" name="points_awarded" step="any" value="0" required>
