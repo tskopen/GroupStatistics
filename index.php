@@ -252,6 +252,22 @@ usort(
         <?php $rank++; endforeach; ?>
     </table>
     
+    
+<?php
+    // Check if any intramural records exist
+    $stmt = $db->prepare("SELECT COUNT(*) as cnt FROM intramural_wl_records");
+    $stmt->execute();
+    $result = $stmt->fetch();
+    $hasIntramurals = $result['cnt'] > 0;
+    ?>
+    
+    <?php if ($hasIntramurals): ?>
+    <h2>🏅 Intramural Standings</h2>
+    <p style="text-align: center; margin-bottom: 20px;">
+        <a href="intramural-standings.php" style="color: var(--primary-color); text-decoration: none; font-weight: bold;">View Full Intramural Standings →</a>
+    </p>
+<?php endif; ?>
+            
     <?php if ($bracketsByTournament || $samisByEvent || $regularEvents): ?>
     <h2>🔥 Recent Events &amp; Results</h2>
     <div class="events-grid">
