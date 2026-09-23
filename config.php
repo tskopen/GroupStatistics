@@ -151,10 +151,11 @@ function initDatabase() {
 /**
  * Migrate legacy JSON "database" files into the SQLite database.
  *
- * This only runs once: after a successful migration the JSON files
- * are renamed to *.bak so subsequent requests skip this step. It is
- * safe to call on every boot since it no-ops once the .bak markers
- * exist.
+ * Squadrons and brackets are migrated once: after a successful
+ * migration those JSON files are renamed to *.bak so subsequent
+ * requests skip that step. Scores are handled separately below and
+ * are re-checked on every boot (based on whether the events table is
+ * empty) so that a failed migration can be retried automatically.
  */
 function migrateFromJson() {
     $squadronsPath = DATA_DIR . '/squadrons.json';
@@ -162,99 +163,113 @@ function migrateFromJson() {
     $bracketsPath = DATA_DIR . '/brackets.json';
 
     $squadronsBak = $squadronsPath . '.bak';
-    $scoresBak = $scoresPath . '.bak';
     $bracketsBak = $bracketsPath . '.bak';
-
-    // If migration already happened (any .bak marker present), skip.
-    if (file_exists($squadronsBak) || file_exists($scoresBak) || file_exists($bracketsBak)) {
-        return;
-    }
-
-    // Nothing to migrate if none of the legacy files exist.
-    if (!file_exists($squadronsPath) && !file_exists($scoresPath) && !file_exists($bracketsPath)) {
-        return;
-    }
 
     $db = getDb();
 
-    try {
-        $db->beginTransaction();
+    // Migrate squadrons and brackets once (guarded by .bak markers).
+    if (!file_exists($squadronsBak) && !file_exists($bracketsBak)
+        && (file_exists($squadronsPath) || file_exists($bracketsPath))) {
+        try {
+            $db->beginTransaction();
 
-        if (file_exists($squadronsPath)) {
-            $squadrons = readJson($squadronsPath);
-            $stmt = $db->prepare('
-                INSERT OR IGNORE INTO squadrons (id, name, description, icon_filename, created_at)
-                VALUES (?, ?, ?, ?, ?)
-            ');
-            foreach ($squadrons as $s) {
-                $stmt->execute([
-                    $s['id'] ?? null,
-                    $s['name'] ?? null,
-                    $s['description'] ?? null,
-                    $s['icon'] ?? null,
-                    $s['created_at'] ?? date('c'),
-                ]);
+            if (file_exists($squadronsPath)) {
+                $squadrons = readJson($squadronsPath);
+                $stmt = $db->prepare('
+                    INSERT OR IGNORE INTO squadrons (id, name, description, icon_filename, created_at)
+                    VALUES (?, ?, ?, ?, ?)
+                ');
+                foreach ($squadrons as $s) {
+                    $stmt->execute([
+                        $s['id'] ?? null,
+                        $s['name'] ?? null,
+                        $s['description'] ?? null,
+                        $s['icon'] ?? null,
+                        $s['created_at'] ?? date('c'),
+                    ]);
+                }
+            }
+
+            if (file_exists($bracketsPath)) {
+                $brackets = readJson($bracketsPath);
+                $stmt = $db->prepare('
+                    INSERT OR IGNORE INTO brackets (id, name, created_date, updated_at, champion_id, rounds)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                ');
+                foreach ($brackets as $bracket) {
+                    $stmt->execute([
+                        $bracket['id'] ?? null,
+                        $bracket['name'] ?? null,
+                        $bracket['created_date'] ?? $bracket['created_at'] ?? date('c'),
+                        $bracket['updated_at'] ?? $bracket['created_date'] ?? date('c'),
+                        $bracket['champion_id'] ?? null,
+                        json_encode($bracket['rounds'] ?? []),
+                    ]);
+                }
+            }
+
+            $db->commit();
+
+            // Mark migration complete by renaming legacy JSON files.
+            if (file_exists($squadronsPath)) {
+                @rename($squadronsPath, $squadronsBak);
+            }
+            if (file_exists($bracketsPath)) {
+                @rename($bracketsPath, $bracketsBak);
+            }
+
+            error_log('Migration from JSON to SQLite completed successfully (squadrons/brackets).');
+        } catch (Exception $e) {
+            if ($db->inTransaction()) {
+                $db->rollBack();
+            }
+            error_log('Migration from JSON to SQLite failed (squadrons/brackets): ' . $e->getMessage());
+        }
+    }
+
+    // Migrate scores every time the events table is empty, so a
+    // failed attempt is automatically retried on the next request.
+    $stmt = $db->prepare('SELECT COUNT(*) as cnt FROM events');
+    $stmt->execute();
+    $eventCount = $stmt->fetch()['cnt'];
+
+    if ($eventCount == 0 && file_exists($scoresPath)) {
+        $scores = readJson($scoresPath);
+
+        if (!empty($scores)) {
+            try {
+                $db->beginTransaction();
+
+                $stmt = $db->prepare('
+                    INSERT INTO events (squadron_id, event_type, event_name, value, points_awarded, timestamp, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                ');
+
+                foreach ($scores as $score) {
+                    $value = isset($score['value']) ? (float) $score['value'] : 0;
+                    $pointsAwarded = isset($score['points_awarded']) ? (float) $score['points_awarded'] : $value;
+                    $eventName = $score['event_name'] ?? ($score['tournament_name'] ?? 'Event');
+
+                    $stmt->execute([
+                        $score['squadron_id'] ?? null,
+                        $score['event_type'] ?? null,
+                        $eventName,
+                        $value,
+                        $pointsAwarded,
+                        $score['timestamp'] ?? date('c'),
+                        date('c'),
+                    ]);
+                }
+
+                $db->commit();
+                error_log('Migrated ' . count($scores) . ' entries from JSON to SQLite');
+            } catch (Exception $e) {
+                if ($db->inTransaction()) {
+                    $db->rollBack();
+                }
+                error_log('Migration failed: ' . $e->getMessage());
             }
         }
-
-        if (file_exists($scoresPath)) {
-            $scores = readJson($scoresPath);
-            $stmt = $db->prepare('
-                INSERT INTO events (squadron_id, event_type, event_name, value, points_awarded, timestamp, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            ');
-            foreach ($scores as $score) {
-                $value = isset($score['value']) ? (float) $score['value'] : 0;
-                $pointsAwarded = isset($score['points_awarded']) ? (float) $score['points_awarded'] : $value;
-                $stmt->execute([
-                    $score['squadron_id'] ?? null,
-                    $score['event_type'] ?? null,
-                    $score['event_name'] ?? null,
-                    $value,
-                    $pointsAwarded,
-                    $score['timestamp'] ?? date('c'),
-                    date('c'),
-                ]);
-            }
-        }
-
-        if (file_exists($bracketsPath)) {
-            $brackets = readJson($bracketsPath);
-            $stmt = $db->prepare('
-                INSERT OR IGNORE INTO brackets (id, name, created_date, updated_at, champion_id, rounds)
-                VALUES (?, ?, ?, ?, ?, ?)
-            ');
-            foreach ($brackets as $bracket) {
-                $stmt->execute([
-                    $bracket['id'] ?? null,
-                    $bracket['name'] ?? null,
-                    $bracket['created_date'] ?? $bracket['created_at'] ?? date('c'),
-                    $bracket['updated_at'] ?? $bracket['created_date'] ?? date('c'),
-                    $bracket['champion_id'] ?? null,
-                    json_encode($bracket['rounds'] ?? []),
-                ]);
-            }
-        }
-
-        $db->commit();
-
-        // Mark migration complete by renaming legacy JSON files.
-        if (file_exists($squadronsPath)) {
-            @rename($squadronsPath, $squadronsBak);
-        }
-        if (file_exists($scoresPath)) {
-            @rename($scoresPath, $scoresBak);
-        }
-        if (file_exists($bracketsPath)) {
-            @rename($bracketsPath, $bracketsBak);
-        }
-
-        error_log('Migration from JSON to SQLite completed successfully.');
-    } catch (Exception $e) {
-        if ($db->inTransaction()) {
-            $db->rollBack();
-        }
-        error_log('Migration from JSON to SQLite failed: ' . $e->getMessage());
     }
 }
 
