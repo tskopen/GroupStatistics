@@ -239,28 +239,62 @@ function createVapidJwt($endpoint, $privateKey) {
         return false;
     }
 
-    error_log('[PUSH-DIAG] ✓ Private key decoded: ' . strlen($keyDer) . ' bytes');
+    error_log('[PUSH-DIAG] ✓ Private key decoded: ' . strlen($keyDer) . ' bytes (before DER construction)');
 
-    // Build the minimal EC PRIVATE KEY DER structure (RFC 5915) and wrap it in PEM.
-    $derPrivateKey = buildEcPrivateKeyDer($keyDer);
+    // Build a full, valid EC PRIVATE KEY DER structure (SEC1 / RFC 5915) and wrap it in PEM.
+    // The raw 32-byte scalar alone is NOT valid DER — OpenSSL requires the full
+    // SEQUENCE { version, privateKey OCTET STRING, parameters [0] EXPLICIT OID }.
+    $derPrivateKey = buildECPrivateKeyDER($keyDer);
 
     if ($derPrivateKey === false) {
         error_log('Failed to build EC private key DER structure');
-        error_log('[PUSH-DIAG] ✗ DER construction failed');
+        error_log('[PUSH-DIAG] ✗ DER construction failed for private key of length ' . strlen($keyDer));
         return false;
     }
 
+    error_log('[PUSH-DIAG] ✓ DER structure built: ' . strlen($derPrivateKey) . ' bytes, hex prefix=' . substr(bin2hex($derPrivateKey), 0, 20) . '...');
+
     $keyPem = "-----BEGIN EC PRIVATE KEY-----\n";
     $keyPem .= wordwrap(base64_encode($derPrivateKey), 64, "\n", true);
-    $keyPem .= "\n-----END EC PRIVATE KEY-----";
+    $keyPem .= "\n-----END EC PRIVATE KEY-----\n";
 
     error_log('[PUSH-DIAG] ✓ EC private key DER built and wrapped in PEM format');
+    error_log('[PUSH-DIAG] Generated PEM (first 100 chars): ' . substr($keyPem, 0, 100) . '...');
+
+    // Verify the PEM can actually be parsed by OpenSSL before attempting to sign.
+    // Clear any stale OpenSSL error queue entries first so our diagnostics are accurate.
+    while (openssl_error_string() !== false) {
+        // drain queue
+    }
+
+    $testKeyResource = openssl_pkey_get_private($keyPem);
+    if ($testKeyResource === false) {
+        error_log('[PUSH-DIAG] ✗ openssl_pkey_get_private() FAILED to parse generated PEM');
+        $opensslErrors = [];
+        while (($opensslError = openssl_error_string()) !== false) {
+            $opensslErrors[] = $opensslError;
+        }
+        error_log('[PUSH-DIAG] OpenSSL error stack: ' . (empty($opensslErrors) ? '(none reported)' : implode(' | ', $opensslErrors)));
+        return false;
+    }
+
+    error_log('[PUSH-DIAG] ✓ openssl_pkey_get_private() succeeded, key resource obtained');
+
+    $keyDetails = openssl_pkey_get_details($testKeyResource);
+    if ($keyDetails !== false) {
+        error_log('[PUSH-DIAG] Key details: type=' . ($keyDetails['type'] ?? 'unknown') . ' bits=' . ($keyDetails['bits'] ?? 'unknown') . ' curve=' . ($keyDetails['ec']['curve_name'] ?? 'unknown'));
+    }
 
     // Sign with ES256 using the PEM-formatted key
     $signature = '';
     if (!openssl_sign($signatureInput, $signature, $keyPem, OPENSSL_ALGO_SHA256)) {
         error_log('Failed to sign VAPID JWT with private key');
         error_log('[PUSH-DIAG] ✗ openssl_sign failed');
+        $opensslErrors = [];
+        while (($opensslError = openssl_error_string()) !== false) {
+            $opensslErrors[] = $opensslError;
+        }
+        error_log('[PUSH-DIAG] OpenSSL error stack: ' . (empty($opensslErrors) ? '(none reported)' : implode(' | ', $opensslErrors)));
         return false;
     }
 
@@ -276,48 +310,87 @@ function createVapidJwt($endpoint, $privateKey) {
 }
 
 /**
- * Build a minimal EC PRIVATE KEY DER structure for P-256 ECDSA
+ * DER-encode a length value per the ASN.1 Distinguished Encoding Rules.
  *
- * RFC 5915: ECPrivateKey ::= SEQUENCE {
- *   version        INTEGER { ecPrivkeyVer1(0) }
- *   privateKey     OCTET STRING,
- *   parameters [0] EXPLICIT ECDomainParameters OPTIONAL,
- *   publicKey   [1] EXPLICIT BIT STRING OPTIONAL
- * }
+ * - Lengths 0-127 are encoded as a single byte containing the length.
+ * - Lengths 128-255 are encoded as 0x81 followed by one length byte.
+ * - Lengths 256-65535 are encoded as 0x82 followed by two length bytes (big-endian).
  *
- * For our purposes (signing only), we only need version and privateKey.
+ * Our structures are all small (well under 256 bytes), but the two-byte case
+ * is included for completeness/robustness.
+ *
+ * @param int $length
+ * @return string
+ */
+function derEncodeLength($length) {
+    if ($length < 128) {
+        return chr($length);
+    }
+
+    if ($length < 256) {
+        return "\x81" . chr($length);
+    }
+
+    return "\x82" . chr(($length >> 8) & 0xFF) . chr($length & 0xFF);
+}
+
+/**
+ * Build a full, valid "EC PRIVATE KEY" DER structure for a P-256 (secp256r1) key.
+ *
+ * This follows SEC1 v2.0 / RFC 5915:
+ *
+ *   ECPrivateKey ::= SEQUENCE {
+ *     version        INTEGER { ecPrivkeyVer1(1) } (SEC1 uses 1, not 0),
+ *     privateKey     OCTET STRING,
+ *     parameters [0] EXPLICIT ECParameters OPTIONAL,
+ *     publicKey  [1] EXPLICIT BIT STRING OPTIONAL
+ *   }
+ *
+ * VAPID (RFC 8292) stores only the raw 32-byte private scalar. OpenSSL's
+ * openssl_pkey_get_private()/openssl_sign() cannot consume that raw scalar
+ * directly — it requires the full ASN.1 SEQUENCE shown above, at minimum with
+ * the "parameters" field present so OpenSSL knows which curve (secp256r1) the
+ * scalar belongs to. Without it, openssl_sign() fails with:
+ *   "Supplied key param cannot be coerced into a private key"
+ *
+ * We omit the optional publicKey [1] field — OpenSSL can derive the public
+ * point from the private scalar + curve when needed for signing.
  *
  * @param string $privateScalar Raw 32-byte P-256 private key scalar
- * @return string|false DER-encoded structure, or false on error
+ * @return string|false DER-encoded ECPrivateKey structure, or false on error
  */
-function buildEcPrivateKeyDer($privateScalar) {
-    if (strlen($privateScalar) !== 32) {
+function buildECPrivateKeyDER($privateScalar) {
+    if (!is_string($privateScalar) || strlen($privateScalar) !== 32) {
+        error_log('[PUSH-DIAG] buildECPrivateKeyDER: invalid scalar length=' . (is_string($privateScalar) ? strlen($privateScalar) : 'non-string'));
         return false;
     }
 
-    // Version: INTEGER 1
-    // DER: tag=02 (INTEGER), length=01, value=01
+    // --- version INTEGER 1 ---
+    // DER: tag=0x02 (INTEGER), length=0x01, value=0x01 (ecPrivkeyVer1)
     $version = "\x02\x01\x01";
 
-    // PrivateKey: OCTET STRING (32 bytes)
-    // DER: tag=04 (OCTET STRING), length=20 (hex), value=(32 bytes)
-    $octetString = "\x04\x20" . $privateScalar; // 0x20 = 32 bytes
+    // --- privateKey OCTET STRING (the raw 32-byte scalar) ---
+    // DER: tag=0x04 (OCTET STRING), length=0x20 (32 bytes), value=<32 raw bytes>
+    $privateKeyOctetString = "\x04" . derEncodeLength(strlen($privateScalar)) . $privateScalar;
 
-    // SEQUENCE { version, octetString }
-    // DER: tag=30 (SEQUENCE), length=X, contents...
-    $sequenceContents = $version . $octetString;
+    // --- parameters [0] EXPLICIT ECParameters (namedCurve = secp256r1) ---
+    // secp256r1 (a.k.a prime256v1 / P-256) OID: 1.2.840.10045.3.1.1
+    // DER-encoded OID bytes: 06 08 2a 86 48 ce 3d 03 01 01
+    //   tag=0x06 (OBJECT IDENTIFIER), length=0x08, value=2a 86 48 ce 3d 03 01 01
+    $namedCurveOid = "\x06\x08\x2a\x86\x48\xce\x3d\x03\x01\x01";
+
+    // Wrap the OID in the context-specific [0] EXPLICIT tag.
+    // DER: tag=0xa0 ([0] constructed, explicit), length=X, value=<OID DER>
+    $parameters = "\xa0" . derEncodeLength(strlen($namedCurveOid)) . $namedCurveOid;
+
+    // --- Assemble the outer SEQUENCE { version, privateKey, parameters } ---
+    $sequenceContents = $version . $privateKeyOctetString . $parameters;
     $sequenceLength = strlen($sequenceContents);
 
-    // Encode length in DER format
-    // For lengths 0-127: single byte
-    // For lengths 128-255: 0x81 followed by single byte
-    if ($sequenceLength < 128) {
-        $lengthBytes = chr($sequenceLength);
-    } else {
-        $lengthBytes = "\x81" . chr($sequenceLength);
-    }
+    // DER: tag=0x30 (SEQUENCE), length=X, value=<contents>
+    $der = "\x30" . derEncodeLength($sequenceLength) . $sequenceContents;
 
-    $der = "\x30" . $lengthBytes . $sequenceContents;
+    error_log('[PUSH-DIAG] buildECPrivateKeyDER: built DER SEQUENCE of ' . strlen($der) . ' bytes (version+privateKey+parameters[secp256r1])');
 
     return $der;
 }
