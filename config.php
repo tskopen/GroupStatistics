@@ -1,21 +1,23 @@
 <?php
 
-define('DATA_DIR', getenv('DATA_DIR') ?: __DIR__ . '/data');
+// Always use the mounted persistent volume at /data
+define('DATA_DIR', '/data');
+
 /**
  * Central configuration for persistent data storage.
  *
  * Railway mounts a persistent volume at /data. All application data
- * (JSON "database" files and uploaded squadron images) must live there
+ * (SQLite database, JSON files, and uploaded squadron images) must live there
  * so that data survives redeploys/restarts, which otherwise recreate
  * the container filesystem from scratch.
  */
 
-if (!defined('DATA_DIR')) {
-    define('DATA_DIR', getenv('DATA_DIR') ?: '/data');
-}
-
 if (!defined('IMAGES_DIR')) {
     define('IMAGES_DIR', DATA_DIR . '/images');
+}
+
+if (!defined('DB_PATH')) {
+    define('DB_PATH', DATA_DIR . '/squadron-tracker.db');
 }
 
 if (!defined('DB_PATH')) {
