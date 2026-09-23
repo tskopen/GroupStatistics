@@ -127,6 +127,18 @@ function initDatabase() {
     ');
 
     $db->exec('
+        CREATE TABLE IF NOT EXISTS intramural_sports (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            sport_name TEXT NOT NULL,
+            emoji TEXT,
+            points_win REAL DEFAULT 0,
+            points_loss REAL DEFAULT 0,
+            points_bonus_perfect REAL DEFAULT 0,
+            created_at DATETIME
+        )
+    ');
+
+    $db->exec('
         CREATE TABLE IF NOT EXISTS admin_config (
             key TEXT PRIMARY KEY,
             value TEXT
