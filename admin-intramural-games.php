@@ -131,6 +131,72 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 $error = 'Error recording game: ' . $e->getMessage();
             }
         }
+    } elseif ($action === 'delete_game') {
+        $gameId = (int) ($_POST['game_id'] ?? 0);
+
+        if (!$gameId) {
+            $error = 'Invalid game ID.';
+        } else {
+            try {
+                $db->beginTransaction();
+
+                // Get the game
+                $stmt = $db->prepare("SELECT * FROM intramural_games WHERE id = ?");
+                $stmt->execute([$gameId]);
+                $game = $stmt->fetch();
+
+                if (!$game) {
+                    throw new Exception('Game not found.');
+                }
+
+                // Find the sport by name
+                $sport = null;
+                foreach ($sports as $s) {
+                    if ($s['sport_name'] === $game['sport']) {
+                        $sport = $s;
+                        break;
+                    }
+                }
+
+                if (!$sport) {
+                    throw new Exception('Sport not found.');
+                }
+
+                // Undo team1 impact on W-L records
+                $team1Wins = ($game['team1_score'] > $game['team2_score']) ? 1 : 0;
+                $team1Losses = ($game['team1_score'] < $game['team2_score']) ? 1 : 0;
+
+                $stmt = $db->prepare("
+                    UPDATE intramural_wl_records 
+                    SET wins = wins - ?, losses = losses - ?, points_awarded = points_awarded - ?, updated_at = ?
+                    WHERE squadron_id = ? AND sport_id = ?
+                ");
+                $stmt->execute([$team1Wins, $team1Losses, $game['points_team1'], date('c'), $game['team1_id'], $sport['id']]);
+
+                // Undo team2 impact on W-L records
+                $team2Wins = ($game['team2_score'] > $game['team1_score']) ? 1 : 0;
+                $team2Losses = ($game['team2_score'] < $game['team1_score']) ? 1 : 0;
+
+                $stmt = $db->prepare("
+                    UPDATE intramural_wl_records 
+                    SET wins = wins - ?, losses = losses - ?, points_awarded = points_awarded - ?, updated_at = ?
+                    WHERE squadron_id = ? AND sport_id = ?
+                ");
+                $stmt->execute([$team2Wins, $team2Losses, $game['points_team2'], date('c'), $game['team2_id'], $sport['id']]);
+
+                // Delete the game
+                $stmt = $db->prepare("DELETE FROM intramural_games WHERE id = ?");
+                $stmt->execute([$gameId]);
+
+                $db->commit();
+                $success = 'Game deleted successfully. W-L records updated.';
+            } catch (Exception $e) {
+                if ($db->inTransaction()) {
+                    $db->rollBack();
+                }
+                $error = 'Error deleting game: ' . $e->getMessage();
+            }
+        }
     }
 }
 
@@ -255,7 +321,14 @@ $recentGames = $stmt->fetchAll();
             <?php endif; ?>
             <?php foreach ($recentGames as $game): ?>
                 <div class="game-card">
-                    <h4><?php echo htmlspecialchars($game['sport']); ?> - <?php echo htmlspecialchars(date('M j, Y', strtotime($game['game_date']))); ?></h4>
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px;">
+                        <h4 style="margin: 0;"><?php echo htmlspecialchars($game['sport']); ?> - <?php echo htmlspecialchars(date('M j, Y', strtotime($game['game_date']))); ?></h4>
+                        <form method="post" action="admin-intramural-games.php" style="display: inline;">
+                            <input type="hidden" name="action" value="delete_game">
+                            <input type="hidden" name="game_id" value="<?php echo htmlspecialchars((string)$game['id']); ?>">
+                            <button type="submit" style="background: #b00020; color: #fff; padding: 6px 10px; border: none; border-radius: 3px; cursor: pointer; font-size: 0.85em;" onclick="return confirm('Delete this game? This cannot be undone. W-L records will be updated.');">Delete</button>
+                        </form>
+                    </div>
                     <div class="game-matchup">
                         <div class="team">
                             <?php if (!empty($game['team1_icon'])): ?>
