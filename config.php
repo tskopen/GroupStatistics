@@ -510,7 +510,44 @@ function restoreDataFromBackup() {
 
 restoreDataFromBackup();
 
+/**
+ * Restore default USAFA Group 1 squadrons if database is empty.
+ * Called after migration to ensure squadrons table is always populated.
+ */
+function restoreDefaultSquadrons() {
+    $db = getDb();
+
+    // Check if squadrons table is empty or incomplete
+    $stmt = $db->prepare('SELECT COUNT(*) as cnt FROM squadrons');
+    $stmt->execute();
+    $result = $stmt->fetch();
+
+    if ($result['cnt'] < 10) {
+        $squadrons = [
+            ['id' => 1, 'name' => 'Mighty Mach One', 'description' => 'Symbolized by the griffin and the Maltese Cross, representing strength, vigilance, and a long tradition of honor.', 'icon' => 'squadron-1-1786053165.jpg'],
+            ['id' => 2, 'name' => 'Deuce', 'description' => 'Represented by red, white, and blue contrails streaking toward space, symbolizing speed, patriotism, and the reach beyond the atmosphere.', 'icon' => 'squadron-2-1786053174.jpg'],
+            ['id' => 3, 'name' => 'Dogs of War', 'description' => 'Embodied by Cerberus and flames, symbolizing ferocity, guardianship, and relentless fighting spirit.', 'icon' => 'squadron-3-1786053181.jpg'],
+            ['id' => 4, 'name' => "Fightin' Fourth", 'description' => 'Represented by a prop and wings alongside four classes united, symbolizing aviation heritage and squadron unity across all four years.', 'icon' => 'squadron-4-1786053188.jpg'],
+            ['id' => 5, 'name' => 'Wolfpack', 'description' => "Symbolized by a snarling wolf and the rallying cry 'Feed 'em to the wolves!', representing pack mentality and fierce competitiveness.", 'icon' => 'squadron-5-1786053196.jpg'],
+            ['id' => 6, 'name' => 'Bull Six', 'description' => 'Represented by a black bull set against a red background, symbolizing raw power, aggression, and intimidation.', 'icon' => 'squadron-6-1786053203.jpg'],
+            ['id' => 7, 'name' => 'Shadow Seven', 'description' => 'Symbolized by a unicorn and a lightning bolt, representing mystique, rarity, and swift, unstoppable striking power.', 'icon' => 'squadron-7-1786053209.jpg'],
+            ['id' => 8, 'name' => 'Eagle Eight', 'description' => 'Represented by the F-15 Eagle and four class stars, symbolizing air superiority and the collective achievement of every class.', 'icon' => 'squadron-8-1786053221.jpg'],
+            ['id' => 9, 'name' => 'Viking Nine', 'description' => 'Symbolized by dragon ships, representing boldness, exploration, and a fearless warrior spirit.', 'icon' => 'squadron-9-1786053228.jpg'],
+            ['id' => 10, 'name' => 'Tiger Ten', 'description' => 'Represented by the Flying Tigers and lightning bolts, symbolizing aggression, speed, and a storied legacy of combat excellence.', 'icon' => 'squadron-10-1786053131.jpg'],
+        ];
+
+        $stmt = $db->prepare('INSERT OR REPLACE INTO squadrons (id, name, description, icon_filename, created_at) VALUES (?, ?, ?, ?, ?)');
+        foreach ($squadrons as $s) {
+            $stmt->execute([$s['id'], $s['name'], $s['description'], $s['icon'], date('c')]);
+        }
+
+        error_log('Restored 10 default USAFA squadrons to database');
+    }
+}
+
 initDatabase();
+
+restoreDefaultSquadrons();
 
 function readJson($file) {
     if (!file_exists($file)) {
