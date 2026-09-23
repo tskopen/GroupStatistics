@@ -117,6 +117,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $result = sendPushNotifications($notifications);
                     error_log('Push delivery for squadron ' . $squadronId . ': ' . $result['sent'] . ' sent, ' . $result['failed'] . ' failed');
                 }
+
+                // Detailed logging of the notification send result
+                if (!empty($notifications)) {
+                    error_log('[PUSH-DIAG] Admin panel: Score for squadron ' . $squadronId . ' triggered ' . count($notifications) . ' notification(s)');
+                    error_log('[PUSH-DIAG] Delivery result: sent=' . $result['sent'] . ' failed=' . $result['failed']);
+
+                    if ($result['failed'] > 0) {
+                        error_log('[PUSH-DIAG] ⚠ WARNING: ' . $result['failed'] . ' notifications failed to deliver');
+                        if (!empty($result['results'])) {
+                            foreach ($result['results'] as $res) {
+                                if ($res['status'] === 'failed') {
+                                    error_log('[PUSH-DIAG] Failed delivery: ' . $res['endpoint'] . ' reason=' . ($res['reason'] ?? 'see HTTP response'));
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    error_log('[PUSH-DIAG] ⚠ No notifications matched for squadron ' . $squadronId);
+                }
             } catch (Exception $e) {
                 $db->rollBack();
                 $error = 'Database error: ' . $e->getMessage();
