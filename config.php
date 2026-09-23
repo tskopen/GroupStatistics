@@ -298,16 +298,16 @@ function initDataStore() {
 
     $defaults = [
         'squadrons.json' => [
-            ['id' => 1, 'name' => 'Mighty Mach One', 'description' => 'Symbolized by the griffin and the Maltese Cross, representing strength, vigilance, and a long tradition of honor.', 'icon' => null],
-            ['id' => 2, 'name' => 'Deuce', 'description' => 'Represented by red, white, and blue contrails streaking toward space, symbolizing speed, patriotism, and the reach beyond the atmosphere.', 'icon' => null],
-            ['id' => 3, 'name' => 'Dogs of War', 'description' => 'Embodied by Cerberus and flames, symbolizing ferocity, guardianship, and relentless fighting spirit.', 'icon' => null],
-            ['id' => 4, 'name' => "Fightin' Fourth", 'description' => 'Represented by a prop and wings alongside four classes united, symbolizing aviation heritage and squadron unity across all four years.', 'icon' => null],
-            ['id' => 5, 'name' => 'Wolfpack', 'description' => "Symbolized by a snarling wolf and the rallying cry 'Feed 'em to the wolves!', representing pack mentality and fierce competitiveness.", 'icon' => null],
-            ['id' => 6, 'name' => 'Bull Six', 'description' => 'Represented by a black bull set against a red background, symbolizing raw power, aggression, and intimidation.', 'icon' => null],
-            ['id' => 7, 'name' => 'Shadow Seven', 'description' => 'Symbolized by a unicorn and a lightning bolt, representing mystique, rarity, and swift, unstoppable striking power.', 'icon' => null],
-            ['id' => 8, 'name' => 'Eagle Eight', 'description' => 'Represented by the F-15 Eagle and four class stars, symbolizing air superiority and the collective achievement of every class.', 'icon' => null],
-            ['id' => 9, 'name' => 'Viking Nine', 'description' => 'Symbolized by dragon ships, representing boldness, exploration, and a fearless warrior spirit.', 'icon' => null],
-            ['id' => 10, 'name' => 'Tiger Ten', 'description' => 'Represented by the Flying Tigers and lightning bolts, symbolizing aggression, speed, and a storied legacy of combat excellence.', 'icon' => null],
+            ['id' => 1, 'name' => 'Mighty Mach One', 'description' => 'Symbolized by the griffin and the Maltese Cross, representing strength, vigilance, and a long tradition of honor.', 'icon' => 'cadet-squadron-01.jpg'],
+            ['id' => 2, 'name' => 'Deuce', 'description' => 'Represented by red, white, and blue contrails streaking toward space, symbolizing speed, patriotism, and the reach beyond the atmosphere.', 'icon' => 'cadet-squadron-02.jpg'],
+            ['id' => 3, 'name' => 'Dogs of War', 'description' => 'Embodied by Cerberus and flames, symbolizing ferocity, guardianship, and relentless fighting spirit.', 'icon' => 'cadet-squadron-03.jpg'],
+            ['id' => 4, 'name' => "Fightin' Fourth", 'description' => 'Represented by a prop and wings alongside four classes united, symbolizing aviation heritage and squadron unity across all four years.', 'icon' => 'cadet-squadron-04.jpg'],
+            ['id' => 5, 'name' => 'Wolfpack', 'description' => "Symbolized by a snarling wolf and the rallying cry 'Feed 'em to the wolves!', representing pack mentality and fierce competitiveness.", 'icon' => 'cadet-squadron-05.jpg'],
+            ['id' => 6, 'name' => 'Bull Six', 'description' => 'Represented by a black bull set against a red background, symbolizing raw power, aggression, and intimidation.', 'icon' => 'cadet-squadron-06.jpg'],
+            ['id' => 7, 'name' => 'Shadow Seven', 'description' => 'Symbolized by a unicorn and a lightning bolt, representing mystique, rarity, and swift, unstoppable striking power.', 'icon' => 'cadet-squadron-07.jpg'],
+            ['id' => 8, 'name' => 'Eagle Eight', 'description' => 'Represented by the F-15 Eagle and four class stars, symbolizing air superiority and the collective achievement of every class.', 'icon' => 'cadet-squadron-08.jpg'],
+            ['id' => 9, 'name' => 'Viking Nine', 'description' => 'Symbolized by dragon ships, representing boldness, exploration, and a fearless warrior spirit.', 'icon' => 'cadet-squadron-09.jpg'],
+            ['id' => 10, 'name' => 'Tiger Ten', 'description' => 'Represented by the Flying Tigers and lightning bolts, symbolizing aggression, speed, and a storied legacy of combat excellence.', 'icon' => 'cadet-squadron-10.jpg'],
         ],
         'scores.json' => [],
         'competitions.json' => [],
@@ -527,4 +527,70 @@ function iconUrl($icon) {
     // the filename portion.
     $filename = basename($icon);
     return 'image.php?file=' . rawurlencode($filename);
+}
+
+/**
+ * SQLite Database Connection
+ * Automatically initializes /data/squadron-tracker.db on first access
+ */
+define('DB_PATH', DATA_DIR . '/squadron-tracker.db');
+
+function getDB() {
+    static $db = null;
+    if ($db === null) {
+        try {
+            $db = new PDO('sqlite:' . DB_PATH);
+            $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+            $db->exec('PRAGMA foreign_keys = ON');
+        } catch (PDOException $e) {
+            error_log('Database connection failed: ' . $e->getMessage());
+            die('Database error. Check logs.');
+        }
+    }
+    return $db;
+}
+
+/**
+ * Safe database query helper
+ * Usage: dbQuery('SELECT * FROM event_types WHERE event_type = ?', ['pft'])
+ */
+function dbQuery($sql, $params = []) {
+    try {
+        $stmt = getDB()->prepare($sql);
+        $stmt->execute($params);
+        return $stmt;
+    } catch (PDOException $e) {
+        error_log('Database query failed: ' . $e->getMessage());
+        return null;
+    }
+}
+
+/**
+ * Insert or update in database (returns last insert ID)
+ */
+function dbExecute($sql, $params = []) {
+    try {
+        $stmt = getDB()->prepare($sql);
+        $stmt->execute($params);
+        return getDB()->lastInsertId();
+    } catch (PDOException $e) {
+        error_log('Database execute failed: ' . $e->getMessage());
+        return false;
+    }
+}
+
+/**
+ * Get single row as associative array
+ */
+function dbFetchOne($sql, $params = []) {
+    $stmt = dbQuery($sql, $params);
+    return $stmt ? $stmt->fetch(PDO::FETCH_ASSOC) : null;
+}
+
+/**
+ * Get all rows as associative array
+ */
+function dbFetchAll($sql, $params = []) {
+    $stmt = dbQuery($sql, $params);
+    return $stmt ? $stmt->fetchAll(PDO::FETCH_ASSOC) : [];
 }
