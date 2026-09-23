@@ -95,9 +95,12 @@ function sendNotificationForScore(
     ?string $customMessage = null
 ): array {
 
-    $subscriptions = loadSubscriptions();
-
     $squadronId = $scoreData['squadron_id'] ?? null;
+
+    error_log('[PUSH-DIAG] sendNotificationForScore called: squadronId=' . $squadronId . ' value=' . ($scoreData['value'] ?? 0));
+
+    $subscriptions = loadSubscriptions();
+    error_log('[PUSH-DIAG] Loaded subscriptions: total=' . count($subscriptions['subscriptions'] ?? []));
 
     if (!$squadronId) {
         return [];
@@ -154,6 +157,11 @@ function sendNotificationForScore(
         ];
     }
 
+    error_log('[PUSH-DIAG] Sending to ' . count($matched) . ' matched subscribers for squadron ' . $squadronId);
+    if (empty($matched)) {
+        error_log('[PUSH-DIAG] ⚠ WARNING: No subscribers matched for squadron ' . $squadronId . '. Check if any subscriptions exist and if squadron filters are correct.');
+    }
+
     return $matched;
 }
 
@@ -177,10 +185,14 @@ function isValidNotificationPayload(array $payload): bool
         return false;
     }
 
+    error_log('[PUSH-DIAG] Payload validation: title=' . ($title ? 'OK' : 'MISSING/EMPTY'));
+
     if (!is_string($body) || trim($body) === '') {
         error_log('[notifications-helper] ⚠ Invalid payload: "body" must be a non-empty string');
         return false;
     }
+
+    error_log('[PUSH-DIAG] Payload validation: body=' . ($body ? 'OK' : 'MISSING/EMPTY'));
 
     $data = $payload['data'] ?? null;
 
@@ -189,6 +201,8 @@ function isValidNotificationPayload(array $payload): bool
         return false;
     }
 
+    error_log('[PUSH-DIAG] Payload validation: data=' . (is_array($data) ? 'OK' : 'MISSING/NOT_ARRAY'));
+
     $requiredDataFields = ['type', 'squadron_id', 'url'];
 
     foreach ($requiredDataFields as $field) {
@@ -196,6 +210,10 @@ function isValidNotificationPayload(array $payload): bool
             error_log("[notifications-helper] ⚠ Invalid payload: \"data.$field\" is missing or empty");
             return false;
         }
+    }
+
+    if (empty($requiredDataFields)) {
+        error_log('[PUSH-DIAG] Payload validation: all data fields present ✓');
     }
 
     return true;
