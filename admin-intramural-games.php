@@ -33,6 +33,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         if (!$sportId || !$team1Id || !$team2Id || $team1Id === $team2Id) {
             $error = 'Invalid sport or teams selected.';
         } else {
+            // Check for duplicate game
+            $stmt = $db->prepare("
+                SELECT id FROM intramural_games 
+                WHERE (team1_id = ? AND team2_id = ? OR team1_id = ? AND team2_id = ?)
+                AND game_date = ?
+            ");
+            $stmt->execute([$team1Id, $team2Id, $team2Id, $team1Id, $gameDate]);
+            $existingGame = $stmt->fetch();
+
+            if ($existingGame) {
+                $error = 'A game between these two teams on this date has already been recorded. Delete the existing game if you need to re-record it.';
+            }
+        }
+
+        if (!$error) {
             try {
                 $db->beginTransaction();
 
