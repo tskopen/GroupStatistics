@@ -1,0 +1,20 @@
+{
+    "name": "usafa/group-statistics",
+    "description": "GroupStatistics - USAFA Group 1 squadron performance tracker",
+    "type": "project",
+    "license": "proprietary",
+    "require": {
+        "php": ">=8.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "GroupStatistics\\": "src/"
+        }
+    },
+    "config": {
+        "optimize-autoloader": true,
+        "sort-packages": true
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}
