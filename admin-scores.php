@@ -11,7 +11,10 @@ $db = getDb();
 $stmt = $db->prepare("SELECT * FROM squadrons ORDER BY id");
 $stmt->execute();
 $squadrons = $stmt->fetchAll();
-$eventTypes = ['bracket', 'pft', 'samis', 'other'];
+// Fetch event types from database
+$stmt = $db->prepare("SELECT event_type, display_name, emoji FROM event_type_config ORDER BY display_name ASC");
+$stmt->execute();
+$eventTypes = $stmt->fetchAll();
 
 $success = false;
 $error = '';
@@ -29,7 +32,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
-    if (!$validSquadron || !in_array($eventType, $eventTypes, true) || $value === '' || !is_numeric($value)) {
+    $validEventTypes = array_column($eventTypes, 'event_type');
+
+    if (!$validSquadron || !in_array($eventType, $validEventTypes, true) || $value === '' || !is_numeric($value)) {
         $error = 'Please fill out all fields correctly.';
     } else {
         try {
@@ -44,7 +49,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $eventType,
                 $_POST['event_name'] ?? null,
                 (float) $value,
-                (float) ($_POST['points_awarded'] ?? 0),
+                (float) $value,
                 date('c')
             ]);
 
@@ -117,17 +122,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <select id="event_type" name="event_type" required>
                 <option value="">-- Select Event Type --</option>
                 <?php foreach ($eventTypes as $type): ?>
-                    <option value="<?php echo htmlspecialchars($type); ?>">
-                        <?php echo htmlspecialchars(strtoupper($type)); ?>
+                    <option value="<?php echo htmlspecialchars($type['event_type']); ?>">
+                        <?php echo htmlspecialchars($type['display_name']); ?>
+                        <?php if (!empty($type['emoji'])): ?> <?php echo htmlspecialchars($type['emoji']); ?><?php endif; ?>
                     </option>
                 <?php endforeach; ?>
             </select>
 
             <label for="value">Score Value</label>
             <input type="number" id="value" name="value" step="any" required>
-
-            <label for="points_awarded">Points Awarded</label>
-            <input type="number" id="points_awarded" name="points_awarded" step="any" value="0" required>
 
             <button type="submit">Save Score</button>
         </form>
