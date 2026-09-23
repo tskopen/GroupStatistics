@@ -20,10 +20,6 @@ if (!defined('DB_PATH')) {
     define('DB_PATH', DATA_DIR . '/squadron-tracker.db');
 }
 
-if (!defined('DB_PATH')) {
-    define('DB_PATH', DATA_DIR . '/squadron-tracker.db');
-}
-
 /**
  * Return a shared PDO connection to the SQLite database.
  *

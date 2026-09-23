@@ -59,11 +59,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 $pointsTeam2 = ($team2Score > $team1Score) ? $sport['points_win'] : $sport['points_loss'];
 
                 $stmt = $db->prepare("
-                    INSERT INTO intramural_games (sport_id, team1_id, team2_id, team1_score, team2_score, winner_id, points_team1, points_team2, game_date, timestamp, created_at)
+                    INSERT INTO intramural_games (sport, team1_id, team2_id, team1_score, team2_score, winner_id, points_team1, points_team2, game_date, timestamp, created_at)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ");
                 $stmt->execute([
-                    $sportId,
+                    $sport['sport_name'],
                     $team1Id,
                     $team2Id,
                     $team1Score,
@@ -77,7 +77,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 ]);
 
                 $stmtCheck = $db->prepare("SELECT id FROM intramural_wl_records WHERE squadron_id = ? AND sport_id = ?");
-                $stmtCheck->execute([$team1Id, $sportId]);
+                $stmtCheck->execute([$team1Id, $sport['id']]);
                 $recordExists = $stmtCheck->fetch();
 
                 if ($recordExists) {
@@ -100,7 +100,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 }
 
                 $stmtCheck = $db->prepare("SELECT id FROM intramural_wl_records WHERE squadron_id = ? AND sport_id = ?");
-                $stmtCheck->execute([$team2Id, $sportId]);
+                $stmtCheck->execute([$team2Id, $sport['id']]);
                 $recordExists = $stmtCheck->fetch();
 
                 if ($recordExists) {
