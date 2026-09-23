@@ -6,11 +6,20 @@ if (empty($_SESSION['admin'])) {
     exit;
 }
 
-$squadrons = readJson(DATA_DIR . '/squadrons.json');
+$db = getDb();
+$stmt = $db->prepare("SELECT * FROM squadrons ORDER BY id");
+$stmt->execute();
+$squadrons = $stmt->fetchAll();
 $squadronMap = [];
 foreach ($squadrons as $s) $squadronMap[$s['id']] = $s;
 
-$brackets = readJson(DATA_DIR . '/brackets.json');
+$stmt = $db->prepare("SELECT * FROM brackets ORDER BY updated_at DESC");
+$stmt->execute();
+$bracketsData = $stmt->fetchAll();
+$brackets = array_map(function($b) {
+    $b['rounds'] = json_decode($b['rounds'], true) ?? [];
+    return $b;
+}, $bracketsData);
 $selectedBracketId = $_GET['bracket_id'] ?? null;
 $currentBracket = null;
 
@@ -34,8 +43,15 @@ if ($_POST && isset($_POST['create_tournament'])) {
             'rounds' => [],
             'champion_id' => null
         ];
-        $brackets[] = $newTourney;
-        writeJson(DATA_DIR . '/brackets.json', $brackets);
+        try {
+            $db->beginTransaction();
+            $stmt = $db->prepare("INSERT OR REPLACE INTO brackets (id, name, created_date, updated_at, champion_id, rounds) VALUES (?, ?, ?, ?, ?, ?)");
+            $stmt->execute([$newTourney['id'], $newTourney['name'], $newTourney['created_date'], date('c'), $newTourney['champion_id'], json_encode($newTourney['rounds'])]);
+            $db->commit();
+        } catch (Exception $e) {
+            $db->rollBack();
+            $error = 'Database error: ' . $e->getMessage();
+        }
         header('Location: admin-bracket.php?bracket_id=' . $newTourney['id']);
         exit;
     }
@@ -59,13 +75,15 @@ if ($_POST && isset($_POST['add_matchup']) && $currentBracket) {
             'winner_id' => null,
             'points' => null
         ];
-        foreach ($brackets as &$b) {
-            if ($b['id'] === $currentBracket['id']) {
-                $b = $currentBracket;
-                break;
-            }
+        try {
+            $db->beginTransaction();
+            $stmt = $db->prepare("INSERT OR REPLACE INTO brackets (id, name, created_date, updated_at, champion_id, rounds) VALUES (?, ?, ?, ?, ?, ?)");
+            $stmt->execute([$currentBracket['id'], $currentBracket['name'], $currentBracket['created_date'], date('c'), $currentBracket['champion_id'] ?? null, json_encode($currentBracket['rounds'])]);
+            $db->commit();
+        } catch (Exception $e) {
+            $db->rollBack();
+            $error = 'Database error: ' . $e->getMessage();
         }
-        writeJson(DATA_DIR . '/brackets.json', $brackets);
         header('Location: admin-bracket.php?bracket_id=' . $selectedBracketId);
         exit;
     }
@@ -89,33 +107,35 @@ if ($_POST && isset($_POST['record_result']) && $currentBracket) {
                     $matchup['team2_score'] = $score2;
                     $matchup['winner_id'] = $winnerId;
                     $matchup['points'] = $points;
-                    
-                    // Save to scores.json with points
-                    $scores = readJson(DATA_DIR . '/scores.json');
-                    $loser = $matchup['team1_id'] === $winnerId ? $matchup['team2_id'] : $matchup['team1_id'];
-                    $scores[] = [
-                        'squadron_id' => $winnerId,
-                        'event_type' => 'bracket',
-                        'tournament_name' => $currentBracket['name'],
-                        'value' => $points,
-                        'opponent_id' => $loser,
-                        'team1_score' => $matchup['team1_id'] === $winnerId ? $score1 : $score2,
-                        'team2_score' => $matchup['team2_id'] === $winnerId ? $score2 : $score1,
-                        'winner_id' => $winnerId,
-                        'timestamp' => date('c')
-                    ];
-                    writeJson(DATA_DIR . '/scores.json', $scores);
+
+                    try {
+                        $db->beginTransaction();
+
+                        $stmt = $db->prepare("
+                            INSERT INTO events (squadron_id, event_type, event_name, value, points_awarded, timestamp)
+                            VALUES (?, ?, ?, ?, ?, ?)
+                        ");
+                        $stmt->execute([
+                            $winnerId,
+                            'bracket',
+                            $currentBracket['name'],
+                            $points,
+                            $points,
+                            date('c'),
+                        ]);
+
+                        $stmt = $db->prepare("INSERT OR REPLACE INTO brackets (id, name, created_date, updated_at, champion_id, rounds) VALUES (?, ?, ?, ?, ?, ?)");
+                        $stmt->execute([$currentBracket['id'], $currentBracket['name'], $currentBracket['created_date'], date('c'), $currentBracket['champion_id'] ?? null, json_encode($currentBracket['rounds'])]);
+
+                        $db->commit();
+                    } catch (Exception $e) {
+                        $db->rollBack();
+                        $error = 'Database error: ' . $e->getMessage();
+                    }
                     break;
                 }
             }
         }
-        foreach ($brackets as &$b) {
-            if ($b['id'] === $currentBracket['id']) {
-                $b = $currentBracket;
-                break;
-            }
-        }
-        writeJson(DATA_DIR . '/brackets.json', $brackets);
         header('Location: admin-bracket.php?bracket_id=' . $selectedBracketId);
         exit;
     }
@@ -123,8 +143,12 @@ if ($_POST && isset($_POST['record_result']) && $currentBracket) {
 
 // Delete bracket
 if (isset($_GET['delete']) && $_GET['delete'] === 'true') {
-    $brackets = array_filter($brackets, fn($b) => $b['id'] !== $selectedBracketId);
-    writeJson(DATA_DIR . '/brackets.json', array_values($brackets));
+    try {
+        $stmt = $db->prepare("DELETE FROM brackets WHERE id = ?");
+        $stmt->execute([$selectedBracketId]);
+    } catch (Exception $e) {
+        $error = 'Database error: ' . $e->getMessage();
+    }
     header('Location: admin-bracket.php');
     exit;
 }

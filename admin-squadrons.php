@@ -7,7 +7,7 @@ if (empty($_SESSION['admin'])) {
     exit;
 }
 
-$squadronsFile = DATA_DIR . '/squadrons.json';
+$db = getDb();
 $uploadsDir = IMAGES_DIR;
 
 $success = '';
@@ -15,7 +15,6 @@ $error = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['squadron_id'])) {
     $squadronId = (int) $_POST['squadron_id'];
-    $squadrons = readJson($squadronsFile);
 
     if (!isset($_FILES['icon']) || $_FILES['icon']['error'] === UPLOAD_ERR_NO_FILE) {
         $error = 'Please choose a file to upload.';
@@ -37,15 +36,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['squadron_id'])) {
             $destination = $uploadsDir . '/' . $filename;
 
             if (move_uploaded_file($_FILES['icon']['tmp_name'], $destination)) {
-                foreach ($squadrons as &$squadron) {
-                    if ($squadron['id'] === $squadronId) {
-                        $squadron['icon'] = $filename;
-                        break;
-                    }
+                try {
+                    $db->beginTransaction();
+                    $stmt = $db->prepare("UPDATE squadrons SET icon_filename = ? WHERE id = ?");
+                    $stmt->execute([$filename, $squadronId]);
+                    $db->commit();
+                    $success = 'Icon uploaded successfully.';
+                } catch (Exception $e) {
+                    $db->rollBack();
+                    @unlink($destination);
+                    $error = 'Database error: ' . $e->getMessage();
                 }
-                unset($squadron);
-                writeJson($squadronsFile, $squadrons);
-                $success = 'Icon uploaded successfully.';
             } else {
                 $error = 'Failed to move uploaded file.';
             }
@@ -53,7 +54,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['squadron_id'])) {
     }
 }
 
-$squadrons = readJson($squadronsFile);
+$stmt = $db->prepare("SELECT * FROM squadrons ORDER BY id");
+$stmt->execute();
+$squadrons = $stmt->fetchAll();
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -91,8 +94,8 @@ $squadrons = readJson($squadronsFile);
         <?php foreach ($squadrons as $squadron): ?>
             <div class="squadron-card">
                 <h2>
-                    <?php if (!empty($squadron['icon'])): ?>
-                        <img src="<?php echo htmlspecialchars(iconUrl($squadron['icon'])); ?>" alt="icon">
+                    <?php if (!empty($squadron['icon_filename'])): ?>
+                        <img src="<?php echo htmlspecialchars(iconUrl($squadron['icon_filename'])); ?>" alt="icon">
                     <?php endif; ?>
                     Squadron <?php echo htmlspecialchars((string) $squadron['id']); ?>: <?php echo htmlspecialchars($squadron['name']); ?>
                 </h2>

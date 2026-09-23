@@ -6,9 +6,15 @@ if (empty($_SESSION['admin'])) {
     exit;
 }
 
+$db = getDb();
 $squadrons = readJson(DATA_DIR . '/squadrons.json');
 $scores = readJson(DATA_DIR . '/scores.json');
 $success = '';
+
+$stmt = $db->prepare("SELECT event_type, display_name FROM event_type_config ORDER BY display_name ASC");
+$stmt->execute();
+$eventTypesRows = $stmt->fetchAll();
+$eventTypes = array_map(fn($et) => $et['event_type'], $eventTypesRows);
 
 if ($_POST) {
     $eventName = $_POST['event_name'] ?? '';
@@ -87,11 +93,13 @@ if ($_POST) {
             <input type="text" name="event_name" placeholder="e.g., PFT Round 1" required>
             
             <label>Event Type</label>
-            <select name="event_type">
-                <option value="bracket">Bracket Competition</option>
-                <option value="pft">PFT (Physical Fitness Test)</option>
-                <option value="samis">SAMIS</option>
-                <option value="other">Other Event</option>
+            <select id="event_type" name="event_type" required>
+                <option value="">-- Select Event Type --</option>
+                <?php foreach ($eventTypesRows as $type): ?>
+                    <option value="<?php echo htmlspecialchars($type['event_type']); ?>">
+                        <?php echo htmlspecialchars($type['display_name']); ?>
+                    </option>
+                <?php endforeach; ?>
             </select>
             
             <label style="margin-top: 25px;">Scores</label>
