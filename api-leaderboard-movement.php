@@ -1,5 +1,7 @@
 <?php
 header('Content-Type: application/json');
+header('Cache-Control: no-cache, must-revalidate, max-age=0');
+header('Pragma: no-cache');
 require __DIR__ . '/config.php';
 
 $db = getDb();
