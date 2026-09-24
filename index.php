@@ -19,6 +19,11 @@ $stmt = $db->prepare("SELECT * FROM events ORDER BY timestamp DESC");
 $stmt->execute();
 $scores = $stmt->fetchAll();
 
+foreach ($scores as &$scoreRow) {
+    $scoreRow['event_type'] = normalizeEventType($scoreRow['event_type'] ?? 'other');
+}
+unset($scoreRow);
+
 if (empty($scores)) {
     try {
         $countStmt = $db->prepare('SELECT COUNT(*) as cnt FROM events');
@@ -391,7 +396,7 @@ usort(
                  each section the most recent activity always appears first. */ ?>
         <?php foreach ($bracketsByTournament as $tournament): ?>
         <!-- Tournaments (newest first) -->
-        <div class="tournament-card">
+        <div class="tournament-card" style="order: <?php echo -((int) (strtotime($tournament['latest_timestamp'] ?? '') ?: 0)); ?>;">
             <div class="tournament-header">🏆 <?php echo htmlspecialchars($tournament['tournament_name']); ?></div>
             <div class="tournament-body">
                 <?php foreach ($tournament['matches'] as $match):
@@ -441,7 +446,7 @@ usort(
 
         <?php foreach ($samisByEvent as $sami): ?>
         <!-- SAMI events (all squadrons for one round, newest first) -->
-        <div class="sami-card">
+        <div class="sami-card" style="order: <?php echo -((int) ($sami['latest_timestamp'] ?? 0)); ?>;">
             <div class="sami-header">🏅 <?php echo htmlspecialchars($sami['event_name']); ?></div>
             <div class="sami-body">
                 <?php foreach ($sami['results'] as $result):
@@ -468,7 +473,7 @@ usort(
 
         <?php foreach ($pftByEvent as $pft): ?>
         <!-- PFT events (all squadrons for one round, newest first) -->
-        <div class="sami-card">
+        <div class="sami-card" style="order: <?php echo -((int) ($pft['latest_timestamp'] ?? 0)); ?>;">
             <div class="sami-header">💪 <?php echo htmlspecialchars($pft['event_name']); ?></div>
             <div class="sami-body">
                 <?php foreach ($pft['results'] as $result):
@@ -495,7 +500,7 @@ usort(
 
         <?php foreach ($otherByEvent as $other): ?>
         <!-- Other events (all squadrons for one event, newest first) -->
-        <div class="sami-card">
+        <div class="sami-card" style="order: <?php echo -((int) ($other['latest_timestamp'] ?? 0)); ?>;">
             <div class="sami-header">📌 <?php echo htmlspecialchars($other['event_name']); ?></div>
             <div class="sami-body">
                 <?php foreach ($other['results'] as $result):
@@ -521,8 +526,9 @@ usort(
         <?php endforeach; ?>
 
         <?php foreach ($regularEvents as $event): ?>
+        <?php $eventCardTimestamp = strtotime($event['timestamp'] ?? '') ?: 0; ?>
         <!-- Regular events (newest first) -->
-        <div class="event-card">
+        <div class="event-card" style="order: <?php echo -$eventCardTimestamp; ?>;">
             <div class="event-header"><?php echo strtoupper($event['event_type'] ?? 'Event'); ?></div>
             <div class="event-body regular-event">
                 <?php $squad = $squadronMap[$event['squadron_id']] ?? null; ?>
