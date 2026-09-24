@@ -31,7 +31,7 @@ $eventTypes = ['samis', 'pft', 'other', 'bracket'];
 $placeholders = implode(',', array_fill(0, count($eventTypes), '?'));
 
 $stmt = $db->prepare("
-    SELECT event_type, COALESCE(SUM(COALESCE(points_awarded, value, 0)), 0) as total
+    SELECT event_type, COALESCE(SUM(COALESCE(value, points_awarded, 0)), 0) as total
     FROM events
     WHERE squadron_id = ? AND event_type IN ($placeholders)
     GROUP BY event_type
@@ -43,7 +43,7 @@ foreach ($stmt->fetchAll() as $row) {
 }
 
 $stmt = $db->prepare("
-    SELECT event_type, event_name, COALESCE(points_awarded, value, 0) AS points_awarded, timestamp
+    SELECT event_type, event_name, COALESCE(value, points_awarded, 0) AS points_awarded, timestamp
     FROM events
     WHERE squadron_id = ? AND event_type IN ($placeholders)
     ORDER BY timestamp DESC

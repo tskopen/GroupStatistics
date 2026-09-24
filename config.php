@@ -297,12 +297,14 @@ function initDatabase() {
 
     // Normalize legacy event rows so every score-bearing event has the
     // fields required by both leaderboard calculation and event cards.
-    // These updates are idempotent and repair rows created before the
-    // SQLite event-write path was made consistent.
+    // The admin UI has one score field: events.value. Keep points_awarded
+    // synchronized for compatibility, but value is the canonical score.
+    // These updates are idempotent and repair rows created by older
+    // writers that populated only value or left points_awarded blank.
     try {
         $db->exec("UPDATE events SET event_type='other' WHERE event_type IS NULL OR TRIM(event_type)=''");
         $db->exec("UPDATE events SET event_name='Event' WHERE event_name IS NULL OR TRIM(event_name)=''");
-        $db->exec("UPDATE events SET points_awarded=value WHERE points_awarded IS NULL");
+        $db->exec("UPDATE events SET points_awarded=value WHERE value IS NOT NULL AND (points_awarded IS NULL OR points_awarded=0)");
     } catch (Exception $e) {
         error_log('Failed to normalize legacy event rows: ' . $e->getMessage());
     }
@@ -316,6 +318,10 @@ function initDatabase() {
  * ranking calculations so no other file needs to duplicate the math.
  *
  * Returns an array of rows: ['squadron_id', 'name', 'total', 'rank'].
+ *
+ * For events, `value` is the canonical score because it is the single
+ * score entered by the admin forms. `points_awarded` is retained as a
+ * compatibility field for legacy data and falls back only when value is NULL.
  */
 function getSquadronRankings() 
 {
@@ -339,7 +345,7 @@ function getSquadronRankings()
     // level, but a NULL squadron_id (orphaned event) or a driver that
     // returns null for the aggregate is also handled explicitly here
     // so a bad row can never quietly drop out of the totals.
-    $stmt = $db->prepare('SELECT squadron_id, COALESCE(SUM(COALESCE(points_awarded, value, 0)), 0) as total FROM events GROUP BY squadron_id');
+    $stmt = $db->prepare('SELECT squadron_id, COALESCE(SUM(COALESCE(value, points_awarded, 0)), 0) as total FROM events GROUP BY squadron_id');
     $stmt->execute();
     foreach ($stmt->fetchAll() as $row) {
         $squadronId = $row['squadron_id'];

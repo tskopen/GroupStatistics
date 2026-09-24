@@ -116,11 +116,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $newEventId = $db->lastInsertId();
 
                 // Confirm points_awarded was actually persisted before committing.
-                $verifyStmt = $db->prepare('SELECT points_awarded FROM events WHERE id = ?');
+                $verifyStmt = $db->prepare('SELECT value, points_awarded FROM events WHERE id = ?');
                 $verifyStmt->execute([$newEventId]);
                 $verifyRow = $verifyStmt->fetch();
 
-                if ($verifyRow === false || $verifyRow['points_awarded'] === null) {
+                if (
+                    $verifyRow === false ||
+                    $verifyRow['value'] === null ||
+                    $verifyRow['points_awarded'] === null ||
+                    (float) $verifyRow['value'] !== (float) $verifyRow['points_awarded']
+                ) {
                     error_log('[SCORE-DIAG] points_awarded missing after insert for event id ' . $newEventId . ' (squadron ' . $squadronId . ', event_type ' . $eventType . ')');
                     throw new Exception('points_awarded was not persisted for the new event.');
                 }
@@ -139,7 +144,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 error_log('[SCORE-VERIFY] Squadron ' . $squadronId . ' new total after event insert: ' . $newTotal . ' points');
 
                 if (!$db->inTransaction()) {
-                    error_log('[SCORE-DIAG] Event id ' . $newEventId . ' committed successfully for squadron ' . $squadronId . ' (' . $eventType . '), points_awarded=' . $verifyRow['points_awarded']);
+                    error_log('[SCORE-DIAG] Event id ' . $newEventId . ' committed successfully for squadron ' . $squadronId . ' (' . $eventType . '), value=' . $verifyRow['value'] . ', points_awarded=' . $verifyRow['points_awarded']);
                 }
                 else {
                     error_log('[SCORE-DIAG] ⚠ WARNING: transaction still open after commit() for event id ' . $newEventId);
