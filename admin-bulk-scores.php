@@ -22,7 +22,7 @@ $eventTypes = array_map(fn($et) => $et['event_type'], $eventTypesRows);
 
 if ($_POST) {
     $eventName = trim($_POST['event_name'] ?? '');
-    $eventType = $_POST['event_type'] ?? 'other';
+    $eventType = normalizeEventType($_POST['event_type'] ?? 'other');
 
     if ($eventName === '') {
         $error = 'Event name is required.';

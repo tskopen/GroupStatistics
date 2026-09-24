@@ -56,7 +56,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     } else {
         $squadronId = isset($_POST['squadron_id']) ? (int) $_POST['squadron_id'] : 0;
-        $eventType = $_POST['event_type'] ?? '';
+        $eventType = normalizeEventType($_POST['event_type'] ?? '');
         $eventName = $_POST['event_name'] ?? '';
         $value = isset($_POST['value']) ? (float)$_POST['value'] : 0;
 

@@ -27,6 +27,16 @@ if (!defined('DB_PATH')) {
  * subsequent calls, avoiding the overhead of repeatedly opening the
  * SQLite file.
  */
+/**
+ * Normalize event type identifiers before validation, persistence, and display.
+ * This keeps built-in types such as "other" working even when a form/client
+ * submits different casing or surrounding whitespace.
+ */
+function normalizeEventType($eventType) {
+    $eventType = strtolower(trim((string) $eventType));
+    return $eventType !== '' ? $eventType : 'other';
+}
+
 function getDb() {
     static $pdo = null;
     if ($pdo === null) {
@@ -302,6 +312,7 @@ function initDatabase() {
     // These updates are idempotent and repair rows created by older
     // writers that populated only value or left points_awarded blank.
     try {
+        $db->exec("UPDATE events SET event_type=LOWER(TRIM(event_type)) WHERE event_type IS NOT NULL AND TRIM(event_type)<>''");
         $db->exec("UPDATE events SET event_type='other' WHERE event_type IS NULL OR TRIM(event_type)=''");
         $db->exec("UPDATE events SET event_name='Event' WHERE event_name IS NULL OR TRIM(event_name)=''");
         $db->exec("UPDATE events SET points_awarded=value WHERE value IS NOT NULL AND (points_awarded IS NULL OR points_awarded=0)");
