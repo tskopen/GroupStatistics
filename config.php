@@ -294,6 +294,18 @@ function initDatabase() {
 
     migrateFromJson();
     seedDefaultConfig();
+
+    // Safety net: any event that somehow ended up with a NULL
+    // event_type (e.g. from a partial/legacy migration) should still
+    // display on the public leaderboard. index.php groups events by
+    // event_type, so a NULL value would silently drop the event out
+    // of every grouping array and hide it from the "Recent Events"
+    // cards even though it still counts toward the squadron's total.
+    try {
+        $db->exec("UPDATE events SET event_type='other' WHERE event_type IS NULL");
+    } catch (Exception $e) {
+        error_log('Failed to backfill NULL event_type values: ' . $e->getMessage());
+    }
 }
 
 /**
@@ -569,10 +581,14 @@ function migrateFromJson() {
                     $value = isset($score['value']) ? (float) $score['value'] : 0;
                     $pointsAwarded = isset($score['points_awarded']) ? (float) $score['points_awarded'] : $value;
                     $eventName = $score['event_name'] ?? ($score['tournament_name'] ?? 'Event');
+                    // Default to 'other' rather than NULL so migrated
+                    // events always show up in index.php's event-type
+                    // grouping (and therefore in the Recent Events cards).
+                    $eventType = $score['event_type'] ?? 'other';
 
                     $stmt->execute([
                         $score['squadron_id'] ?? null,
-                        $score['event_type'] ?? null,
+                        $eventType,
                         $eventName,
                         $value,
                         $pointsAwarded,

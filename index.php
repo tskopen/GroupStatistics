@@ -19,6 +19,22 @@ $stmt = $db->prepare("SELECT * FROM events ORDER BY timestamp DESC");
 $stmt->execute();
 $scores = $stmt->fetchAll();
 
+if (empty($scores)) {
+    // Diagnostic: the "Recent Events" section relies entirely on this
+    // query returning rows. If it's empty while getSquadronRankings()
+    // (which also reads from the events table) still shows non-zero
+    // totals, that points to a query/connection issue rather than
+    // missing data - log enough detail to tell the two cases apart.
+    try {
+        $countStmt = $db->prepare('SELECT COUNT(*) as cnt FROM events');
+        $countStmt->execute();
+        $eventCount = $countStmt->fetch()['cnt'] ?? 0;
+        error_log("index.php: events query returned 0 rows, but COUNT(*) FROM events = {$eventCount}. DB_PATH=" . DB_PATH);
+    } catch (Exception $e) {
+        error_log('index.php: failed to diagnose empty $scores - ' . $e->getMessage());
+    }
+}
+
 // Fetch brackets
 $stmt = $db->prepare("SELECT * FROM brackets ORDER BY updated_at DESC");
 $stmt->execute();
@@ -527,6 +543,8 @@ usort(
         </div>
         <?php endforeach; ?>
     </div>
+    <?php else: ?>
+    <p style="text-align: center; color: #999; margin: 20px 0;">No recent events to display yet.</p>
     <?php endif; ?>
     
     <div class="footer">
