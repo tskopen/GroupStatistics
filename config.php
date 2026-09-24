@@ -294,6 +294,18 @@ function initDatabase() {
 
     migrateFromJson();
     seedDefaultConfig();
+
+    // Normalize legacy event rows so every score-bearing event has the
+    // fields required by both leaderboard calculation and event cards.
+    // These updates are idempotent and repair rows created before the
+    // SQLite event-write path was made consistent.
+    try {
+        $db->exec("UPDATE events SET event_type='other' WHERE event_type IS NULL OR TRIM(event_type)=''");
+        $db->exec("UPDATE events SET event_name='Event' WHERE event_name IS NULL OR TRIM(event_name)=''");
+        $db->exec("UPDATE events SET points_awarded=value WHERE points_awarded IS NULL");
+    } catch (Exception $e) {
+        error_log('Failed to normalize legacy event rows: ' . $e->getMessage());
+    }
 }
 
 /**
@@ -327,7 +339,7 @@ function getSquadronRankings()
     // level, but a NULL squadron_id (orphaned event) or a driver that
     // returns null for the aggregate is also handled explicitly here
     // so a bad row can never quietly drop out of the totals.
-    $stmt = $db->prepare('SELECT squadron_id, COALESCE(SUM(points_awarded), 0) as total FROM events GROUP BY squadron_id');
+    $stmt = $db->prepare('SELECT squadron_id, COALESCE(SUM(COALESCE(points_awarded, value, 0)), 0) as total FROM events GROUP BY squadron_id');
     $stmt->execute();
     foreach ($stmt->fetchAll() as $row) {
         $squadronId = $row['squadron_id'];
@@ -569,10 +581,11 @@ function migrateFromJson() {
                     $value = isset($score['value']) ? (float) $score['value'] : 0;
                     $pointsAwarded = isset($score['points_awarded']) ? (float) $score['points_awarded'] : $value;
                     $eventName = $score['event_name'] ?? ($score['tournament_name'] ?? 'Event');
+                    $eventType = $score['event_type'] ?? 'other';
 
                     $stmt->execute([
                         $score['squadron_id'] ?? null,
-                        $score['event_type'] ?? null,
+                        $eventType,
                         $eventName,
                         $value,
                         $pointsAwarded,

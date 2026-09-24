@@ -19,6 +19,17 @@ $stmt = $db->prepare("SELECT * FROM events ORDER BY timestamp DESC");
 $stmt->execute();
 $scores = $stmt->fetchAll();
 
+if (empty($scores)) {
+    try {
+        $countStmt = $db->prepare('SELECT COUNT(*) as cnt FROM events');
+        $countStmt->execute();
+        $eventCount = $countStmt->fetch()['cnt'] ?? 0;
+        error_log("index.php: events query returned 0 rows, COUNT(*) FROM events = {$eventCount}, DB_PATH=" . DB_PATH);
+    } catch (Exception $e) {
+        error_log('index.php: failed to diagnose empty events result: ' . $e->getMessage());
+    }
+}
+
 // Fetch brackets
 $stmt = $db->prepare("SELECT * FROM brackets ORDER BY updated_at DESC");
 $stmt->execute();
@@ -81,7 +92,7 @@ foreach ($brackets as $bracket) {
 
 // Regular events still come from scores.json, newest first.
 $regularEvents = array_values(array_filter(
-    array_reverse($scores),
+    $scores,
     fn($event) => ($event['event_type'] ?? 'other') !== 'bracket'
 ));
 
@@ -527,6 +538,8 @@ usort(
         </div>
         <?php endforeach; ?>
     </div>
+    <?php else: ?>
+    <p style="text-align: center; color: #999; margin: 20px 0;">No recent events to display yet.</p>
     <?php endif; ?>
     
     <div class="footer">

@@ -7,9 +7,13 @@ if (empty($_SESSION['admin'])) {
 }
 
 $db = getDb();
-$squadrons = readJson(DATA_DIR . '/squadrons.json');
-$scores = readJson(DATA_DIR . '/scores.json');
+
+$stmt = $db->prepare("SELECT id, name, icon_filename FROM squadrons ORDER BY id");
+$stmt->execute();
+$squadrons = $stmt->fetchAll();
+
 $success = '';
+$error = '';
 
 $stmt = $db->prepare("SELECT event_type, display_name FROM event_type_config ORDER BY display_name ASC");
 $stmt->execute();
@@ -17,42 +21,72 @@ $eventTypesRows = $stmt->fetchAll();
 $eventTypes = array_map(fn($et) => $et['event_type'], $eventTypesRows);
 
 if ($_POST) {
-    $eventName = $_POST['event_name'] ?? '';
+    $eventName = trim($_POST['event_name'] ?? '');
     $eventType = $_POST['event_type'] ?? 'other';
-    
-    if ($eventName) {
-        require __DIR__ . '/notifications-helper.php';
+
+    if ($eventName === '') {
+        $error = 'Event name is required.';
+    } elseif (!in_array($eventType, $eventTypes, true)) {
+        $error = 'Invalid event type.';
+    } else {
         $newScores = [];
-        foreach ($squadrons as $s) {
-            $sid = $s['id'];
-            $scoreVal = isset($_POST["score_$sid"]) ? (float)$_POST["score_$sid"] : 0;
-            if ($scoreVal > 0) {
-                $scoreData = [
-                    'squadron_id' => $sid,
-                    'event_name' => $eventName,
-                    'event_type' => $eventType,
-                    'value' => $scoreVal,
-                    'timestamp' => date('c')
-                ];
-                $scores[] = $scoreData;
-                $newScores[] = $scoreData;
+        $timestamp = date('c');
+
+        try {
+            $db->beginTransaction();
+
+            $insertStmt = $db->prepare("
+                INSERT INTO events (squadron_id, event_type, event_name, value, points_awarded, timestamp, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            ");
+
+            foreach ($squadrons as $s) {
+                $sid = (int) $s['id'];
+                $scoreVal = isset($_POST["score_$sid"]) ? (float) $_POST["score_$sid"] : 0;
+
+                if ($scoreVal > 0) {
+                    $insertStmt->execute([
+                        $sid,
+                        $eventType,
+                        $eventName,
+                        $scoreVal,
+                        $scoreVal,
+                        $timestamp,
+                        $timestamp,
+                    ]);
+
+                    $newScores[] = [
+                        'squadron_id' => $sid,
+                        'event_name' => $eventName,
+                        'event_type' => $eventType,
+                        'value' => $scoreVal,
+                        'timestamp' => $timestamp,
+                    ];
+                }
             }
-        }
-        writeJson(DATA_DIR . '/scores.json', $scores);
 
-        require __DIR__ . '/push-service.php';
+            $db->commit();
 
-        // Send notifications for each scored squadron via Web Push Protocol
-        foreach ($newScores as $scoreData) {
-            $notifications = sendNotificationForScore($scoreData);
+            require __DIR__ . '/notifications-helper.php';
+            require __DIR__ . '/push-service.php';
 
-            if (!empty($notifications)) {
-                $result = sendPushNotifications($notifications);
-                error_log('Bulk event ' . $eventName . ' - squadron ' . $scoreData['squadron_id'] . ': ' . $result['sent'] . ' sent, ' . $result['failed'] . ' failed');
+            foreach ($newScores as $scoreData) {
+                $notifications = sendNotificationForScore($scoreData);
+
+                if (!empty($notifications)) {
+                    $result = sendPushNotifications($notifications);
+                    error_log('Bulk event ' . $eventName . ' - squadron ' . $scoreData['squadron_id'] . ': ' . $result['sent'] . ' sent, ' . $result['failed'] . ' failed');
+                }
             }
-        }
 
-        $success = "Event '$eventName' recorded for all squadrons!";
+            $success = "Event '$eventName' recorded for " . count($newScores) . " squadron(s)!";
+        } catch (Exception $e) {
+            if ($db->inTransaction()) {
+                $db->rollBack();
+            }
+            error_log('Bulk event insert rolled back: ' . $e->getMessage());
+            $error = 'Database error: ' . $e->getMessage();
+        }
     }
 }
 ?>
@@ -87,6 +121,9 @@ if ($_POST) {
         <?php if ($success): ?>
         <div class="success">✓ <?php echo htmlspecialchars($success); ?></div>
         <?php endif; ?>
+        <?php if ($error): ?>
+        <div class="success" style="background:#f8d7da; color:#b00020;">⚠ <?php echo htmlspecialchars($error); ?></div>
+        <?php endif; ?>
         
         <form method="POST">
             <label>Event Name</label>
@@ -107,8 +144,8 @@ if ($_POST) {
                 <?php foreach ($squadrons as $s): ?>
                 <div class="score-input">
                     <label>
-                        <?php if ($s['icon']): ?>
-                        <img src="<?php echo htmlspecialchars(iconUrl($s['icon'])); ?>" class="icon">
+                        <?php if (!empty($s['icon_filename'])): ?>
+                        <img src="<?php echo htmlspecialchars(iconUrl($s['icon_filename'])); ?>" class="icon">
                         <?php endif; ?>
                         <span><?php echo htmlspecialchars($s['name']); ?></span>
                     </label>
