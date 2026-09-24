@@ -247,6 +247,26 @@ usort(
     .rankings-table tr:hover { background: #f9f9f9; }
     .icon { width: 40px; height: 40px; border-radius: 4px; object-fit: cover; margin-right: 10px; vertical-align: middle; }
     .icon-placeholder { width: 40px; height: 40px; border-radius: 4px; background: #ccc; display: inline-block; margin-right: 10px; vertical-align: middle; }
+
+    /* Leaderboard movement indicators */
+    .movement-up { color: #1a7a1a; font-weight: bold; }
+    .movement-down { color: #b00020; font-weight: bold; }
+    .movement-same { color: #999; font-weight: bold; }
+    .movement-new { color: #003366; font-weight: bold; background: #e3f2fd; padding: 2px 6px; border-radius: 3px; font-size: 0.85em; }
+
+    .details-btn { padding: 6px 12px; background: var(--primary-color); color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 0.85em; }
+    .details-btn:hover { background: var(--secondary-color); }
+
+    /* Score breakdown modal */
+    .breakdown-modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 20px; }
+    .breakdown-modal { background: #fff; border-radius: 8px; max-width: 500px; width: 100%; max-height: 80vh; overflow-y: auto; padding: 25px; position: relative; box-shadow: 0 4px 20px rgba(0,0,0,0.3); }
+    .breakdown-modal-close { position: absolute; top: 12px; right: 15px; background: none; border: none; font-size: 1.5em; cursor: pointer; color: #666; }
+    .breakdown-modal-close:hover { color: #000; }
+    .breakdown-section { margin-top: 15px; }
+    .breakdown-section h4 { margin-bottom: 8px; color: var(--primary-color); }
+    .breakdown-item { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #eee; font-size: 0.9em; }
+    .breakdown-item-points { font-weight: bold; color: #28a745; }
+    .breakdown-total { margin-top: 10px; font-weight: bold; text-align: right; }
     
     /* Event Cards Grid */
     .events-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 20px; margin-bottom: 30px; }
@@ -312,14 +332,16 @@ usort(
     <h1>⚔️ USAFA Group 1 Squadron Tracker</h1>
     
     <h2>Overall Rankings</h2>
-    <table class="rankings-table">
+    <table class="rankings-table" id="rankings-table">
         <tr>
             <th>Rank</th>
             <th>Squadron</th>
             <th>Total Score</th>
+            <th>Change</th>
+            <th>Details</th>
         </tr>
         <?php $rank = 1; foreach ($ranked as $entry): $s = $entry['squadron']; ?>
-        <tr>
+        <tr data-squadron-id="<?php echo htmlspecialchars((string) $s['id']); ?>">
             <td>#<?php echo $rank; ?></td>
             <td>
                 <?php if (!empty($s['icon_filename'])): ?>
@@ -330,9 +352,22 @@ usort(
                 <?php echo htmlspecialchars($s['name']); ?>
             </td>
             <td><?php echo $entry['total']; ?></td>
+            <td class="movement-cell" data-squadron-id="<?php echo htmlspecialchars((string) $s['id']); ?>">—</td>
+            <td>
+                <button type="button" class="details-btn" data-squadron-id="<?php echo htmlspecialchars((string) $s['id']); ?>" data-squadron-name="<?php echo htmlspecialchars($s['name']); ?>">Details</button>
+            </td>
         </tr>
         <?php $rank++; endforeach; ?>
     </table>
+
+    <!-- Score breakdown modal -->
+    <div id="breakdown-modal" class="breakdown-modal-overlay" style="display:none;">
+        <div class="breakdown-modal">
+            <button type="button" class="breakdown-modal-close" id="breakdown-modal-close">&times;</button>
+            <h3 id="breakdown-modal-title">Score Breakdown</h3>
+            <div id="breakdown-modal-body">Loading…</div>
+        </div>
+    </div>
     
     
 <?php
@@ -529,6 +564,136 @@ if ('serviceWorker' in navigator) {
         });
     });
 }
+
+// Leaderboard movement indicators: fetch on page load and populate
+// the "Change" column for every squadron row.
+(function () {
+    function renderMovement(cell, entry) {
+        if (!entry) {
+            cell.textContent = '—';
+            cell.className = 'movement-cell movement-same';
+            return;
+        }
+
+        var movement = entry.movement || 'same';
+
+        if (movement === 'new') {
+            cell.textContent = 'NEW';
+            cell.className = 'movement-cell movement-new';
+        } else if (movement.indexOf('up') === 0) {
+            var upAmount = movement.split(' ')[1] || '';
+            cell.textContent = '↑ +' + upAmount;
+            cell.className = 'movement-cell movement-up';
+        } else if (movement.indexOf('down') === 0) {
+            var downAmount = movement.split(' ')[1] || '';
+            cell.textContent = '↓ -' + downAmount;
+            cell.className = 'movement-cell movement-down';
+        } else {
+            cell.textContent = '—';
+            cell.className = 'movement-cell movement-same';
+        }
+    }
+
+    fetch('api-leaderboard-movement.php')
+        .then(function (res) { return res.json(); })
+        .then(function (data) {
+            if (!Array.isArray(data)) {
+                return;
+            }
+            var bySquadronId = {};
+            data.forEach(function (entry) {
+                bySquadronId[entry.squadron_id] = entry;
+            });
+            document.querySelectorAll('.movement-cell').forEach(function (cell) {
+                var sid = cell.getAttribute('data-squadron-id');
+                renderMovement(cell, bySquadronId[sid]);
+            });
+        })
+        .catch(function (err) {
+            console.error('Failed to load leaderboard movement:', err);
+        });
+
+    // Score breakdown modal.
+    var modal = document.getElementById('breakdown-modal');
+    var modalBody = document.getElementById('breakdown-modal-body');
+    var modalTitle = document.getElementById('breakdown-modal-title');
+    var modalClose = document.getElementById('breakdown-modal-close');
+
+    function closeModal() {
+        modal.style.display = 'none';
+    }
+
+    if (modalClose) {
+        modalClose.addEventListener('click', closeModal);
+    }
+    if (modal) {
+        modal.addEventListener('click', function (e) {
+            if (e.target === modal) {
+                closeModal();
+            }
+        });
+    }
+
+    function renderBreakdownItem(item) {
+        var date = item.date ? new Date(item.date).toLocaleDateString() : '';
+        return '<div class="breakdown-item">' +
+            '<span>' + item.name + (date ? ' <small style="color:#999;">(' + date + ')</small>' : '') + '</span>' +
+            '<span class="breakdown-item-points">' + item.points + '</span>' +
+            '</div>';
+    }
+
+    document.querySelectorAll('.details-btn').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var sid = btn.getAttribute('data-squadron-id');
+            var name = btn.getAttribute('data-squadron-name');
+
+            modalTitle.textContent = name + ' — Score Breakdown';
+            modalBody.innerHTML = 'Loading…';
+            modal.style.display = 'flex';
+
+            fetch('api-score-breakdown.php?squadron_id=' + encodeURIComponent(sid))
+                .then(function (res) { return res.json(); })
+                .then(function (data) {
+                    if (data.error) {
+                        modalBody.innerHTML = '<p style="color:#b00020;">' + data.error + '</p>';
+                        return;
+                    }
+
+                    var html = '';
+                    var events = data.breakdown.events;
+                    var intramurals = data.breakdown.intramurals;
+
+                    html += '<div class="breakdown-section"><h4>🔥 Events (' + events.total + ' pts)</h4>';
+                    if (events.items.length) {
+                        events.items.forEach(function (item) {
+                            html += renderBreakdownItem(item);
+                        });
+                    } else {
+                        html += '<p style="color:#999;">No events recorded.</p>';
+                    }
+                    html += '</div>';
+
+                    html += '<div class="breakdown-section"><h4>🏅 Intramurals (' + intramurals.total + ' pts)</h4>';
+                    if (intramurals.items.length) {
+                        intramurals.items.forEach(function (item) {
+                            html += renderBreakdownItem(item);
+                        });
+                    } else {
+                        html += '<p style="color:#999;">No intramural results recorded.</p>';
+                    }
+                    html += '</div>';
+
+                    html += '<div class="breakdown-total">Total: ' + data.total_points + ' pts</div>';
+
+                    modalBody.innerHTML = html;
+                })
+                .catch(function (err) {
+                    modalBody.innerHTML = '<p style="color:#b00020;">Failed to load breakdown.</p>';
+                    console.error('Failed to load score breakdown:', err);
+                });
+        });
+    });
+})();
 </script>
 </body>
 </html>

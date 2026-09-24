@@ -270,11 +270,179 @@ function initDatabase() {
         )
     ');
 
+    $db->exec('
+        CREATE TABLE IF NOT EXISTS leaderboard_snapshots (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            snapshot_date DATETIME,
+            squadron_id INTEGER,
+            rank INTEGER,
+            total_points REAL,
+            FOREIGN KEY (squadron_id) REFERENCES squadrons(id)
+        )
+    ');
+
+    $db->exec('
+        CREATE TABLE IF NOT EXISTS admin_users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE NOT NULL,
+            created_at DATETIME
+        )
+    ');
+
     // Repair corrupted intramural schema if needed
     repairIntramural();
 
     migrateFromJson();
     seedDefaultConfig();
+}
+
+/**
+ * Calculate current squadron rankings using the same logic as the
+ * public leaderboard on index.php: the sum of all `events.points_awarded`
+ * plus the sum of `intramural_wl_records.points_awarded`, sorted by
+ * total points descending. This is the single source of truth for
+ * ranking calculations so no other file needs to duplicate the math.
+ *
+ * Returns an array of rows: ['squadron_id', 'name', 'total', 'rank'].
+ */
+function getSquadronRankings() {
+    $db = getDb();
+
+    $stmt = $db->prepare('SELECT id, name FROM squadrons ORDER BY id');
+    $stmt->execute();
+    $squadrons = $stmt->fetchAll();
+
+    $totals = [];
+    foreach ($squadrons as $s) {
+        $totals[$s['id']] = 0;
+    }
+
+    $stmt = $db->prepare('SELECT squadron_id, COALESCE(SUM(points_awarded), 0) as total FROM events GROUP BY squadron_id');
+    $stmt->execute();
+    foreach ($stmt->fetchAll() as $row) {
+        if (isset($totals[$row['squadron_id']])) {
+            $totals[$row['squadron_id']] += (float) $row['total'];
+        }
+    }
+
+    $stmt = $db->prepare('SELECT squadron_id, COALESCE(SUM(points_awarded), 0) as total FROM intramural_wl_records GROUP BY squadron_id');
+    $stmt->execute();
+    foreach ($stmt->fetchAll() as $row) {
+        if (isset($totals[$row['squadron_id']])) {
+            $totals[$row['squadron_id']] += (float) $row['total'];
+        }
+    }
+
+    $ranked = [];
+    foreach ($squadrons as $s) {
+        $ranked[] = [
+            'squadron_id' => $s['id'],
+            'name' => $s['name'],
+            'total' => $totals[$s['id']],
+        ];
+    }
+
+    usort($ranked, fn($a, $b) => $b['total'] <=> $a['total']);
+
+    $rank = 1;
+    foreach ($ranked as &$row) {
+        $row['rank'] = $rank;
+        $rank++;
+    }
+    unset($row);
+
+    return $ranked;
+}
+
+/**
+ * Capture a snapshot of the current leaderboard (rank + total points
+ * for every squadron) into the leaderboard_snapshots table. This is
+ * triggered manually by an admin (see admin-record-snapshot.php), not
+ * on every page load, so history reflects meaningful checkpoints.
+ *
+ * Returns the list of ranked rows that were recorded, along with the
+ * snapshot timestamp used.
+ */
+function recordLeaderboardSnapshot() {
+    $db = getDb();
+
+    $ranked = getSquadronRankings();
+    $snapshotDate = date('c');
+
+    $stmt = $db->prepare('
+        INSERT INTO leaderboard_snapshots (snapshot_date, squadron_id, rank, total_points)
+        VALUES (?, ?, ?, ?)
+    ');
+
+    foreach ($ranked as $row) {
+        $stmt->execute([
+            $snapshotDate,
+            $row['squadron_id'],
+            $row['rank'],
+            $row['total'],
+        ]);
+    }
+
+    return [
+        'snapshot_date' => $snapshotDate,
+        'rankings' => $ranked,
+    ];
+}
+
+/**
+ * Calculate how a squadron's rank has moved since the most recent
+ * leaderboard snapshot.
+ *
+ * Returns an array: ['current_rank', 'previous_rank', 'movement'],
+ * where movement is one of "up X", "down X", "same", or "new" (when
+ * there is no prior snapshot for that squadron).
+ */
+function getLeaderboardMovement($squadronId) {
+    $db = getDb();
+
+    $ranked = getSquadronRankings();
+    $currentRank = null;
+    foreach ($ranked as $row) {
+        if ($row['squadron_id'] == $squadronId) {
+            $currentRank = $row['rank'];
+            break;
+        }
+    }
+
+    // Find the most recent snapshot date that includes this squadron.
+    $stmt = $db->prepare('
+        SELECT rank, snapshot_date FROM leaderboard_snapshots
+        WHERE squadron_id = ?
+        ORDER BY snapshot_date DESC
+        LIMIT 1
+    ');
+    $stmt->execute([$squadronId]);
+    $previous = $stmt->fetch();
+
+    if (!$previous) {
+        return [
+            'current_rank' => $currentRank,
+            'previous_rank' => null,
+            'movement' => 'new',
+        ];
+    }
+
+    $previousRank = (int) $previous['rank'];
+    $diff = $previousRank - $currentRank;
+
+    if ($diff > 0) {
+        $movement = 'up ' . $diff;
+    } elseif ($diff < 0) {
+        $movement = 'down ' . abs($diff);
+    } else {
+        $movement = 'same';
+    }
+
+    return [
+        'current_rank' => $currentRank,
+        'previous_rank' => $previousRank,
+        'movement' => $movement,
+    ];
 }
 
 /**
@@ -704,6 +872,66 @@ function readJson($file) {
 
 function writeJson($file, $data) {
     file_put_contents($file, json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+}
+
+/**
+ * Return the list of allowed admin usernames, sourced from the
+ * ADMIN_USERS environment variable (comma-separated). Falls back to a
+ * single default "admin" account when the variable is not set, so
+ * existing single-password deployments keep working unmodified.
+ */
+function getAdminUsernames() {
+    $raw = $_ENV['ADMIN_USERS'] ?? getenv('ADMIN_USERS');
+    if ($raw === false || trim((string) $raw) === '') {
+        return ['admin'];
+    }
+
+    $usernames = array_map('trim', explode(',', $raw));
+    $usernames = array_filter($usernames, fn($u) => $u !== '');
+
+    return array_values($usernames) ?: ['admin'];
+}
+
+/**
+ * Validate a submitted username/password pair against ADMIN_USERS and
+ * ADMIN_PASSWORD environment variables. Supports both a plaintext
+ * ADMIN_PASSWORD and a bcrypt/password_hash()'d value (verified via
+ * password_verify()).
+ */
+function verifyAdminCredentials($username, $password) {
+    $username = trim((string) $username);
+    if ($username === '') {
+        return false;
+    }
+
+    $allowedUsers = getAdminUsernames();
+    if (!in_array($username, $allowedUsers, true)) {
+        return false;
+    }
+
+    $adminPassword = $_ENV['ADMIN_PASSWORD'] ?? getenv('ADMIN_PASSWORD');
+    if ($adminPassword === false || $adminPassword === '') {
+        return false;
+    }
+
+    // Support hashed passwords (password_hash() output starts with $2y$, $2a$, $argon2, etc.)
+    $looksHashed = (bool) preg_match('/^\$2[aiy]\$|^\$argon2/', $adminPassword);
+    if ($looksHashed) {
+        return password_verify($password, $adminPassword);
+    }
+
+    return hash_equals($adminPassword, (string) $password);
+}
+
+/**
+ * Record (or update) a known admin username in the admin_users table
+ * for auditing/history purposes. Safe to call on every successful
+ * login since username is UNIQUE.
+ */
+function recordAdminUser($username) {
+    $db = getDb();
+    $stmt = $db->prepare('INSERT OR IGNORE INTO admin_users (username, created_at) VALUES (?, ?)');
+    $stmt->execute([$username, date('c')]);
 }
 
 /**
