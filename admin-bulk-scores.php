@@ -65,6 +65,33 @@ if ($_POST) {
                 }
             }
 
+            // Verify that every bulk row uses the same canonical event score
+            // and compatibility points field before making the transaction visible.
+            if (!empty($newScores)) {
+                $verifyStmt = $db->prepare('
+                    SELECT value, points_awarded
+                    FROM events
+                    WHERE squadron_id = ? AND event_name = ? AND event_type = ? AND timestamp = ?
+                    ORDER BY id DESC
+                    LIMIT 1
+                ');
+                foreach ($newScores as $scoreData) {
+                    $verifyStmt->execute([
+                        $scoreData['squadron_id'],
+                        $scoreData['event_name'],
+                        $scoreData['event_type'],
+                        $timestamp,
+                    ]);
+                    $verifyRow = $verifyStmt->fetch();
+                    if (
+                        $verifyRow === false ||
+                        (float) $verifyRow['value'] !== (float) $verifyRow['points_awarded']
+                    ) {
+                        throw new Exception('Bulk event score verification failed.');
+                    }
+                }
+            }
+
             $db->commit();
 
             require __DIR__ . '/notifications-helper.php';
