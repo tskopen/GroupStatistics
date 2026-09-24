@@ -312,25 +312,47 @@ function getSquadronRankings() {
     $stmt->execute();
     $squadrons = $stmt->fetchAll();
 
+    // Defensively initialize every known squadron to 0 up front. This
+    // guarantees a squadron with zero non-intramural events (or a
+    // squadron added after the events/intramural tables already had
+    // data) is still represented in $totals below, rather than being
+    // silently skipped when summing.
     $totals = [];
     foreach ($squadrons as $s) {
-        $totals[$s['id']] = 0;
+        $totals[$s['id']] = 0.0;
     }
 
+    // COALESCE handles rows where points_awarded is NULL at the SQL
+    // level, but a NULL squadron_id (orphaned event) or a driver that
+    // returns null for the aggregate is also handled explicitly here
+    // so a bad row can never quietly drop out of the totals.
     $stmt = $db->prepare('SELECT squadron_id, COALESCE(SUM(points_awarded), 0) as total FROM events GROUP BY squadron_id');
     $stmt->execute();
     foreach ($stmt->fetchAll() as $row) {
-        if (isset($totals[$row['squadron_id']])) {
-            $totals[$row['squadron_id']] += (float) $row['total'];
+        $squadronId = $row['squadron_id'];
+        if ($squadronId === null) {
+            continue;
         }
+        if (!isset($totals[$squadronId])) {
+            // Squadron referenced by an event no longer exists in the
+            // squadrons table (or wasn't initialized above) - skip it
+            // rather than throwing a notice.
+            continue;
+        }
+        $totals[$squadronId] += (float) ($row['total'] ?? 0);
     }
 
     $stmt = $db->prepare('SELECT squadron_id, COALESCE(SUM(points_awarded), 0) as total FROM intramural_wl_records GROUP BY squadron_id');
     $stmt->execute();
     foreach ($stmt->fetchAll() as $row) {
-        if (isset($totals[$row['squadron_id']])) {
-            $totals[$row['squadron_id']] += (float) $row['total'];
+        $squadronId = $row['squadron_id'];
+        if ($squadronId === null) {
+            continue;
         }
+        if (!isset($totals[$squadronId])) {
+            continue;
+        }
+        $totals[$squadronId] += (float) ($row['total'] ?? 0);
     }
 
     $ranked = [];
@@ -338,7 +360,7 @@ function getSquadronRankings() {
         $ranked[] = [
             'squadron_id' => $s['id'],
             'name' => $s['name'],
-            'total' => $totals[$s['id']],
+            'total' => $totals[$s['id']] ?? 0.0,
         ];
     }
 
