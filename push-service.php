@@ -190,9 +190,11 @@ function sendPushNotifications($notifications) {
                     ];
                 }
             }
-        } catch (\Throwable $e) {
+        } 
+        catch (\Throwable $e) {
             error_log('[push] ✗ WebPush flush() failed: ' . $e->getMessage());
-
+            error_log('[push] ✗ Exception class: ' . get_class($e));
+            error_log('[push] ✗ Full trace: ' . $e->getTraceAsString());
             foreach ($queued as $q) {
                 $failed++;
                 $results[] = [

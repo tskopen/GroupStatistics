@@ -127,9 +127,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 $db->commit();
 
+                // Verify points flowed through to rankings
+                $rankingsAfter = getSquadronRankings();
+                $newTotal = 0;
+                foreach ($rankingsAfter as $row) {
+                    if ($row['squadron_id'] == $squadronId) {
+                        $newTotal = $row['total'];
+                        break;
+                    }
+                }
+                error_log('[SCORE-VERIFY] Squadron ' . $squadronId . ' new total after event insert: ' . $newTotal . ' points');
+
                 if (!$db->inTransaction()) {
                     error_log('[SCORE-DIAG] Event id ' . $newEventId . ' committed successfully for squadron ' . $squadronId . ' (' . $eventType . '), points_awarded=' . $verifyRow['points_awarded']);
-                } else {
+                }
+                else {
                     error_log('[SCORE-DIAG] ⚠ WARNING: transaction still open after commit() for event id ' . $newEventId);
                 }
 

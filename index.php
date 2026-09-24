@@ -1,4 +1,8 @@
 <?php
+
+header('Cache-Control: no-cache, must-revalidate, max-age=0');
+header('Pragma: no-cache');
+
 require __DIR__ . '/config.php';
 require __DIR__ . '/theme-loader.php';
 $theme = loadTheme();

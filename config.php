@@ -305,7 +305,8 @@ function initDatabase() {
  *
  * Returns an array of rows: ['squadron_id', 'name', 'total', 'rank'].
  */
-function getSquadronRankings() {
+function getSquadronRankings() 
+{
     $db = getDb();
 
     $stmt = $db->prepare('SELECT id, name FROM squadrons ORDER BY id');
