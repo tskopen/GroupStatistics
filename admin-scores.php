@@ -86,20 +86,53 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             try {
                 $db->beginTransaction();
 
+                // points_awarded must always be set explicitly (defaults to
+                // the submitted value) so non-intramural events are never
+                // silently excluded from getSquadronRankings().
+                $pointsAwarded = $value;
+                if ($pointsAwarded === null) {
+                    error_log('[SCORE-DIAG] points_awarded was NULL for squadron ' . $squadronId . ', event_type ' . $eventType . ' - defaulting to 0');
+                    $pointsAwarded = 0;
+                }
+
                 $stmt = $db->prepare("
                     INSERT INTO events (squadron_id, event_type, event_name, value, points_awarded, timestamp)
                     VALUES (?, ?, ?, ?, ?, ?)
                 ");
-                $stmt->execute([
+                $insertResult = $stmt->execute([
                     $squadronId,
                     $eventType,
                     $eventName ?: ucfirst($eventType),
                     $value,
-                    $value,
+                    $pointsAwarded,
                     date('c')
                 ]);
 
+                if (!$insertResult) {
+                    error_log('[SCORE-DIAG] Event INSERT failed for squadron ' . $squadronId . ', event_type ' . $eventType . ': ' . json_encode($stmt->errorInfo()));
+                    throw new Exception('Failed to insert event.');
+                }
+
+                $newEventId = $db->lastInsertId();
+
+                // Confirm points_awarded was actually persisted before committing.
+                $verifyStmt = $db->prepare('SELECT points_awarded FROM events WHERE id = ?');
+                $verifyStmt->execute([$newEventId]);
+                $verifyRow = $verifyStmt->fetch();
+
+                if ($verifyRow === false || $verifyRow['points_awarded'] === null) {
+                    error_log('[SCORE-DIAG] points_awarded missing after insert for event id ' . $newEventId . ' (squadron ' . $squadronId . ', event_type ' . $eventType . ')');
+                    throw new Exception('points_awarded was not persisted for the new event.');
+                }
+
                 $db->commit();
+
+                if (!$db->inTransaction()) {
+                    error_log('[SCORE-DIAG] Event id ' . $newEventId . ' committed successfully for squadron ' . $squadronId . ' (' . $eventType . '), points_awarded=' . $verifyRow['points_awarded']);
+                } else {
+                    error_log('[SCORE-DIAG] ⚠ WARNING: transaction still open after commit() for event id ' . $newEventId);
+                }
+
                 $success = true;
 
                 $scoreData = [
@@ -137,7 +170,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     error_log('[PUSH-DIAG] ⚠ No notifications matched for squadron ' . $squadronId);
                 }
             } catch (Exception $e) {
-                $db->rollBack();
+                if ($db->inTransaction()) {
+                    $db->rollBack();
+                }
+                error_log('[SCORE-DIAG] Event insert transaction rolled back for squadron ' . $squadronId . ', event_type ' . $eventType . ': ' . $e->getMessage());
                 $error = 'Database error: ' . $e->getMessage();
             }
         }

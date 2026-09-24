@@ -24,42 +24,25 @@ $brackets = array_map(function($b) {
     return $b;
 }, $bracketsData);
 
-// Fetch intramural records
-$stmt = $db->prepare("SELECT squadron_id, COALESCE(SUM(points_awarded), 0) as total FROM intramural_wl_records GROUP BY squadron_id");
-$stmt->execute();
-$intramuralsData = $stmt->fetchAll();
-$intramurals = [];
-foreach ($intramuralsData as $row) {
-    $intramurals[$row['squadron_id']] = $row['total'];
-}
-
 // Build squadron map
 $squadronMap = [];
 foreach ($squadrons as $s) {
     $squadronMap[$s['id']] = $s;
 }
 
-// Calculate total scores (includes bracket event values)
-$totals = array_fill_keys(array_keys($squadronMap), 0);
-foreach ($scores as $score) {
-    $sid = $score['squadron_id'] ?? null;
-    $points = isset($score['points_awarded']) ? (float)$score['points_awarded'] : 0;
-    if ($sid && isset($totals[$sid])) {
-        $totals[$sid] += $points;
-    }
-}
-// Add intramural points to totals
-foreach ($squadrons as $s) {
-    $intramural_pts = $intramurals[$s['id']] ?? 0;
-    $totals[$s['id']] += $intramural_pts;
-}
+// Calculate rankings using the same central logic as the rest of the
+// app (see getSquadronRankings() in config.php) so the homepage never
+// diverges from the API/leaderboard-movement calculations.
+$squadronRankings = getSquadronRankings();
 
-// Build rankings
 $ranked = [];
-foreach ($squadrons as $s) {
-    $ranked[] = ['squadron' => $s, 'total' => $totals[$s['id']]];
+foreach ($squadronRankings as $row) {
+    $squadron = $squadronMap[$row['squadron_id']] ?? null;
+    if ($squadron === null) {
+        continue;
+    }
+    $ranked[] = ['squadron' => $squadron, 'total' => $row['total']];
 }
-usort($ranked, fn($a, $b) => $b['total'] <=> $a['total']);
 
 /*
  * Bracket match scores must come from brackets.json.
