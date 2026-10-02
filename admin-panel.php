@@ -31,7 +31,7 @@ if (isset($_GET['logout'])) {
         <h1>Admin Panel</h1>
         <a class="button" href="admin-scores.php">Enter Single Score</a>
         <a class="button" href="admin-bulk-scores.php">Enter Event (All Squadrons)</a>
-        <a class="button" href="admin-bracket.php">Manage Bracket</a>
+        <a class="button" href="admin-brackets.php">🏆 Manage Brackets</a>
         <a class="button" href="admin-squadrons.php">Manage Squadrons</a>
         <a class="button" href="admin-config.php">⚙️ Scoring Configuration</a>
         <a class="button" href="admin-intramural-sports.php">🏆 Intramural Sports</a>
