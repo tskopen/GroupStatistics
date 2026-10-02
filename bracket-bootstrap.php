@@ -6,8 +6,7 @@ function bracketBootstrap(PDO $db): void
 {
     $db->exec('PRAGMA foreign_keys = ON');
     initBracketTables($db);
-    $json = DATA_DIR . '/brackets.json';
-    migrateLegacyBrackets($db, $json);
+    bracketRunLegacyMigrationOnce($db);
 
     // Reconcile bracket-generated scoring events with the relational matchup
     // state. This is idempotent and repairs placeholder/test data when an
@@ -19,6 +18,32 @@ function bracketBootstrap(PDO $db): void
         ob_start('bracketRenderRoundSections');
         $roundRendererRegistered = true;
     }
+}
+
+function bracketRunLegacyMigrationOnce(PDO $db): void
+{
+    $db->exec("CREATE TABLE IF NOT EXISTS app_migrations (
+        migration_key TEXT PRIMARY KEY,
+        applied_at DATETIME NOT NULL
+    )");
+    $key = 'legacy-brackets-json-to-relational-v1';
+    $check = $db->prepare('SELECT 1 FROM app_migrations WHERE migration_key=?');
+    $check->execute([$key]);
+    if ($check->fetchColumn()) return;
+
+    $json = DATA_DIR . '/brackets.json';
+    $existing = (int)$db->query('SELECT COUNT(*) FROM brackets')->fetchColumn();
+
+    // If relational brackets already exist, the database has already been
+    // initialized independently of the legacy file. Mark the migration as
+    // complete rather than importing old placeholder records back into a
+    // database where an administrator may intentionally have deleted them.
+    if ($existing === 0 && is_file($json)) {
+        migrateLegacyBrackets($db, $json);
+    }
+
+    $stmt = $db->prepare('INSERT INTO app_migrations(migration_key,applied_at) VALUES(?,?)');
+    $stmt->execute([$key, date('c')]);
 }
 
 function bracketReconcileScoreEvents(PDO $db): void
@@ -113,7 +138,6 @@ function bracketRenderRoundSections(string $html): string
         }, $html);
         if ($replacement === null) return $html;
 
-        // Close each round wrapper after its known number of match elements.
         $cursor = 0;
         foreach ($roundQueues as $queue) {
             foreach ($queue as $round) {
