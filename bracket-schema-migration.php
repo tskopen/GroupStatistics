@@ -37,9 +37,45 @@ function initBracketTables(PDO $db): void
     $db->exec('CREATE INDEX IF NOT EXISTS idx_bracket_rounds_bracket ON bracket_rounds(bracket_id, round_number)');
     $db->exec('CREATE INDEX IF NOT EXISTS idx_bracket_matchups_bracket ON bracket_matchups(bracket_id)');
     $db->exec('CREATE INDEX IF NOT EXISTS idx_bracket_matchups_round ON bracket_matchups(round_id, match_number)');
+
+    // Keep the legacy JSON column populated because the main-page event-card
+    // renderer already consumes that representation. SQLite remains the
+    // authoritative source; this is only a presentation/cache copy.
+    $ids = $db->query('SELECT id FROM brackets')->fetchAll(PDO::FETCH_COLUMN);
+    foreach ($ids as $id) bracketSyncLegacyJson($db, (string)$id);
 }
 
 function bracketEnsureTables(PDO $db): void { initBracketTables($db); }
+
+function bracketSyncLegacyJson(PDO $db, string $bracketId): void
+{
+    $stmt = $db->prepare('SELECT id,name,created_date,updated_at,champion_id,bracket_type FROM brackets WHERE id=?');
+    $stmt->execute([$bracketId]);
+    $bracket = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$bracket) return;
+
+    $roundStmt = $db->prepare('SELECT id,round_number,name FROM bracket_rounds WHERE bracket_id=? ORDER BY round_number');
+    $roundStmt->execute([$bracketId]);
+    $rounds = [];
+    foreach ($roundStmt->fetchAll(PDO::FETCH_ASSOC) as $round) {
+        $m = $db->prepare('SELECT id,match_number,team1_id,team2_id,team1_source_matchup_id,team2_source_matchup_id,team1_score,team2_score,winner_id,points,status,next_matchup_id FROM bracket_matchups WHERE round_id=? ORDER BY match_number');
+        $m->execute([(int)$round['id']]);
+        $matches = [];
+        foreach ($m->fetchAll(PDO::FETCH_ASSOC) as $match) {
+            $match['next_match_id'] = $match['next_matchup_id'];
+            unset($match['next_matchup_id']);
+            $matches[] = $match;
+        }
+        $rounds[] = [
+            'name' => $round['name'],
+            'matchups' => $matches,
+        ];
+    }
+
+    $json = json_encode($rounds, JSON_UNESCAPED_SLASHES);
+    $update = $db->prepare('UPDATE brackets SET rounds=?,updated_at=COALESCE(updated_at,?) WHERE id=?');
+    $update->execute([$json, $bracket['updated_at'] ?? date('c'), $bracketId]);
+}
 
 function bracketLoad(PDO $db, string $bracketId): ?array
 {
@@ -55,7 +91,13 @@ function bracketLoad(PDO $db, string $bracketId): ?array
         $m = $db->prepare('SELECT * FROM bracket_matchups WHERE round_id=? ORDER BY match_number');
         $m->execute([$round['id']]); $round['matchups'] = $m->fetchAll(PDO::FETCH_ASSOC);
     }
-    unset($round); $bracket['rounds'] = $rounds; return $bracket;
+    unset($round);
+    $bracket['rounds'] = $rounds;
+
+    // The admin page calls bracketLoad after creating/scoring/assigning a
+    // matchup, so refresh the main-page card representation immediately.
+    bracketSyncLegacyJson($db, $bracketId);
+    return $bracket;
 }
 
 function bracketSave(PDO $db, array $bracket): void
@@ -80,5 +122,6 @@ function bracketSave(PDO $db, array $bracket): void
             $match['team1_score']??null,$match['team2_score']??null,$match['winner_id']??null,$match['points']??0,$match['status']??'pending',$match['next_match_id']??null,$now,$now
         ]);
         $db->commit();
+        bracketSyncLegacyJson($db, $id);
     } catch(Throwable $e) { if($db->inTransaction())$db->rollBack(); throw $e; }
 }
