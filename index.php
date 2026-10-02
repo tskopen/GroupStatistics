@@ -132,24 +132,73 @@ usort($otherByEvent, fn($a,$b) => ($b['latest_timestamp']??0) <=> ($a['latest_ti
 <?php foreach($otherByEvent as $group):?><div class="score-card"><div class="score-card-header"><?php echo htmlspecialchars($group['event_name']);?></div><div class="score-card-body"><?php foreach($group['results'] as $result):$s=$squadronMap[$result['squadron_id']]??null;?><div class="score-row"><div class="score-squadron"><?php if($s&&!empty($s['icon_filename'])):?><img class="score-squadron-icon" src="<?php echo htmlspecialchars(iconUrl($s['icon_filename']));?>" alt=""><?php else:?><span class="score-squadron-icon placeholder"></span><?php endif;?><span class="score-squadron-name"><?php echo htmlspecialchars($s['name']??'Unknown');?></span></div><strong class="score-value"><?php echo htmlspecialchars((string)$result['value']);?></strong></div><?php endforeach;?></div></div><?php endforeach;?>
 <?php foreach($regularEvents as $event):$s=$squadronMap[$event['squadron_id']]??null;?><div class="score-card"><div class="score-card-header"><?php echo htmlspecialchars($event['event_name']??'Event');?></div><div class="score-card-body"><div class="score-row"><div class="score-squadron"><?php if($s&&!empty($s['icon_filename'])):?><img class="score-squadron-icon" src="<?php echo htmlspecialchars(iconUrl($s['icon_filename']));?>" alt=""><?php else:?><span class="score-squadron-icon placeholder"></span><?php endif;?><div><div class="score-squadron-name"><?php echo htmlspecialchars($s['name']??'Unknown');?></div><span class="score-type"><?php echo htmlspecialchars($event['event_type']??'other');?></span></div></div><strong class="score-value"><?php echo htmlspecialchars((string)($event['value']??$event['points_awarded']??0));?></strong></div></div></div><?php endforeach;?>
 </div><?php endif;?>
-<?php
-$historyBySquadron=[];
-foreach($scores as $event){
- $sid=$event['squadron_id']??null;if($sid===null)continue;
- $historyBySquadron[(int)$sid][]= ['date'=>$event['timestamp']??'','name'=>$event['event_name']??'Event','type'=>$event['event_type']??'other','points'=>(float)($event['value']??$event['points_awarded']??0)];
-}
-$wlStmt=$db->query("SELECT squadron_id,created_at AS date,opponent_squadron_id,points_awarded FROM intramural_wl_records ORDER BY created_at DESC");
-foreach($wlStmt->fetchAll(PDO::FETCH_ASSOC) as $row){$sid=(int)$row['squadron_id'];$opp=$squadronMap[(int)$row['opponent_squadron_id']]['name']??'Unknown';$historyBySquadron[$sid][]= ['date'=>$row['date']??'','name'=>'Intramural vs '.$opp,'type'=>'intramural','points'=>(float)($row['points_awarded']??0)];}
-foreach($historyBySquadron as &$history)usort($history,fn($a,$b)=>(strtotime($b['date'])?:0)<=>(strtotime($a['date'])?:0));unset($history);
-$historyJson=json_encode($historyBySquadron,JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT);
-?>
-<div id="historyModal" class="history-modal" aria-hidden="true"><div class="history-dialog" role="dialog" aria-modal="true"><div class="history-dialog-header"><h3 id="historyTitle">Squadron Score History</h3><button type="button" class="history-close" aria-label="Close">&times;</button></div><div id="historyContent"></div></div></div>
-<script>
-const squadronHistory=<?php echo $historyJson ?: '{}';?>,historyModal=document.getElementById('historyModal'),historyContent=document.getElementById('historyContent'),historyTitle=document.getElementById('historyTitle');
-function escapeHtml(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));}
-function openSquadronHistory(id,name,total){const rows=squadronHistory[String(id)]||[];let running=0;const chronological=[...rows].reverse().map(r=>{running+=Number(r.points||0);return {...r,running};}).reverse();historyTitle.textContent=name+' — Score History';historyContent.innerHTML='<div class="history-summary"><div class="history-stat"><span>Current Score</span><strong>'+Number(total).toLocaleString()+'</strong></div><div class="history-stat"><span>Scoring Entries</span><strong>'+rows.length+'</strong></div></div><div style="padding:0 20px 20px;overflow-x:auto"><table class="history-table"><thead><tr><th>Date</th><th>Event</th><th>Type</th><th>Points</th><th>Cumulative</th></tr></thead><tbody>'+(chronological.length?chronological.map(r=>'<tr><td>'+((r.date||'').replace('T',' ').slice(0,16)||'—')+'</td><td>'+escapeHtml(r.name)+'</td><td>'+escapeHtml(r.type)+'</td><td class="history-points">'+(Number(r.points)>=0?'+':'')+Number(r.points).toLocaleString()+'</td><td>'+Number(r.running).toLocaleString()+'</td></tr>').join(''):'<tr><td colspan="5">No score history recorded.</td></tr>')+'</tbody></table></div>';historyModal.classList.add('open');historyModal.setAttribute('aria-hidden','false');}
-document.querySelectorAll('.details-btn').forEach(b=>b.addEventListener('click',()=>openSquadronHistory(b.dataset.squadronId,b.dataset.squadronName,b.dataset.total)));
-document.querySelector('.history-close').addEventListener('click',()=>{historyModal.classList.remove('open');historyModal.setAttribute('aria-hidden','true');});
-historyModal.addEventListener('click',e=>{if(e.target===historyModal){historyModal.classList.remove('open');historyModal.setAttribute('aria-hidden','true');}});
-document.addEventListener('keydown',e=>{if(e.key==='Escape'){historyModal.classList.remove('open');historyModal.setAttribute('aria-hidden','true');}});
-</script><div class="footer"><a href="admin-panel.php">Admin</a></div></div></body></html>
+<!-- Score breakdown modal -->
+<div id="breakdown-modal" class="breakdown-modal-overlay" style="display:none;">
+<div class="breakdown-modal">
+<button type="button" class="breakdown-modal-close" id="breakdown-modal-close">&times;</button>
+<h3 id="breakdown-modal-title">Score Breakdown</h3>
+<div id="breakdown-modal-body">Loading…</div>
+</div>
+</div><div class="footer"><a href="admin-panel.php">Admin</a></div></div><script>
+(function () {
+    var modal = document.getElementById('breakdown-modal');
+    var modalBody = document.getElementById('breakdown-modal-body');
+    var modalTitle = document.getElementById('breakdown-modal-title');
+    var modalClose = document.getElementById('breakdown-modal-close');
+
+    function closeModal() { modal.style.display = 'none'; }
+    if (modalClose) modalClose.addEventListener('click', closeModal);
+    if (modal) modal.addEventListener('click', function (e) { if (e.target === modal) closeModal(); });
+
+    function escapeHtml(value) {
+        return String(value == null ? '' : value).replace(/[&<>"']/g, function (ch) {
+            return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[ch];
+        });
+    }
+
+    function renderBreakdownItem(item) {
+        var date = item.date ? new Date(item.date).toLocaleDateString() : '';
+        return '<div class="breakdown-item">' +
+            '<span>' + escapeHtml(item.name) + (date ? ' <small style="color:#999;">(' + date + ')</small>' : '') + '</span>' +
+            '<span class="breakdown-item-points">' + Number(item.points || 0).toLocaleString() + '</span>' +
+            '</div>';
+    }
+
+    document.querySelectorAll('.details-btn').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var sid = btn.getAttribute('data-squadron-id');
+            var name = btn.getAttribute('data-squadron-name');
+            modalTitle.textContent = name + ' — Score Breakdown';
+            modalBody.innerHTML = 'Loading…';
+            modal.style.display = 'flex';
+
+            fetch('api-score-breakdown.php?squadron_id=' + encodeURIComponent(sid))
+                .then(function (res) { return res.json(); })
+                .then(function (data) {
+                    if (data.error) {
+                        modalBody.innerHTML = '<p style="color:#b00020;">' + escapeHtml(data.error) + '</p>';
+                        return;
+                    }
+
+                    var html = '';
+                    var events = data.breakdown.events;
+                    var intramurals = data.breakdown.intramurals;
+
+                    html += '<div class="breakdown-section"><h4>🔥 Events (' + Number(events.total || 0).toLocaleString() + ' pts)</h4>';
+                    if (events.items.length) events.items.forEach(function (item) { html += renderBreakdownItem(item); });
+                    else html += '<p style="color:#999;">No events recorded.</p>';
+
+                    html += '</div><div class="breakdown-section"><h4>🏅 Intramurals (' + Number(intramurals.total || 0).toLocaleString() + ' pts)</h4>';
+                    if (intramurals.items.length) intramurals.items.forEach(function (item) { html += renderBreakdownItem(item); });
+                    else html += '<p style="color:#999;">No intramural results recorded.</p>';
+
+                    html += '</div><div class="breakdown-total">Total: ' + Number(data.total_points || 0).toLocaleString() + ' pts</div>';
+                    modalBody.innerHTML = html;
+                })
+                .catch(function () {
+                    modalBody.innerHTML = '<p style="color:#b00020;">Failed to load breakdown.</p>';
+                });
+        });
+    });
+})();
+</script></body></html>
