@@ -6,35 +6,13 @@ function bracketBootstrap(PDO $db): void
 {
     $db->exec('PRAGMA foreign_keys = ON');
     initBracketTables($db);
-    $json = DATA_DIR . '/brackets.json';
-    migrateLegacyBrackets($db, $json);
+    bracketRunLegacyMigrationOnce($db);
 
-    // Backfill completed bracket matchups into the normal events ledger so
-    // existing bracket results contribute to the same leaderboard totals as
-    // scores entered through the scoring page. The matchup/event link makes
-    // this idempotent and prevents duplicate points.
-    try {
-        $rows = $db->query("SELECT m.*, b.name AS bracket_name
-            FROM bracket_matchups m JOIN brackets b ON b.id=m.bracket_id
-            WHERE m.status='completed' AND m.winner_id IS NOT NULL")->fetchAll(PDO::FETCH_ASSOC);
-        $find = $db->prepare('SELECT event_id FROM bracket_score_events WHERE matchup_id=?');
-        $insert = $db->prepare('INSERT INTO events(squadron_id,event_type,event_name,value,points_awarded,timestamp,created_at) VALUES(?,?,?,?,?,?,?)');
-        $link = $db->prepare('INSERT INTO bracket_score_events(matchup_id,event_id) VALUES(?,?)');
-        foreach ($rows as $m) {
-            $find->execute([$m['id']]);
-            if ($find->fetchColumn()) continue;
-            $points=(float)($m['points']??0);
-            $now=date('c');
-            $insert->execute([(int)$m['winner_id'],'bracket',$m['bracket_name'].' - Match '.$m['match_number'],$points,$points,$m['updated_at']??$now,$now]);
-            $link->execute([$m['id'],$db->lastInsertId()]);
-        }
-    } catch (Throwable $e) {
-        error_log('Bracket score-event backfill failed: '.$e->getMessage());
-    }
+    // Reconcile bracket-generated scoring events with the relational matchup
+    // state. This is idempotent and repairs placeholder/test data when an
+    // administrator resets, edits, or deletes a completed matchup.
+    bracketReconcileScoreEvents($db);
 
-    // The homepage already renders one tournament card per bracket. Add a
-    // presentation-only output pass so multi-round cards are divided into
-    // clearly labeled sections without duplicating or changing bracket data.
     static $roundRendererRegistered = false;
     if (!$roundRendererRegistered) {
         ob_start('bracketRenderRoundSections');
@@ -42,11 +20,79 @@ function bracketBootstrap(PDO $db): void
     }
 }
 
+function bracketRunLegacyMigrationOnce(PDO $db): void
+{
+    $db->exec("CREATE TABLE IF NOT EXISTS app_migrations (
+        migration_key TEXT PRIMARY KEY,
+        applied_at DATETIME NOT NULL
+    )");
+    $key = 'legacy-brackets-json-to-relational-v1';
+    $check = $db->prepare('SELECT 1 FROM app_migrations WHERE migration_key=?');
+    $check->execute([$key]);
+    if ($check->fetchColumn()) return;
+
+    $json = DATA_DIR . '/brackets.json';
+    $existing = (int)$db->query('SELECT COUNT(*) FROM brackets')->fetchColumn();
+
+    // If relational brackets already exist, the database has already been
+    // initialized independently of the legacy file. Mark the migration as
+    // complete rather than importing old placeholder records back into a
+    // database where an administrator may intentionally have deleted them.
+    if ($existing === 0 && is_file($json)) {
+        migrateLegacyBrackets($db, $json);
+    }
+
+    $stmt = $db->prepare('INSERT INTO app_migrations(migration_key,applied_at) VALUES(?,?)');
+    $stmt->execute([$key, date('c')]);
+}
+
+function bracketReconcileScoreEvents(PDO $db): void
+{
+    try {
+        $db->beginTransaction();
+        $rows = $db->query("SELECT m.*, b.name AS bracket_name
+            FROM bracket_matchups m JOIN brackets b ON b.id=m.bracket_id
+            ORDER BY m.id")->fetchAll(PDO::FETCH_ASSOC);
+        $find = $db->prepare('SELECT event_id FROM bracket_score_events WHERE matchup_id=?');
+        $deleteEvent = $db->prepare('DELETE FROM events WHERE id=?');
+        $deleteLink = $db->prepare('DELETE FROM bracket_score_events WHERE matchup_id=?');
+        $insertEvent = $db->prepare('INSERT INTO events(squadron_id,event_type,event_name,value,points_awarded,timestamp,created_at) VALUES(?,?,?,?,?,?,?)');
+        $insertLink = $db->prepare('INSERT INTO bracket_score_events(matchup_id,event_id) VALUES(?,?)');
+        $updateEvent = $db->prepare('UPDATE events SET squadron_id=?,event_type=?,event_name=?,value=?,points_awarded=?,timestamp=? WHERE id=?');
+
+        foreach ($rows as $m) {
+            $find->execute([$m['id']]);
+            $eventId = $find->fetchColumn();
+            $isScoring = $m['status'] === 'completed' && $m['winner_id'] !== null;
+            if (!$isScoring) {
+                if ($eventId) $deleteEvent->execute([(int)$eventId]);
+                $deleteLink->execute([$m['id']]);
+                continue;
+            }
+
+            $points = (float)($m['points'] ?? 0);
+            $scoreLabel = ($m['team1_score'] !== null && $m['team2_score'] !== null)
+                ? ' (' . $m['team1_score'] . '-' . $m['team2_score'] . ')' : '';
+            $name = $m['bracket_name'] . ' - Match ' . $m['match_number'] . $scoreLabel;
+            $timestamp = $m['updated_at'] ?: date('c');
+
+            if ($eventId) {
+                $updateEvent->execute([(int)$m['winner_id'],'bracket',$name,$points,$points,$timestamp,(int)$eventId]);
+            } else {
+                $insertEvent->execute([(int)$m['winner_id'],'bracket',$name,$points,$points,$timestamp,date('c')]);
+                $insertLink->execute([$m['id'],$db->lastInsertId()]);
+            }
+        }
+        $db->commit();
+    } catch (Throwable $e) {
+        if ($db->inTransaction()) $db->rollBack();
+        error_log('Bracket score-event reconciliation failed: ' . $e->getMessage());
+    }
+}
+
 function bracketRenderRoundSections(string $html): string
 {
-    if (strpos($html, 'class="tournament-card"') === false || strpos($html, 'class="tournament-match"') === false) {
-        return $html;
-    }
+    if (strpos($html, 'class="tournament-card"') === false || strpos($html, 'class="tournament-match"') === false) return $html;
 
     try {
         $db = getDb();
@@ -55,9 +101,8 @@ function bracketRenderRoundSections(string $html): string
         foreach ($rows as $row) {
             $roundStmt = $db->prepare('SELECT id,name FROM bracket_rounds WHERE bracket_id=? ORDER BY round_number');
             $roundStmt->execute([(string)$row['id']]);
-            $rounds = $roundStmt->fetchAll(PDO::FETCH_ASSOC);
             $queue = [];
-            foreach ($rounds as $round) {
+            foreach ($roundStmt->fetchAll(PDO::FETCH_ASSOC) as $round) {
                 $matchStmt = $db->prepare('SELECT COUNT(*) FROM bracket_matchups WHERE round_id=?');
                 $matchStmt->execute([(int)$round['id']]);
                 $count = (int)$matchStmt->fetchColumn();
@@ -65,46 +110,32 @@ function bracketRenderRoundSections(string $html): string
             }
             if ($queue) $roundQueues[] = $queue;
         }
-
         if (!$roundQueues) return $html;
 
         $queueIndex = 0;
         $roundIndex = 0;
         $matchInRound = 0;
-        $insideBracket = false;
         $matchNumber = 0;
-
-        $replacement = preg_replace_callback('/<div class="tournament-match">/', function () use (&$queueIndex,&$roundIndex,&$matchInRound,&$insideBracket,&$matchNumber,$roundQueues) {
-            if ($matchNumber === 0 || ($insideBracket && $matchInRound >= ($roundQueues[$queueIndex][$roundIndex]['count'] ?? PHP_INT_MAX))) {
-                if ($matchNumber > 0 && $insideBracket) {
+        $replacement = preg_replace_callback('/<div class="tournament-match">/', function () use (&$queueIndex,&$roundIndex,&$matchInRound,&$matchNumber,$roundQueues) {
+            if ($matchNumber === 0 || ($matchInRound >= ($roundQueues[$queueIndex][$roundIndex]['count'] ?? PHP_INT_MAX))) {
+                if ($matchNumber > 0) {
                     $roundIndex++;
-                    if ($roundIndex >= count($roundQueues[$queueIndex])) {
+                    $matchInRound = 0;
+                    if ($roundIndex >= count($roundQueues[$queueIndex] ?? [])) {
                         $queueIndex++;
                         $roundIndex = 0;
-                        $matchInRound = 0;
-                        $insideBracket = false;
-                    } else {
-                        $matchInRound = 0;
                     }
                 }
             }
-
-            if (!$insideBracket) {
-                $insideBracket = true;
-                $matchInRound = 0;
-            }
-
             $round = $roundQueues[$queueIndex][$roundIndex] ?? null;
             $prefix = '';
             if ($round && $matchInRound === 0) {
                 $prefix = '<div class="bracket-round-section" style="margin:0 0 18px;padding:0 0 4px;border:1px solid #e2e6ea;border-radius:8px;background:#fff"><div class="bracket-round-title" style="padding:10px 12px;margin:0 0 10px;background:#f1f4f7;color:#002147;font-size:.9em;font-weight:700;text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid #e2e6ea">' . htmlspecialchars((string)$round['name'], ENT_QUOTES, 'UTF-8') . '</div>';
             }
-
             $matchInRound++;
             $matchNumber++;
             return $prefix . '<div class="tournament-match">';
         }, $html);
-
         if ($replacement === null) return $html;
 
         $cursor = 0;
@@ -123,10 +154,9 @@ function bracketRenderRoundSections(string $html): string
                 }
             }
         }
-
         return $replacement;
     } catch (Throwable $e) {
-        error_log('Bracket round-section renderer failed: '.$e->getMessage());
+        error_log('Bracket round-section renderer failed: ' . $e->getMessage());
         return $html;
     }
 }
