@@ -24,7 +24,6 @@ if (!$squadron) {
 $id = (int)$squadron['id'];
 $categories = [];
 
-// Match the exact event contribution used by getSquadronRankings().
 $events = $db->prepare('SELECT id,event_type,event_name,value,points_awarded,timestamp FROM events WHERE squadron_id=? ORDER BY timestamp DESC,id DESC');
 $events->execute([$id]);
 foreach ($events->fetchAll(PDO::FETCH_ASSOC) as $event) {
@@ -47,7 +46,6 @@ foreach ($events->fetchAll(PDO::FETCH_ASSOC) as $event) {
     ];
 }
 
-// Intramural points are a separate contributor in getSquadronRankings().
 $intramurals = $db->prepare('SELECT r.points_awarded,r.wins,r.losses,s.sport_name FROM intramural_wl_records r LEFT JOIN intramural_sports s ON s.id=r.sport_id WHERE r.squadron_id=? ORDER BY s.sport_name');
 $intramurals->execute([$id]);
 foreach ($intramurals->fetchAll(PDO::FETCH_ASSOC) as $row) {
