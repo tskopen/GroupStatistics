@@ -2,9 +2,8 @@
 /**
  * Relational bracket storage migration.
  *
- * Brackets previously stored rounds/matchups as one JSON blob and creation
- * also used brackets.json. This migration establishes SQLite as the source of
- * truth while retaining the legacy JSON column for backwards compatibility.
+ * SQLite is the source of truth for bracket administration. Brackets support
+ * two formats: multi_round and single_round.
  */
 function initBracketTables(PDO $db): void
 {
@@ -54,6 +53,16 @@ function initBracketTables(PDO $db): void
         FOREIGN KEY (winner_id) REFERENCES squadrons(id)
     )");
 
+    // Add the format column to databases created before bracket types existed.
+    $columns = $db->query('PRAGMA table_info(brackets)')->fetchAll(PDO::FETCH_ASSOC);
+    $hasType = false;
+    foreach ($columns as $column) {
+        if ($column['name'] === 'bracket_type') { $hasType = true; break; }
+    }
+    if (!$hasType) {
+        $db->exec("ALTER TABLE brackets ADD COLUMN bracket_type TEXT NOT NULL DEFAULT 'multi_round'");
+    }
+
     $db->exec("CREATE INDEX IF NOT EXISTS idx_bracket_participants_bracket ON bracket_participants(bracket_id)");
     $db->exec("CREATE INDEX IF NOT EXISTS idx_bracket_rounds_bracket ON bracket_rounds(bracket_id, round_number)");
     $db->exec("CREATE INDEX IF NOT EXISTS idx_bracket_matchups_bracket ON bracket_matchups(bracket_id)");
@@ -67,10 +76,11 @@ function bracketEnsureTables(PDO $db): void
 
 function bracketLoad(PDO $db, string $bracketId): ?array
 {
-    $stmt = $db->prepare('SELECT id, name, created_date, updated_at, champion_id FROM brackets WHERE id = ?');
+    $stmt = $db->prepare('SELECT id, name, created_date, updated_at, champion_id, bracket_type FROM brackets WHERE id = ?');
     $stmt->execute([$bracketId]);
     $bracket = $stmt->fetch(PDO::FETCH_ASSOC);
     if (!$bracket) return null;
+    $bracket['bracket_type'] = $bracket['bracket_type'] ?: 'multi_round';
 
     $stmt = $db->prepare('SELECT squadron_id, seed FROM bracket_participants WHERE bracket_id = ? ORDER BY COALESCE(seed, 999999), id');
     $stmt->execute([$bracketId]);
@@ -96,8 +106,8 @@ function bracketSave(PDO $db, array $bracket): void
     try {
         $id = (string)$bracket['id'];
         $now = date('c');
-        $stmt = $db->prepare('INSERT OR REPLACE INTO brackets (id,name,created_date,updated_at,champion_id,rounds) VALUES (?,?,?,?,?,?)');
-        $stmt->execute([$id, $bracket['name'], $bracket['created_date'] ?? $now, $now, $bracket['champion_id'] ?? null, null]);
+        $stmt = $db->prepare('INSERT OR REPLACE INTO brackets (id,name,created_date,updated_at,champion_id,rounds,bracket_type) VALUES (?,?,?,?,?,?,?)');
+        $stmt->execute([$id, $bracket['name'], $bracket['created_date'] ?? $now, $now, $bracket['champion_id'] ?? null, null, $bracket['bracket_type'] ?? 'multi_round']);
 
         $db->prepare('DELETE FROM bracket_matchups WHERE bracket_id = ?')->execute([$id]);
         $db->prepare('DELETE FROM bracket_rounds WHERE bracket_id = ?')->execute([$id]);
