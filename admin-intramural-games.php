@@ -11,6 +11,49 @@ $db = getDb();
 $success = '';
 $error = '';
 
+/**
+ * Intramural games historically stored the sport name as their only sport
+ * reference. That made renaming a sport (for example Basketball -> basketball)
+ * orphan the game from the current sport record and made deletion fail with
+ * "Sport not found". Games now carry the immutable intramural_sports.id as
+ * sport_id; sport_name remains display data only.
+ *
+ * This migration is intentionally performed here as well as in the normal
+ * application flow so existing persistent Railway databases are repaired the
+ * first time the admin game page is opened. The backfill is case-insensitive
+ * so legacy Basketball/basketball records are recovered automatically.
+ */
+function ensureIntramuralGameSportId(PDO $db) {
+    $stmt = $db->query('PRAGMA table_info(intramural_games)');
+    $columns = $stmt->fetchAll(PDO::FETCH_COLUMN, 1);
+
+    if (!in_array('sport_id', $columns, true)) {
+        $db->exec('ALTER TABLE intramural_games ADD COLUMN sport_id INTEGER');
+    }
+
+    // Recover legacy games by matching their old display-name reference to
+    // the current sport name without changing the permanent sport ID.
+    $db->exec("
+        UPDATE intramural_games
+        SET sport_id = (
+            SELECT s.id
+            FROM intramural_sports s
+            WHERE LOWER(TRIM(s.sport_name)) = LOWER(TRIM(intramural_games.sport))
+            ORDER BY s.id
+            LIMIT 1
+        )
+        WHERE sport_id IS NULL
+          AND sport IS NOT NULL
+          AND TRIM(sport) <> ''
+    ");
+
+    // The index is safe to create repeatedly and keeps sport-based lookups
+    // inexpensive as the game history grows.
+    $db->exec('CREATE INDEX IF NOT EXISTS idx_intramural_games_sport_id ON intramural_games(sport_id)');
+}
+
+ensureIntramuralGameSportId($db);
+
 $stmt = $db->prepare("SELECT * FROM squadrons ORDER BY id");
 $stmt->execute();
 $squadrons = $stmt->fetchAll();
@@ -60,7 +103,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
                 $sport = null;
                 foreach ($sports as $s) {
-                    if ($s['id'] === $sportId) {
+                    if ((int) $s['id'] === $sportId) {
                         $sport = $s;
                         break;
                     }
@@ -74,10 +117,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 $pointsTeam2 = ($team2Score > $team1Score) ? $sport['points_win'] : $sport['points_loss'];
 
                 $stmt = $db->prepare("
-                    INSERT INTO intramural_games (sport, team1_id, team2_id, team1_score, team2_score, winner_id, points_team1, points_team2, game_date, timestamp, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO intramural_games (sport_id, sport, team1_id, team2_id, team1_score, team2_score, winner_id, points_team1, points_team2, game_date, timestamp, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ");
                 $stmt->execute([
+                    $sport['id'],
                     $sport['sport_name'],
                     $team1Id,
                     $team2Id,
@@ -155,7 +199,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             try {
                 $db->beginTransaction();
 
-                // Get the game
+                // Games are identified by their immutable game ID. The sport
+                // name is never used as the primary lookup key for deletion.
                 $stmt = $db->prepare("SELECT * FROM intramural_games WHERE id = ?");
                 $stmt->execute([$gameId]);
                 $game = $stmt->fetch();
@@ -164,17 +209,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     throw new Exception('Game not found.');
                 }
 
-                // Find the sport by name
-                $sport = null;
-                foreach ($sports as $s) {
-                    if ($s['sport_name'] === $game['sport']) {
-                        $sport = $s;
-                        break;
+                $sportId = isset($game['sport_id']) ? (int) $game['sport_id'] : 0;
+
+                // Recover a legacy game's sport ID if it has not yet been
+                // backfilled. This comparison is case-insensitive so a rename
+                // such as Basketball -> basketball cannot orphan the game.
+                if (!$sportId && !empty($game['sport'])) {
+                    $stmt = $db->prepare("SELECT id FROM intramural_sports WHERE LOWER(TRIM(sport_name)) = LOWER(TRIM(?)) ORDER BY id LIMIT 1");
+                    $stmt->execute([$game['sport']]);
+                    $sportId = (int) ($stmt->fetchColumn() ?: 0);
+
+                    if ($sportId) {
+                        $stmt = $db->prepare("UPDATE intramural_games SET sport_id = ? WHERE id = ?");
+                        $stmt->execute([$sportId, $gameId]);
                     }
                 }
 
-                if (!$sport) {
-                    throw new Exception('Sport not found.');
+                if (!$sportId) {
+                    throw new Exception('This game has no valid sport ID. It was not deleted because its W-L scoring record could not be safely identified. Run the intramural data repair or restore the matching sport name first.');
                 }
 
                 // Undo team1 impact on W-L records
@@ -183,10 +235,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
                 $stmt = $db->prepare("
                     UPDATE intramural_wl_records 
-                    SET wins = wins - ?, losses = losses - ?, points_awarded = points_awarded - ?, updated_at = ?
+                    SET wins = MAX(0, wins - ?), losses = MAX(0, losses - ?), points_awarded = points_awarded - ?, updated_at = ?
                     WHERE squadron_id = ? AND sport_id = ?
                 ");
-                $stmt->execute([$team1Wins, $team1Losses, $game['points_team1'], date('c'), $game['team1_id'], $sport['id']]);
+                $stmt->execute([$team1Wins, $team1Losses, $game['points_team1'], date('c'), $game['team1_id'], $sportId]);
 
                 // Undo team2 impact on W-L records
                 $team2Wins = ($game['team2_score'] > $game['team1_score']) ? 1 : 0;
@@ -194,12 +246,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
                 $stmt = $db->prepare("
                     UPDATE intramural_wl_records 
-                    SET wins = wins - ?, losses = losses - ?, points_awarded = points_awarded - ?, updated_at = ?
+                    SET wins = MAX(0, wins - ?), losses = MAX(0, losses - ?), points_awarded = points_awarded - ?, updated_at = ?
                     WHERE squadron_id = ? AND sport_id = ?
                 ");
-                $stmt->execute([$team2Wins, $team2Losses, $game['points_team2'], date('c'), $game['team2_id'], $sport['id']]);
+                $stmt->execute([$team2Wins, $team2Losses, $game['points_team2'], date('c'), $game['team2_id'], $sportId]);
 
-                // Delete the game
+                // Delete the game by immutable game_id. Renaming the sport
+                // cannot prevent this operation.
                 $stmt = $db->prepare("DELETE FROM intramural_games WHERE id = ?");
                 $stmt->execute([$gameId]);
 
@@ -216,11 +269,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 }
 
 $stmt = $db->prepare("
-    SELECT g.id, g.sport, g.team1_id, g.team2_id, g.team1_score, g.team2_score, 
+    SELECT g.id, g.sport_id, g.sport, COALESCE(s.sport_name, g.sport) AS sport_display,
+           g.team1_id, g.team2_id, g.team1_score, g.team2_score,
            g.winner_id, g.points_team1, g.points_team2, g.game_date, g.timestamp, g.created_at,
            t1.name AS team1_name, t1.icon_filename AS team1_icon,
            t2.name AS team2_name, t2.icon_filename AS team2_icon
     FROM intramural_games g
+    LEFT JOIN intramural_sports s ON g.sport_id = s.id
     JOIN squadrons t1 ON g.team1_id = t1.id
     JOIN squadrons t2 ON g.team2_id = t2.id
     ORDER BY g.game_date DESC, g.created_at DESC
@@ -337,7 +392,7 @@ $recentGames = $stmt->fetchAll();
             <?php foreach ($recentGames as $game): ?>
                 <div class="game-card">
                     <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px;">
-                        <h4 style="margin: 0;"><?php echo htmlspecialchars($game['sport']); ?> - <?php echo htmlspecialchars(date('M j, Y', strtotime($game['game_date']))); ?></h4>
+                        <h4 style="margin: 0;"><?php echo htmlspecialchars($game['sport_display']); ?> - <?php echo htmlspecialchars(date('M j, Y', strtotime($game['game_date']))); ?></h4>
                         <form method="post" action="admin-intramural-games.php" style="display: inline;">
                             <input type="hidden" name="action" value="delete_game">
                             <input type="hidden" name="game_id" value="<?php echo htmlspecialchars((string)$game['id']); ?>">
