@@ -31,6 +31,117 @@ function bracketBootstrap(PDO $db): void
     } catch (Throwable $e) {
         error_log('Bracket score-event backfill failed: '.$e->getMessage());
     }
+
+    // The homepage already renders one tournament card per bracket. Add a
+    // presentation-only output pass so multi-round cards are divided into
+    // clearly labeled sections without duplicating or changing bracket data.
+    static $roundRendererRegistered = false;
+    if (!$roundRendererRegistered) {
+        ob_start('bracketRenderRoundSections');
+        $roundRendererRegistered = true;
+    }
+}
+
+function bracketRenderRoundSections(string $html): string
+{
+    if (strpos($html, 'class="tournament-card"') === false || strpos($html, 'class="tournament-match"') === false) {
+        return $html;
+    }
+
+    try {
+        $db = getDb();
+        $rows = $db->query("SELECT id,bracket_type FROM brackets ORDER BY updated_at DESC")->fetchAll(PDO::FETCH_ASSOC);
+        $roundQueues = [];
+        foreach ($rows as $row) {
+            $roundStmt = $db->prepare('SELECT id,name FROM bracket_rounds WHERE bracket_id=? ORDER BY round_number');
+            $roundStmt->execute([(string)$row['id']]);
+            $rounds = $roundStmt->fetchAll(PDO::FETCH_ASSOC);
+            $queue = [];
+            foreach ($rounds as $round) {
+                $matchStmt = $db->prepare('SELECT COUNT(*) FROM bracket_matchups WHERE round_id=?');
+                $matchStmt->execute([(int)$round['id']]);
+                $count = (int)$matchStmt->fetchColumn();
+                if ($count > 0) $queue[] = ['name'=>$round['name'], 'count'=>$count];
+            }
+            if ($queue) $roundQueues[] = $queue;
+        }
+
+        if (!$roundQueues) return $html;
+
+        $queueIndex = 0;
+        $roundIndex = 0;
+        $matchInRound = 0;
+        $insideBracket = false;
+        $matchNumber = 0;
+
+        $replacement = preg_replace_callback('/<div class="tournament-match">/', function () use (&$queueIndex,&$roundIndex,&$matchInRound,&$insideBracket,&$matchNumber,$roundQueues) {
+            // The homepage emits tournament cards in the same updated_at order
+            // as the query above. Detect the first match of a new card from the
+            // round queue and reset the section counters when necessary.
+            if ($matchNumber === 0 || ($insideBracket && $matchInRound >= ($roundQueues[$queueIndex][$roundIndex]['count'] ?? PHP_INT_MAX))) {
+                if ($matchNumber > 0 && $insideBracket) {
+                    $roundIndex++;
+                    if ($roundIndex >= count($roundQueues[$queueIndex])) {
+                        $queueIndex++;
+                        $roundIndex = 0;
+                        $matchInRound = 0;
+                        $insideBracket = false;
+                    } else {
+                        $matchInRound = 0;
+                    }
+                }
+            }
+
+            if (!$insideBracket) {
+                $insideBracket = true;
+                $matchInRound = 0;
+            }
+
+            $round = $roundQueues[$queueIndex][$roundIndex] ?? null;
+            $prefix = '';
+            if ($round && $matchInRound === 0) {
+                $prefix = '<div class="bracket-round-section"><div class="bracket-round-title">' . htmlspecialchars((string)$round['name'], ENT_QUOTES, 'UTF-8') . '</div>';
+            }
+
+            $matchInRound++;
+            $matchNumber++;
+            return $prefix . '<div class="tournament-match">';
+        }, $html);
+
+        if ($replacement === null) return $html;
+
+        // Close each round section immediately before the next section/card.
+        // Match cards are flat siblings in the existing markup, so this pass
+        // replaces the round-title markers with wrappers using the known match
+        // counts for each bracket.
+        $cursor = 0;
+        foreach ($roundQueues as $queue) {
+            foreach ($queue as $round) {
+                $needed = (int)$round['count'];
+                $seen = 0;
+                $pos = $cursor;
+                while ($seen < $needed && preg_match('/<div class="tournament-match">/', $replacement, $m, PREG_OFFSET_CAPTURE, $pos)) {
+                    $seen++;
+                    $pos = $m[0][1] + strlen($m[0][0]);
+                }
+                if ($seen === $needed) {
+                    $closePos = $pos;
+                    $replacement = substr($replacement, 0, $closePos) . '</div>' . substr($replacement, $closePos);
+                    $cursor = $closePos + 6;
+                }
+            }
+        }
+
+        // Inject styles once. Existing tournament-card styling remains intact.
+        if (strpos($replacement, '.bracket-round-section') === false && strpos($replacement, '</style>') !== false) {
+            $css = '<style>.bracket-round-section{margin:0 0 18px;padding:0 0 4px;border:1px solid #e2e6ea;border-radius:8px;background:#fff}.bracket-round-title{padding:10px 12px;margin:0 0 10px;background:#f1f4f7;color:#002147;font-size:.9em;font-weight:700;text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid #e2e6ea}.bracket-round-section>.tournament-match{margin-left:10px;margin-right:10px}.bracket-round-section:last-child{margin-bottom:0}</style>';
+            $replacement = str_replace('</style>', $css . '</style>', $replacement);
+        }
+        return $replacement;
+    } catch (Throwable $e) {
+        error_log('Bracket round-section renderer failed: '.$e->getMessage());
+        return $html;
+    }
 }
 
 function bracketSquadrons(): array
