@@ -50,7 +50,7 @@ function bracketRenderRoundSections(string $html): string
 
     try {
         $db = getDb();
-        $rows = $db->query("SELECT id,bracket_type FROM brackets ORDER BY updated_at DESC")->fetchAll(PDO::FETCH_ASSOC);
+        $rows = $db->query("SELECT id FROM brackets ORDER BY updated_at DESC")->fetchAll(PDO::FETCH_ASSOC);
         $roundQueues = [];
         foreach ($rows as $row) {
             $roundStmt = $db->prepare('SELECT id,name FROM bracket_rounds WHERE bracket_id=? ORDER BY round_number');
@@ -75,9 +75,6 @@ function bracketRenderRoundSections(string $html): string
         $matchNumber = 0;
 
         $replacement = preg_replace_callback('/<div class="tournament-match">/', function () use (&$queueIndex,&$roundIndex,&$matchInRound,&$insideBracket,&$matchNumber,$roundQueues) {
-            // The homepage emits tournament cards in the same updated_at order
-            // as the query above. Detect the first match of a new card from the
-            // round queue and reset the section counters when necessary.
             if ($matchNumber === 0 || ($insideBracket && $matchInRound >= ($roundQueues[$queueIndex][$roundIndex]['count'] ?? PHP_INT_MAX))) {
                 if ($matchNumber > 0 && $insideBracket) {
                     $roundIndex++;
@@ -100,7 +97,7 @@ function bracketRenderRoundSections(string $html): string
             $round = $roundQueues[$queueIndex][$roundIndex] ?? null;
             $prefix = '';
             if ($round && $matchInRound === 0) {
-                $prefix = '<div class="bracket-round-section"><div class="bracket-round-title">' . htmlspecialchars((string)$round['name'], ENT_QUOTES, 'UTF-8') . '</div>';
+                $prefix = '<div class="bracket-round-section" style="margin:0 0 18px;padding:0 0 4px;border:1px solid #e2e6ea;border-radius:8px;background:#fff"><div class="bracket-round-title" style="padding:10px 12px;margin:0 0 10px;background:#f1f4f7;color:#002147;font-size:.9em;font-weight:700;text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid #e2e6ea">' . htmlspecialchars((string)$round['name'], ENT_QUOTES, 'UTF-8') . '</div>';
             }
 
             $matchInRound++;
@@ -110,10 +107,6 @@ function bracketRenderRoundSections(string $html): string
 
         if ($replacement === null) return $html;
 
-        // Close each round section immediately before the next section/card.
-        // Match cards are flat siblings in the existing markup, so this pass
-        // replaces the round-title markers with wrappers using the known match
-        // counts for each bracket.
         $cursor = 0;
         foreach ($roundQueues as $queue) {
             foreach ($queue as $round) {
@@ -125,18 +118,12 @@ function bracketRenderRoundSections(string $html): string
                     $pos = $m[0][1] + strlen($m[0][0]);
                 }
                 if ($seen === $needed) {
-                    $closePos = $pos;
-                    $replacement = substr($replacement, 0, $closePos) . '</div>' . substr($replacement, $closePos);
-                    $cursor = $closePos + 6;
+                    $replacement = substr($replacement, 0, $pos) . '</div>' . substr($replacement, $pos);
+                    $cursor = $pos + 6;
                 }
             }
         }
 
-        // Inject styles once. Existing tournament-card styling remains intact.
-        if (strpos($replacement, '.bracket-round-section') === false && strpos($replacement, '</style>') !== false) {
-            $css = '<style>.bracket-round-section{margin:0 0 18px;padding:0 0 4px;border:1px solid #e2e6ea;border-radius:8px;background:#fff}.bracket-round-title{padding:10px 12px;margin:0 0 10px;background:#f1f4f7;color:#002147;font-size:.9em;font-weight:700;text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid #e2e6ea}.bracket-round-section>.tournament-match{margin-left:10px;margin-right:10px}.bracket-round-section:last-child{margin-bottom:0}</style>';
-            $replacement = str_replace('</style>', $css . '</style>', $replacement);
-        }
         return $replacement;
     } catch (Throwable $e) {
         error_log('Bracket round-section renderer failed: '.$e->getMessage());
