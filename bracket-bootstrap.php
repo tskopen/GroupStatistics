@@ -80,6 +80,14 @@ function bracketRenderRoundSections(string $html): string
 
         $css = <<<'CSS'
 <style id="homepage-card-layout-fix">
+/* Grid rows no longer stretch every card to the tallest card beside it. */
+.events-grid {
+    align-items: start;
+}
+.events-grid > * {
+    align-self: start;
+    height: max-content;
+}
 .tournament-match {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(110px, auto) minmax(0, 1fr);
