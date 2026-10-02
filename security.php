@@ -11,8 +11,13 @@ function csrf_input(): string {
     return '<input type="hidden" name="_csrf" value="' . htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') . '">';
 }
 
+function isAdminEndpoint(): bool {
+    $script = basename($_SERVER['SCRIPT_NAME'] ?? '');
+    return str_starts_with($script, 'admin-') || str_starts_with($script, 'admin_') || $script === 'admin.php';
+}
+
 function verify_csrf(): void {
-    if ($_SERVER['REQUEST_METHOD'] !== 'POST') return;
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST' || !isAdminEndpoint()) return;
     $expected = $_SESSION['_csrf'] ?? '';
     $provided = $_POST['_csrf'] ?? '';
     if ($expected === '' || $provided === '' || !hash_equals($expected, (string)$provided)) {
@@ -22,6 +27,23 @@ function verify_csrf(): void {
 }
 
 function require_csrf(): void { verify_csrf(); }
+
+/**
+ * Automatically inject the token into normal HTML POST forms. This lets the
+ * existing admin UI gain CSRF protection without duplicating token markup in
+ * every template. JavaScript/API requests must send the same token explicitly.
+ */
+ob_start(static function (string $html): string {
+    if ($html === '' || stripos($html, '<form') === false) return $html;
+    $token = csrf_input();
+    return preg_replace_callback('/<form\b([^>]*)>/i', static function ($m) use ($token) {
+        $attrs = $m[1];
+        if (!preg_match('/\bmethod\s*=\s*["\']?post\b/i', $attrs)) return $m[0];
+        if (stripos($m[0], 'name="_csrf"') !== false) return $m[0];
+        return $m[0] . $token;
+    }, $html) ?? $html;
+});
+verify_csrf();
 
 function validateUploadedImage(array $file): array {
     if (($file['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) return [true, null];
