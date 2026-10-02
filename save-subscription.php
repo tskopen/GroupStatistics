@@ -1,27 +1,26 @@
 <?php
+require_once __DIR__ . '/notifications-helper.php';
+header('Content-Type: application/json');
 
-require_once 'notifications-helper.php';
-
-$data = json_decode(
-    file_get_contents('php://input'),
-    true
-);
-
-if (!$data) {
-    http_response_code(400);
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    http_response_code(405);
+    echo json_encode(['success'=>false,'error'=>'POST required']);
     exit;
 }
 
-addSubscription(
-    $data['endpoint'],
-    $data['keys']['auth'],
-    $data['keys']['p256dh']
-);
+$data=json_decode(file_get_contents('php://input'),true);
+$endpoint=$data['endpoint']??'';
+$keys=$data['keys']??[];
+$auth=$keys['auth']??'';
+$p256dh=$keys['p256dh']??'';
+$squadrons=$data['squadrons']??[];
+if (!is_array($squadrons)) $squadrons=[];
+$squadrons=array_values(array_filter(array_map('intval',$squadrons),fn($id)=>$id>0));
 
-error_log('[PUSH-DIAG] Subscription saved: endpoint=' . substr($data['endpoint'] ?? '', 0, 60) . '... auth_len=' . strlen($data['keys']['auth'] ?? '') . ' p256dh_len=' . strlen($data['keys']['p256dh'] ?? ''));
+if (!is_string($endpoint) || !is_string($auth) || !is_string($p256dh) || !addSubscription($endpoint,$auth,$p256dh,$squadrons)) {
+    http_response_code(400);
+    echo json_encode(['success'=>false,'error'=>'Invalid push subscription']);
+    exit;
+}
 
-header('Content-Type: application/json');
-
-echo json_encode([
-    'success' => true
-]);
+echo json_encode(['success'=>true]);
