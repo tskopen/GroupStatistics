@@ -158,14 +158,15 @@ usort($otherByEvent, fn($a,$b) => ($b['latest_timestamp']??0) <=> ($a['latest_ti
 
     /* Score breakdown modal */
     .breakdown-modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 20px; }
-    .breakdown-modal { background: #fff; border-radius: 8px; max-width: 500px; width: 100%; max-height: 80vh; overflow-y: auto; padding: 25px; position: relative; box-shadow: 0 4px 20px rgba(0,0,0,0.3); }
-    .breakdown-modal-close { position: absolute; top: 12px; right: 15px; background: none; border: none; font-size: 1.5em; cursor: pointer; color: #666; }
-    .breakdown-modal-close:hover { color: #000; }
-    .breakdown-section { margin-top: 15px; }
-    .breakdown-section h4 { margin-bottom: 8px; color: var(--primary-color); }
-    .breakdown-item { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #eee; font-size: 0.9em; }
-    .breakdown-item-points { font-weight: bold; color: #28a745; }
-    .breakdown-total { margin-top: 10px; font-weight: bold; text-align: right; }
+    .breakdown-modal { background:#fff; border-radius:8px; max-width:760px; width:100%; max-height:90vh; overflow-y:auto; padding:30px 34px 28px; position:relative; box-shadow:0 8px 30px rgba(0,0,0,.25); }
+    .breakdown-modal-close { position:absolute; top:18px; right:18px; background:none; border:0; font-size:2em; line-height:1; cursor:pointer; color:#666; padding:0; }
+    .breakdown-modal-close:hover { color:#222; }
+    .breakdown-modal h3 { margin:0 42px 28px 0; font-size:28px; line-height:1.2; color:#111; }
+    .breakdown-section { margin-top:24px; }
+    .breakdown-section h4 { margin:0 0 12px; color:var(--primary-color); font-size:24px; line-height:1.2; }
+    .breakdown-item { display:flex; justify-content:space-between; align-items:center; gap:16px; padding:12px 0; border-bottom:1px solid #eee; font-size:20px; line-height:1.25; }
+    .breakdown-item-points { font-weight:800; color:#18a348; white-space:nowrap; }
+    .breakdown-total { margin-top:16px; padding-top:4px; font-weight:800; font-size:22px; text-align:right; color:#111; }
     
     /* Event Cards Grid */
     .events-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 20px; margin-bottom: 30px; }
@@ -202,15 +203,15 @@ usort($otherByEvent, fn($a,$b) => ($b['latest_timestamp']??0) <=> ($a['latest_ti
     /* SAMI card (all squadron results for one SAMI round grouped together) */
     .sami-card { background: #fff; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); overflow: hidden; grid-column: span 2; }
     @media (max-width: 768px) { .sami-card { grid-column: 1 / -1; } }
-    .sami-header { background: var(--secondary-color); color: #fff; padding: 16px; font-weight: bold; font-size: 1.3em; text-align: center; }
-    .sami-body { padding: 15px; }
+    .sami-header { background:#063f73; color:#fff; padding:18px; font-weight:800; font-size:1.55em; text-align:center; }
+    .sami-body { padding:22px; }
     
-    .sami-result { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px; margin-bottom: 10px; border-radius: 6px; background: #f9f9f9; }
+    .sami-result { display:flex; align-items:center; justify-content:space-between; gap:14px; padding:18px; margin-bottom:14px; border-radius:8px; background:#f9f9f9; }
     .sami-result:last-child { margin-bottom: 0; }
-    .sami-result-icon { width: 45px; height: 45px; border-radius: 4px; object-fit: cover; flex-shrink: 0; }
-    .sami-result-info { flex: 1; display: flex; align-items: center; gap: 10px; }
-    .sami-result-name { font-weight: bold; font-size: 0.95em; text-align: left; }
-    .sami-result-score { font-weight: bold; font-size: 1.3em; color: #28a745; text-align: right; }
+    .sami-result-icon { width:67px; height:67px; border-radius:6px; object-fit:cover; flex-shrink:0; }
+    .sami-result-info { flex:1; display:flex; align-items:center; gap:15px; min-width:0; }
+    .sami-result-name { font-weight:700; font-size:1.25em; text-align:left; }
+    .sami-result-score { font-weight:800; font-size:1.6em; color:#18a348; text-align:right; }
     
     .sami-timestamp { font-size: 0.75em; color: #666; margin-top: 10px; text-align: center; }
     
