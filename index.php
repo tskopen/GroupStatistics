@@ -179,27 +179,28 @@ usort($otherByEvent, fn($a,$b) => ($b['latest_timestamp']??0) <=> ($a['latest_ti
     .event-header { background: var(--secondary-color); color: #fff; padding: 12px; font-weight: bold; font-size: 0.9em; text-align: center; }
     .event-body { padding: 15px; }
     
-    /* Tournament cards: original bracket layout, split into one card per round. */
+    /* Tournament cards: compact legacy-style matchup layout. */
     .tournament-card { background: #fff; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); overflow: hidden; grid-column: span 2; }
     @media (max-width: 768px) { .tournament-card { grid-column: 1 / -1; } }
-    .tournament-header { background: var(--primary-color); color: #fff; padding: 16px; font-weight: bold; font-size: 1.3em; text-align: center; }
-    .tournament-body { padding: 15px; }
-    
-    .tournament-match { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px; margin-bottom: 10px; border-radius: 6px; background: #f9f9f9; }
+    .tournament-header { background: var(--primary-color); color: #fff; padding: 12px 16px; font-weight: bold; font-size: 1.25em; text-align: center; }
+    .tournament-body { padding: 10px 12px; }
+
+    .bracket-meta { text-align: center; color: #667; font-size: 0.82em; margin: 0 0 8px; }
+
+    .tournament-match { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; margin-bottom: 8px; border-radius: 6px; background: #f9f9f9; min-height: 58px; }
     .tournament-match:last-child { margin-bottom: 0; }
-    
-    .match-team { flex: 1; display: flex; align-items: center; gap: 10px; }
+
+    .match-team { flex: 1 1 0; min-width: 0; display: flex; align-items: center; gap: 8px; }
     .match-team.team-right { flex-direction: row-reverse; text-align: right; }
-    .match-team-icon { width: 45px; height: 45px; border-radius: 4px; object-fit: cover; flex-shrink: 0; }
-    .match-team-name { font-weight: bold; font-size: 0.95em; }
-    
-    .match-score-block { display: flex; align-items: center; gap: 8px; font-size: 1.3em; font-weight: bold; color: var(--primary-color); padding: 0 15px; }
-    .match-vs-label { font-weight: bold; color: #999; font-size: 0.9em; margin: 0 4px; }
-    .match-points { font-size: 0.75em; color: #666; margin-top: 4px; text-align: center; }
-    
+    .match-team-icon { width: 40px; height: 40px; border-radius: 4px; object-fit: cover; flex: 0 0 40px; }
+    .match-team-name { font-weight: bold; font-size: 0.95em; line-height: 1.15; overflow-wrap: anywhere; }
+
+    .match-score-block { flex: 0 0 auto; display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 1.15em; font-weight: bold; color: var(--primary-color); padding: 0 8px; min-width: 76px; }
+    .match-vs-label { font-weight: bold; color: #999; font-size: 0.82em; }
+    .match-points { font-size: 0.68em; color: #666; margin-top: 2px; text-align: center; white-space: nowrap; }
+
     .match-winner { background: var(--accent-color); }
-    .match-winner-check { color: #28a745; font-weight: bold; margin-left: 6px; }
-    
+    .match-winner-check { color: #28a745; font-weight: bold; margin-left: 5px; }
     /* SAMI card (all squadron results for one SAMI round grouped together) */
     .sami-card { background: #fff; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); overflow: hidden; grid-column: span 2; }
     @media (max-width: 768px) { .sami-card { grid-column: 1 / -1; } }
@@ -292,31 +293,22 @@ usort($otherByEvent, fn($a,$b) => ($b['latest_timestamp']??0) <=> ($a['latest_ti
                  regular events. Both lists are pre-sorted newest-first above, so within
                  each section the most recent activity always appears first. */ ?>
         <?php foreach ($bracketsByTournament as $tournament): ?>
-        <!-- Brackets: one card per round so each round has an independent, compact card -->
-        <?php
-            $roundGroups = [];
-            foreach ($tournament['matches'] as $match) {
-                $roundName = $match['round_name'] ?? 'Round';
-                if (!isset($roundGroups[$roundName])) $roundGroups[$roundName] = [];
-                $roundGroups[$roundName][] = $match;
-            }
-        ?>
-        <?php foreach ($roundGroups as $roundName => $roundMatches): ?>
+        <!-- Single-round brackets use the original compact matchup card layout. -->
         <div class="tournament-card">
-            <div class="tournament-header">🏆 <?php echo htmlspecialchars($tournament['tournament_name']); ?> — <?php echo htmlspecialchars($roundName); ?></div>
+            <div class="tournament-header">🏆 <?php echo htmlspecialchars($tournament['tournament_name']); ?></div>
             <div class="tournament-body">
-                <?php foreach ($roundMatches as $match):
+                <?php foreach ($tournament['matches'] as $match):
                     $t1 = $squadronMap[$match['squadron_id']] ?? null;
                     $t2 = $squadronMap[$match['opponent_id']] ?? null;
                     $winnerId = $match['winner_id'] ?? null;
-                    $t1IsWinner = $winnerId && $winnerId === $match['squadron_id'];
-                    $t2IsWinner = $winnerId && $winnerId === $match['opponent_id'];
+                    $t1IsWinner = $winnerId !== null && $winnerId == $match['squadron_id'];
+                    $t2IsWinner = $winnerId !== null && $winnerId == $match['opponent_id'];
                     $pointsAwarded = $match['value'] ?? 0;
                 ?>
                 <div class="tournament-match">
                     <div class="match-team <?php echo $t1IsWinner ? 'match-winner' : ''; ?>">
                         <?php if ($t1 && !empty($t1['icon_filename'])): ?>
-                            <img src="<?php echo htmlspecialchars(iconUrl($t1['icon_filename'])); ?>" alt="icon" class="match-team-icon">
+                            <img src="<?php echo htmlspecialchars(iconUrl($t1['icon_filename'])); ?>" alt="" class="match-team-icon">
                         <?php else: ?>
                             <div class="match-team-icon" style="background:#ccc;"></div>
                         <?php endif; ?>
@@ -328,13 +320,14 @@ usort($otherByEvent, fn($a,$b) => ($b['latest_timestamp']??0) <=> ($a['latest_ti
 
                     <div class="match-score-block">
                         <span><?php echo htmlspecialchars((string)($match['team1_score'] ?? '-')); ?></span>
-                        <span class="match-vs-label">—</span>
+                        <span class="match-vs-label">vs</span>
                         <span><?php echo htmlspecialchars((string)($match['team2_score'] ?? '-')); ?></span>
+                        <div class="match-points">+<?php echo htmlspecialchars((string)$pointsAwarded); ?> pts</div>
                     </div>
 
                     <div class="match-team team-right <?php echo $t2IsWinner ? 'match-winner' : ''; ?>">
                         <?php if ($t2 && !empty($t2['icon_filename'])): ?>
-                            <img src="<?php echo htmlspecialchars(iconUrl($t2['icon_filename'])); ?>" alt="icon" class="match-team-icon">
+                            <img src="<?php echo htmlspecialchars(iconUrl($t2['icon_filename'])); ?>" alt="" class="match-team-icon">
                         <?php else: ?>
                             <div class="match-team-icon" style="background:#ccc;"></div>
                         <?php endif; ?>
@@ -344,11 +337,9 @@ usort($otherByEvent, fn($a,$b) => ($b['latest_timestamp']??0) <=> ($a['latest_ti
                         </span>
                     </div>
                 </div>
-                <div class="match-points">+<?php echo $pointsAwarded; ?> pts</div>
                 <?php endforeach; ?>
             </div>
         </div>
-        <?php endforeach; ?>
         <?php endforeach; ?>
 
         <?php foreach ($samisByEvent as $sami): ?>
