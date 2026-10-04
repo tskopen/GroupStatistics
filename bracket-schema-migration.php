@@ -29,7 +29,7 @@ function initBracketTables(PDO $db): void
     foreach ($columns as $column) {
         if ($column['name'] === 'bracket_type') { $hasType = true; break; }
     }
-    if (!$hasType) $db->exec("ALTER TABLE brackets ADD COLUMN bracket_type TEXT NOT NULL DEFAULT 'multi_round'");
+    if (!$hasType) $db->exec("ALTER TABLE brackets ADD COLUMN bracket_type TEXT NOT NULL DEFAULT 'single_round'");
 
     $db->exec("CREATE TABLE IF NOT EXISTS bracket_score_events (
         matchup_id TEXT PRIMARY KEY, event_id INTEGER NOT NULL UNIQUE,
@@ -59,7 +59,7 @@ function bracketLoad(PDO $db, string $bracketId): ?array
     $bracket = $stmt->fetch(PDO::FETCH_ASSOC);
     if (!$bracket) return null;
 
-    $bracket['bracket_type'] = $bracket['bracket_type'] ?: 'multi_round';
+    $bracket['bracket_type'] = $bracket['bracket_type'] ?: 'single_round';
 
     $stmt = $db->prepare('SELECT squadron_id,seed FROM bracket_participants WHERE bracket_id=? ORDER BY COALESCE(seed,999999),id');
     $stmt->execute([$bracketId]);
@@ -124,7 +124,7 @@ function bracketSave(PDO $db, array $bracket): void
         $exists->execute([$id]);
         if ($exists->fetchColumn()) {
             $stmt = $db->prepare('UPDATE brackets SET name=?,created_date=?,updated_at=?,champion_id=?,bracket_type=? WHERE id=?');
-            $stmt->execute([$bracket['name'], $created, $now, $bracket['champion_id'] ?? null, $bracket['bracket_type'] ?? 'multi_round', $id]);
+            $stmt->execute([$bracket['name'], $created, $now, $bracket['champion_id'] ?? null, $bracket['bracket_type'] ?? 'single_round', $id]);
         } else {
             $stmt = $db->prepare('INSERT INTO brackets(id,name,created_date,updated_at,champion_id,rounds,bracket_type) VALUES(?,?,?,?,?,?,?)');
             $stmt->execute([$id, $bracket['name'], $created, $now, $bracket['champion_id'] ?? null, null, $bracket['bracket_type'] ?? 'multi_round']);
