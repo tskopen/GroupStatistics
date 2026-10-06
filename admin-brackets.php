@@ -436,6 +436,14 @@ h1,h2,h3 { color:var(--primary); }
         </div>
     <?php else: ?>
         <div class="card">
+            <?php
+            $sourceLabels = [];
+            foreach ($bracket['rounds'] as $sourceRound) {
+                foreach ($sourceRound['matchups'] as $sourceMatch) {
+                    $sourceLabels[$sourceMatch['id']] = $sourceRound['name'] . ' Match ' . (int)$sourceMatch['match_number'];
+                }
+            }
+            ?>
             <div class="header">
                 <div>
                     <h2 style="margin:0;"><?php echo h($bracket['name']); ?></h2>
@@ -497,11 +505,13 @@ h1,h2,h3 { color:var(--primary); }
                                 <div class="teams">
                                     <div class="team-box derived-team">
                                         <div class="muted">Team 1</div>
-                                        <div class="team-name"><?php echo $match['team1_id'] !== null ? h(teamName($db, (int)$match['team1_id'])) : 'Winner of previous match'; ?></div>
+                                        <div class="team-name"><?php echo $match['team1_id'] !== null ? h(teamName($db, (int)$match['team1_id'])) : 'TBD'; ?></div>
+                                        <?php if ($match['team1_source_matchup_id'] !== null): ?><div class="muted">Winner of <?php echo h($sourceLabels[$match['team1_source_matchup_id']] ?? 'previous match'); ?></div><?php endif; ?>
                                     </div>
                                     <div class="team-box derived-team">
                                         <div class="muted">Team 2</div>
-                                        <div class="team-name"><?php echo $match['team2_id'] !== null ? h(teamName($db, (int)$match['team2_id'])) : 'Winner of previous match'; ?></div>
+                                        <div class="team-name"><?php echo $match['team2_id'] !== null ? h(teamName($db, (int)$match['team2_id'])) : 'TBD'; ?></div>
+                                        <?php if ($match['team2_source_matchup_id'] !== null): ?><div class="muted">Winner of <?php echo h($sourceLabels[$match['team2_source_matchup_id']] ?? 'previous match'); ?></div><?php endif; ?>
                                     </div>
                                 </div>
                                 <p class="locked-note">Teams advance here automatically from the previous round.</p>
