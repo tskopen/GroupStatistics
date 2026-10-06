@@ -195,9 +195,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $existing = $old->fetch(PDO::FETCH_ASSOC);
             if (!$existing) throw new Exception('Matchup not found.');
 
-            // Do not silently erase an already-posted result when teams are changed.
+            // Completed matches are immutable. Multi-round matchups also derive
+            // their teams from winners of the preceding round.
             if (($existing['status'] ?? '') === 'completed') {
-                throw new Exception('Completed matchups cannot have their teams changed.');
+                throw new Exception('Completed matchups are immutable and cannot be changed.');
+            }
+            if ($existing['team1_source_matchup_id'] !== null || $existing['team2_source_matchup_id'] !== null) {
+                throw new Exception('Later-round teams are populated automatically from previous winners.');
             }
 
             $status = ($team1 !== null && $team2 !== null) ? 'ready' : 'pending';
@@ -368,7 +372,7 @@ h1,h2,h3 { color:var(--primary); }
     <div class="header">
         <div>
             <h1 style="margin:0;">Bracket Manager</h1>
-            <div class="subtitle">Create one simple matchup bracket, post the teams, then add scores as games are played.</div>
+            <div class="subtitle">Create either independent single-round matchups or a multi-round elimination bracket. Teams can be posted before scores are entered.</div>
         </div>
         <a class="btn secondary" href="index.php">View Public Tracker</a>
     </div>
@@ -396,7 +400,7 @@ h1,h2,h3 { color:var(--primary); }
 
         <div class="card">
             <h2 style="margin-top:0;">New Bracket</h2>
-            <p class="muted">Select the teams now. Their matchups can be displayed publicly before any scores exist.</p>
+            <p class="muted"><strong>Single Round:</strong> independent matchups that never feed into another round.<br><strong>Multi-Round:</strong> elimination bracket where winners automatically advance. Multi-Round requires 2, 4, 8, 16, 32, or 64 teams.</p>
             <form method="post">
                 <input type="hidden" name="action" value="create">
                 <label>
@@ -428,7 +432,7 @@ h1,h2,h3 { color:var(--primary); }
     <?php if (!$bracket): ?>
         <div class="card">
             <h2 style="margin-top:0;"><?php echo $all ? 'Select a bracket' : 'Create your first bracket'; ?></h2>
-            <p class="muted">Brackets are intentionally simple: one round, fixed matchups, teams first, scores later.</p>
+            <p class="muted">Single Round uses independent matchups. Multi-Round connects each round so winners advance automatically. Completed scores are locked after posting.</p>
         </div>
     <?php else: ?>
         <div class="card">
@@ -446,14 +450,19 @@ h1,h2,h3 { color:var(--primary); }
 
             <?php foreach ($bracket['rounds'] as $round): ?>
                 <section class="round">
-                    <?php foreach ($round['matchups'] as $match): ?>
+                    <?php if ($bracket['bracket_type'] === 'multi_round'): ?>
+                        <h3 class="round-title"><?php echo h($round['name']); ?></h3>
+                    <?php endif; ?>
+                    <?php foreach ($round['matchups'] as $match):
+                        $isDerived = $match['team1_source_matchup_id'] !== null || $match['team2_source_matchup_id'] !== null;
+                    ?>
                         <div class="match <?php echo $match['status'] === 'completed' ? 'completed' : ''; ?>">
                             <div class="match-header">
                                 <strong>Match <?php echo (int)$match['match_number']; ?></strong>
                                 <span class="status"><?php echo h($match['status']); ?></span>
                             </div>
 
-                            <?php if ($match['status'] !== 'completed'): ?>
+                            <?php if ($match['status'] !== 'completed' && !$isDerived): ?>
                                 <form method="post">
                                     <input type="hidden" name="action" value="assign">
                                     <input type="hidden" name="bracket_id" value="<?php echo h($bracketId); ?>">
@@ -484,6 +493,18 @@ h1,h2,h3 { color:var(--primary); }
                                     </div>
                                     <p><button class="btn secondary" type="submit">Save Teams</button></p>
                                 </form>
+                            <?php elseif ($match['status'] !== 'completed' && $isDerived): ?>
+                                <div class="teams">
+                                    <div class="team-box derived-team">
+                                        <div class="muted">Team 1</div>
+                                        <div class="team-name"><?php echo $match['team1_id'] !== null ? h(teamName($db, (int)$match['team1_id'])) : 'Winner of previous match'; ?></div>
+                                    </div>
+                                    <div class="team-box derived-team">
+                                        <div class="muted">Team 2</div>
+                                        <div class="team-name"><?php echo $match['team2_id'] !== null ? h(teamName($db, (int)$match['team2_id'])) : 'Winner of previous match'; ?></div>
+                                    </div>
+                                </div>
+                                <p class="locked-note">Teams advance here automatically from the previous round.</p>
                             <?php else: ?>
                                 <div class="teams">
                                     <div class="team-box">
@@ -496,6 +517,10 @@ h1,h2,h3 { color:var(--primary); }
                                     </div>
                                 </div>
                                 <p class="muted"><strong><?php echo h(teamName($db, $match['winner_id'])); ?></strong> · +<?php echo h($match['points']); ?> pts</p>
+                            <?php endif; ?>
+
+                            <?php if ($match['status'] === 'completed'): ?>
+                                <p class="locked-note">✓ Completed match · score and teams are locked.</p>
                             <?php endif; ?>
 
                             <?php if ($match['status'] === 'ready'): ?>
