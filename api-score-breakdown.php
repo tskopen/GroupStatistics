@@ -26,7 +26,7 @@ if (!$squadron) {
 
 // Event categories: samis, pft, other, bracket (intramural events are
 // tracked separately via intramural_wl_records, not the events table).
-$eventTypes = ['samis', 'pft', 'other', 'bracket'];
+$eventTypes = ['samis', 'pft', 'other', 'bracket', 'cadet_of_month'];
 
 $placeholders = implode(',', array_fill(0, count($eventTypes), '?'));
 
