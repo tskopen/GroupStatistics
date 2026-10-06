@@ -159,8 +159,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $matchStmt->execute([
                             $matchId, $id, $roundIds[$round], $m,
                             $team1, $team2,
-                            null, null, null, null, null, 0, $status,
-                            $round < $numRounds ? $matchIds[$round + 1][intdiv($m - 1, 2) + 1] ?? null : null,
+                            null, null, null, null, null, 0, $status, null,
                             $now, $now
                         ]);
                     }
