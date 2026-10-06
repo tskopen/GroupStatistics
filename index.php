@@ -16,6 +16,10 @@ bracketEnsureTables($db);
 $stmt = $db->prepare("SELECT * FROM squadrons ORDER BY id");
 $stmt->execute();
 $squadrons = $stmt->fetchAll();
+$squadronMap = [];
+foreach ($squadrons as $squadron) {
+    $squadronMap[(int)$squadron['id']] = $squadron;
+}
 
 // Fetch scores (all events)
 $stmt = $db->prepare("SELECT * FROM events ORDER BY timestamp DESC");
