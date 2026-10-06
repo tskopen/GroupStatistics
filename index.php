@@ -31,26 +31,18 @@ foreach ($scores as &$scoreRow) {
 }
 unset($scoreRow);
 
-// Calculate the leaderboard from the current SQLite event data.
-$scoreTotals = [];
-foreach ($squadrons as $squadron) {
-    $scoreTotals[(int)$squadron['id']] = 0;
-}
-foreach ($scores as $event) {
-    $sid = (int)($event['squadron_id'] ?? 0);
-    if (isset($scoreTotals[$sid])) {
-        $scoreTotals[$sid] += (float)($event['value'] ?? 0);
-    }
-}
+// Build the leaderboard through the shared SQLite scoring logic so events,
+// intramural points, and existing scoring rules remain consistent.
+$rankingRows = getSquadronRankings();
 $ranked = [];
-foreach ($squadrons as $squadron) {
-    $sid = (int)$squadron['id'];
+foreach ($rankingRows as $row) {
+    $squadron = $squadronMap[(int)$row['squadron_id']] ?? null;
+    if (!$squadron) continue;
     $ranked[] = [
         'squadron' => $squadron,
-        'total' => $scoreTotals[$sid] ?? 0,
+        'total' => $row['total'],
     ];
 }
-usort($ranked, fn($a, $b) => $b['total'] <=> $a['total'] ?: ((int)$a['squadron']['id'] <=> (int)$b['squadron']['id']));
 
 // Brackets are loaded from the relational bracket tables. The existing
 // tournament-card markup below is retained, so old homepage presentation
