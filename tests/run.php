@@ -12,7 +12,7 @@ $dataDir=sys_get_temp_dir().'/groupstats-test-'.bin2hex(random_bytes(6));
 mkdir($dataDir,0777,true);
 define('DATA_DIR',$dataDir);
 
-foreach(glob(__DIR__.'/../migrations/00[1-3]_*.php') as $file){$migration=require $file; $migration($db);}
+foreach(glob(__DIR__.'/../migrations/00[1-5]_*.php') as $file){$migration=require $file; $migration($db);}
 check((bool)$db->query("SELECT 1 FROM sqlite_master WHERE type='table' AND name='squadrons'")->fetchColumn(),'core schema migration creates squadrons');
 check((bool)$db->query("SELECT 1 FROM sqlite_master WHERE type='table' AND name='notification_subscriptions'")->fetchColumn(),'notification migration creates subscription table');
 $cols=$db->query('PRAGMA table_info(intramural_games)')->fetchAll(PDO::FETCH_COLUMN,1);
@@ -21,6 +21,8 @@ check(in_array('sport_id',$cols,true),'intramural games has sport_id');
 $tables=$db->query("SELECT name FROM sqlite_master WHERE type='table'")->fetchAll(PDO::FETCH_COLUMN);
 check(in_array('bracket_matchups',$tables,true),'bracket matchup table exists');
 check(in_array('bracket_score_events',$tables,true),'bracket score-event link exists');
+check(in_array('cadet_of_month_awards',$tables,true),'Cadet of the Month table exists');
+check((bool)$db->query("SELECT 1 FROM event_type_config WHERE event_type='cadet_of_month'")->fetchColumn(),'Cadet of the Month event type is seeded');
 
 // Regression: production already had relational bracket rounds when migration
 // 004 ran. Legacy JSON import must reuse those rounds rather than inserting a
