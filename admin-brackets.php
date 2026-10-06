@@ -261,8 +261,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $nextMatch = $next->fetch(PDO::FETCH_ASSOC);
                 if ($nextMatch) {
                     $slot = ((int)$match['match_number'] % 2 === 1) ? 'team1_id' : 'team2_id';
-                    $db->prepare("UPDATE bracket_matchups SET $slot=?, status=CASE WHEN team1_id IS NOT NULL AND team2_id IS NOT NULL THEN 'ready' ELSE status END, updated_at=? WHERE id=?")
-                        ->execute([$winner, date('c'), $nextMatch['id']]);
+                    $nextTeam1 = $slot === 'team1_id' ? $winner : $nextMatch['team1_id'];
+                    $nextTeam2 = $slot === 'team2_id' ? $winner : $nextMatch['team2_id'];
+                    $nextStatus = ($nextTeam1 !== null && $nextTeam2 !== null) ? 'ready' : 'pending';
+                    $db->prepare("UPDATE bracket_matchups SET $slot=?, status=?, updated_at=? WHERE id=?")
+                        ->execute([$winner, $nextStatus, date('c'), $nextMatch['id']]);
                 }
             } else {
                 $db->prepare('UPDATE brackets SET champion_id=?,updated_at=? WHERE id=?')
