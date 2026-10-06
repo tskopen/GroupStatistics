@@ -27,6 +27,19 @@ foreach ($scores as &$scoreRow) {
 }
 unset($scoreRow);
 
+// Restore the leaderboard data model used by the PR #61 homepage.
+// Keep the SQLite scoring helper as the single source of truth.
+$rankingRows = getSquadronRankings();
+$ranked = [];
+foreach ($rankingRows as $row) {
+    $squadron = $squadronMap[(int)$row['squadron_id']] ?? null;
+    if (!$squadron) continue;
+    $ranked[] = [
+        'squadron' => $squadron,
+        'total' => $row['total'],
+    ];
+}
+
 // Brackets are loaded from the relational bracket tables. The existing
 // tournament-card markup below is retained, so old homepage presentation
 // continues to work while SQLite remains the source of truth.
