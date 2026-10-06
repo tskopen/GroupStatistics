@@ -27,14 +27,7 @@ foreach ($scores as &$scoreRow) {
 }
 unset($scoreRow);
 
-if (empty($scores)) {
-    try {
-        $countStmt = $db->prepare('SELECT COUNT(*) as cnt FROM events');
-        $countStmt->execute();
-        $eventCount = $countStmt->fetch()['cnt'] ?? 0;
-        error_log("index.php: events query returned 0 rows, COUNT(*) FROM events = {$eventCount}, DB_PATH=" . DB_PATH);
-    } catch (Exception $e) {
-    // Brackets are loaded from the relational bracket tables. The existing
+// Brackets are loaded from the relational bracket tables. The existing
 // tournament-card markup below is retained, so old homepage presentation
 // continues to work while SQLite remains the source of truth.
 $bracketsByTournament = [];
@@ -65,12 +58,6 @@ foreach ($bracketRows as $bracketRow) {
         }
     }
     if (!empty($tournament['matches'])) $bracketsByTournament[] = $tournament;
-}
-
-
-    if (!empty($tournament['matches'])) {
-        $bracketsByTournament[] = $tournament;
-    }
 }
 
 // Regular events still come from scores.json, newest first.
