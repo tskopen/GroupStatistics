@@ -412,8 +412,8 @@ usort(
                                     <div class="match-team-icon" style="background:#ccc;"></div>
                                 <?php endif; ?>
                                 <span class="match-team-name">
-                                    <?php echo htmlspecialchars($t1Label ?? ($t1Source ? 'Winner of ' . ($matchLabels[$t1Source] ?? 'Match') : 'TBD')); ?>
-                                    <?php if (!$t1Label && $t1Source): ?><span class="match-team-source">Advances automatically</span><?php endif; ?>
+                                    <?php echo htmlspecialchars($t1Label ?? ($t1Source ? 'TBD' : 'TBD')); ?>
+                                    <?php if ($t1Source && $match['status'] !== 'completed'): ?><span class="match-team-source">Winner of <?php echo htmlspecialchars($matchLabels[$t1Source] ?? 'Match'); ?></span><?php endif; ?>
                                     <?php if ($t1IsWinner): ?><span class="match-winner-check">✓</span><?php endif; ?>
                                 </span>
                             </div>
@@ -431,8 +431,8 @@ usort(
                                 <?php endif; ?>
                                 <span class="match-team-name">
                                     <?php if ($t2IsWinner): ?><span class="match-winner-check">✓</span><?php endif; ?>
-                                    <?php echo htmlspecialchars($t2Label ?? ($t2Source ? 'Winner of ' . ($matchLabels[$t2Source] ?? 'Match') : 'TBD')); ?>
-                                    <?php if (!$t2Label && $t2Source): ?><span class="match-team-source">Advances automatically</span><?php endif; ?>
+                                    <?php echo htmlspecialchars($t2Label ?? 'TBD'); ?>
+                                    <?php if ($t2Source && $match['status'] !== 'completed'): ?><span class="match-team-source">Winner of <?php echo htmlspecialchars($matchLabels[$t2Source] ?? 'Match'); ?></span><?php endif; ?>
                                 </span>
                             </div>
                         </div>
