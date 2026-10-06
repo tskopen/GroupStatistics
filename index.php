@@ -46,6 +46,9 @@ foreach ($bracketRows as $bracketRow) {
         foreach (($round['matchups'] ?? []) as $matchup) {
             $tournament['matches'][] = [
                 'round_name' => $round['name'] ?? 'Round',
+                'matchup_id' => $matchup['id'] ?? null,
+                'team1_source_matchup_id' => $matchup['team1_source_matchup_id'] ?? null,
+                'team2_source_matchup_id' => $matchup['team2_source_matchup_id'] ?? null,
                 'match_number' => $matchup['match_number'] ?? null,
                 'squadron_id' => $matchup['team1_id'] ?? null,
                 'opponent_id' => $matchup['team2_id'] ?? null,
@@ -247,27 +250,34 @@ usort(
     .event-header { background: var(--secondary-color); color: #fff; padding: 12px; font-weight: bold; font-size: 0.9em; text-align: center; }
     .event-body { padding: 15px; }
     
-    /* Tournament card */
-    .tournament-card { background: #fff; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); overflow: hidden; grid-column: span 2; }
-    @media (max-width: 768px) { .tournament-card { grid-column: 1 / -1; } }
-    .tournament-header { background: var(--primary-color); color: #fff; padding: 16px; font-weight: bold; font-size: 1.3em; text-align: center; }
-    .tournament-body { padding: 15px; }
-    
-    .tournament-match { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px; margin-bottom: 10px; border-radius: 6px; background: #f9f9f9; }
-    .tournament-match:last-child { margin-bottom: 0; }
-    
-    .match-team { flex: 1; display: flex; align-items: center; gap: 10px; }
-    .match-team.team-right { flex-direction: row-reverse; text-align: right; }
-    .match-team-icon { width: 45px; height: 45px; border-radius: 4px; object-fit: cover; flex-shrink: 0; }
-    .match-team-name { font-weight: bold; font-size: 0.95em; }
-    
-    .match-score-block { display: flex; align-items: center; gap: 8px; font-size: 1.3em; font-weight: bold; color: #002147; padding: 0 15px; }
-    .match-vs-label { font-weight: bold; color: #999; font-size: 0.9em; }
-    .match-points { font-size: 0.75em; color: #666; margin-top: 4px; text-align: center; }
-    
-    .match-winner { background: var(--accent-color); }
-    .match-winner-check { color: #28a745; font-weight: bold; margin-left: 6px; }
-    
+    /* Tournament card — one card per tournament; rounds live inside it. */
+    .events-grid { align-items: start; }
+    .events-grid > * { align-self: start; height: max-content; }
+    .tournament-card { background:#fff; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,.1); overflow:hidden; grid-column:span 2; align-self:start; height:max-content; }
+    @media (max-width:768px) { .tournament-card { grid-column:1 / -1; } }
+    .tournament-header { background:var(--primary-color); color:#fff; padding:16px; font-weight:bold; font-size:1.3em; text-align:center; }
+    .tournament-body { padding:15px; }
+    .bracket-round-section { margin:0 0 16px; }
+    .bracket-round-section:last-child { margin-bottom:0; }
+    .bracket-round-title { margin:0 0 8px; padding:7px 10px; border-bottom:2px solid #e1e5ea; color:var(--primary-color); font-size:.82em; font-weight:700; text-transform:uppercase; letter-spacing:.04em; }
+    .tournament-match { display:grid; grid-template-columns:minmax(0,1fr) minmax(110px,auto) minmax(0,1fr); align-items:center; gap:12px; padding:12px; margin-bottom:10px; border-radius:6px; background:#f9f9f9; }
+    .tournament-match:last-child { margin-bottom:0; }
+    .match-team { min-width:0; display:flex; align-items:center; gap:10px; }
+    .match-team.team-right { flex-direction:row-reverse; text-align:right; }
+    .match-team-icon { width:45px; height:45px; border-radius:4px; object-fit:cover; flex-shrink:0; }
+    .match-team-name { font-weight:bold; font-size:.95em; overflow-wrap:anywhere; }
+    .match-team-source { display:block; font-size:.72em; color:#777; font-weight:600; margin-top:2px; }
+    .match-score-block { display:grid; grid-template-columns:auto auto auto; grid-template-rows:auto auto; align-items:center; justify-items:center; gap:2px 8px; min-width:110px; font-size:1.3em; font-weight:bold; color:#002147; padding:0 8px; }
+    .match-vs-label { font-weight:bold; color:#999; font-size:.9em; }
+    .match-points { grid-column:1 / -1; font-size:.75em; color:#666; margin-top:2px; text-align:center; white-space:nowrap; }
+    .match-winner { background:var(--accent-color); }
+    .match-winner-check { color:#28a745; font-weight:bold; margin-left:6px; }
+    .bracket-meta { font-size:.8em; color:#68727e; text-align:center; margin:-5px 0 12px; }
+    @media (max-width:600px) {
+        .tournament-match { grid-template-columns:minmax(0,1fr) auto minmax(0,1fr); gap:6px; }
+        .match-score-block { min-width:88px; padding:0 3px; gap:2px 5px; }
+        .match-team-icon { width:38px; height:38px; }
+    }    
     /* SAMI card (all squadron results for one SAMI round grouped together) */
     .sami-card { background: #fff; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); overflow: hidden; grid-column: span 2; }
     @media (max-width: 768px) { .sami-card { grid-column: 1 / -1; } }
