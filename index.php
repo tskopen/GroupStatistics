@@ -5,34 +5,36 @@ header('Pragma: no-cache');
 
 require __DIR__ . '/config.php';
 require __DIR__ . '/theme-loader.php';
-require_once __DIR__ . '/bracket-bootstrap.php';
 $theme = loadTheme();
 
+require_once __DIR__ . '/bracket-bootstrap.php';
 $db = getDb();
 bracketBootstrap($db);
 bracketEnsureTables($db);
 
+// Fetch squadrons
 $stmt = $db->prepare("SELECT * FROM squadrons ORDER BY id");
 $stmt->execute();
 $squadrons = $stmt->fetchAll();
 
+// Fetch scores (all events)
 $stmt = $db->prepare("SELECT * FROM events ORDER BY timestamp DESC");
 $stmt->execute();
 $scores = $stmt->fetchAll();
-foreach ($scores as &$scoreRow) $scoreRow['event_type'] = normalizeEventType($scoreRow['event_type'] ?? 'other');
+
+foreach ($scores as &$scoreRow) {
+    $scoreRow['event_type'] = normalizeEventType($scoreRow['event_type'] ?? 'other');
+}
 unset($scoreRow);
 
-$squadronMap = [];
-foreach ($squadrons as $s) $squadronMap[$s['id']] = $s;
-
-$squadronRankings = getSquadronRankings();
-$ranked = [];
-foreach ($squadronRankings as $row) {
-    $squadron = $squadronMap[$row['squadron_id']] ?? null;
-    if ($squadron !== null) $ranked[] = ['squadron' => $squadron, 'total' => $row['total']];
-}
-
-// Brackets are loaded from the relational bracket tables. The existing
+if (empty($scores)) {
+    try {
+        $countStmt = $db->prepare('SELECT COUNT(*) as cnt FROM events');
+        $countStmt->execute();
+        $eventCount = $countStmt->fetch()['cnt'] ?? 0;
+        error_log("index.php: events query returned 0 rows, COUNT(*) FROM events = {$eventCount}, DB_PATH=" . DB_PATH);
+    } catch (Exception $e) {
+    // Brackets are loaded from the relational bracket tables. The existing
 // tournament-card markup below is retained, so old homepage presentation
 // continues to work while SQLite remains the source of truth.
 $bracketsByTournament = [];
@@ -65,50 +67,130 @@ foreach ($bracketRows as $bracketRow) {
     if (!empty($tournament['matches'])) $bracketsByTournament[] = $tournament;
 }
 
-$regularEvents = array_values(array_filter($scores, fn($event) => ($event['event_type'] ?? 'other') !== 'bracket'));
 
+    if (!empty($tournament['matches'])) {
+        $bracketsByTournament[] = $tournament;
+    }
+}
+
+// Regular events still come from scores.json, newest first.
+$regularEvents = array_values(array_filter(
+    $scores,
+    fn($event) => ($event['event_type'] ?? 'other') !== 'bracket'
+));
+
+// Group SAMI events by event_name into a single card per round.
 $samisByEvent = [];
 $samisGroups = [];
 foreach ($regularEvents as $event) {
-    if (($event['event_type'] ?? '') !== 'samis') continue;
+    if (($event['event_type'] ?? '') !== 'samis') {
+        continue;
+    }
     $eventName = $event['event_name'] ?? 'Samis';
-    if (!isset($samisGroups[$eventName])) $samisGroups[$eventName] = ['event_name'=>$eventName,'results'=>[],'latest_timestamp'=>0];
-    $samisGroups[$eventName]['results'][] = ['squadron_id'=>$event['squadron_id']??null,'value'=>$event['value']??null,'timestamp'=>$event['timestamp']??null];
+    if (!isset($samisGroups[$eventName])) {
+        $samisGroups[$eventName] = [
+            'event_name' => $eventName,
+            'results' => [],
+            'latest_timestamp' => 0,
+        ];
+    }
+    $samisGroups[$eventName]['results'][] = [
+        'squadron_id' => $event['squadron_id'] ?? null,
+        'value' => $event['value'] ?? null,
+        'timestamp' => $event['timestamp'] ?? null,
+    ];
     $ts = strtotime($event['timestamp'] ?? '') ?: 0;
-    if ($ts > $samisGroups[$eventName]['latest_timestamp']) $samisGroups[$eventName]['latest_timestamp'] = $ts;
+    if ($ts > $samisGroups[$eventName]['latest_timestamp']) {
+        $samisGroups[$eventName]['latest_timestamp'] = $ts;
+    }
 }
 $samisByEvent = array_values($samisGroups);
 
+// Group PFT events by event_name into a single card per PFT round
 $pftByEvent = [];
 $pftGroups = [];
 foreach ($regularEvents as $event) {
-    if (($event['event_type'] ?? '') !== 'pft') continue;
+    if (($event['event_type'] ?? '') !== 'pft') {
+        continue;
+    }
     $eventName = $event['event_name'] ?? 'PFT';
-    if (!isset($pftGroups[$eventName])) $pftGroups[$eventName] = ['event_name'=>$eventName,'event_type'=>'pft','results'=>[],'latest_timestamp'=>0];
-    $pftGroups[$eventName]['results'][] = ['squadron_id'=>$event['squadron_id']??null,'value'=>$event['value']??null,'timestamp'=>$event['timestamp']??null];
+    if (!isset($pftGroups[$eventName])) {
+        $pftGroups[$eventName] = [
+            'event_name' => $eventName,
+            'event_type' => 'pft',
+            'results' => [],
+            'latest_timestamp' => 0,
+        ];
+    }
+    $pftGroups[$eventName]['results'][] = [
+        'squadron_id' => $event['squadron_id'] ?? null,
+        'value' => $event['value'] ?? null,
+        'timestamp' => $event['timestamp'] ?? null,
+    ];
     $ts = strtotime($event['timestamp'] ?? '') ?: 0;
-    if ($ts > $pftGroups[$eventName]['latest_timestamp']) $pftGroups[$eventName]['latest_timestamp'] = $ts;
+    if ($ts > $pftGroups[$eventName]['latest_timestamp']) {
+        $pftGroups[$eventName]['latest_timestamp'] = $ts;
+    }
 }
 $pftByEvent = array_values($pftGroups);
 
+// Group other events by event_name into a single card per event
 $otherByEvent = [];
 $otherGroups = [];
 foreach ($regularEvents as $event) {
-    if (($event['event_type'] ?? '') !== 'other') continue;
+    if (($event['event_type'] ?? '') !== 'other') {
+        continue;
+    }
     $eventName = $event['event_name'] ?? 'Other Event';
-    if (!isset($otherGroups[$eventName])) $otherGroups[$eventName] = ['event_name'=>$eventName,'event_type'=>'other','results'=>[],'latest_timestamp'=>0];
-    $otherGroups[$eventName]['results'][] = ['squadron_id'=>$event['squadron_id']??null,'value'=>$event['value']??null,'timestamp'=>$event['timestamp']??null];
+    if (!isset($otherGroups[$eventName])) {
+        $otherGroups[$eventName] = [
+            'event_name' => $eventName,
+            'event_type' => 'other',
+            'results' => [],
+            'latest_timestamp' => 0,
+        ];
+    }
+    $otherGroups[$eventName]['results'][] = [
+        'squadron_id' => $event['squadron_id'] ?? null,
+        'value' => $event['value'] ?? null,
+        'timestamp' => $event['timestamp'] ?? null,
+    ];
     $ts = strtotime($event['timestamp'] ?? '') ?: 0;
-    if ($ts > $otherGroups[$eventName]['latest_timestamp']) $otherGroups[$eventName]['latest_timestamp'] = $ts;
+    if ($ts > $otherGroups[$eventName]['latest_timestamp']) {
+        $otherGroups[$eventName]['latest_timestamp'] = $ts;
+    }
 }
 $otherByEvent = array_values($otherGroups);
 
-$regularEvents = array_values(array_filter($regularEvents, fn($event) => !in_array($event['event_type'] ?? '', ['pft','other','samis'], true)));
+// Non-SAMI/PFT/other regular events stay in regularEvents (no change to their display).
+$regularEvents = array_values(array_filter(
+    $regularEvents,
+    fn($event) => !in_array($event['event_type'] ?? '', ['pft', 'other', 'samis'])
+));
 
-usort($bracketsByTournament, fn($a,$b) => (strtotime($b['latest_timestamp'] ?? '') ?: 0) <=> (strtotime($a['latest_timestamp'] ?? '') ?: 0));
-usort($samisByEvent, fn($a,$b) => ($b['latest_timestamp']??0) <=> ($a['latest_timestamp']??0));
-usort($pftByEvent, fn($a,$b) => ($b['latest_timestamp']??0) <=> ($a['latest_timestamp']??0));
-usort($otherByEvent, fn($a,$b) => ($b['latest_timestamp']??0) <=> ($a['latest_timestamp']??0));
+// Sort tournaments by most recent first
+usort(
+    $bracketsByTournament,
+    fn($a, $b) => ($b['latest_timestamp'] ?? 0) <=> ($a['latest_timestamp'] ?? 0)
+);
+
+// Sort samis groups by most recent first
+usort(
+    $samisByEvent,
+    fn($a, $b) => ($b['latest_timestamp'] ?? 0) <=> ($a['latest_timestamp'] ?? 0)
+);
+
+// Sort PFT groups by most recent first
+usort(
+    $pftByEvent,
+    fn($a, $b) => ($b['latest_timestamp'] ?? 0) <=> ($a['latest_timestamp'] ?? 0)
+);
+
+// Sort other groups by most recent first
+usort(
+    $otherByEvent,
+    fn($a, $b) => ($b['latest_timestamp'] ?? 0) <=> ($a['latest_timestamp'] ?? 0)
+);
 ?>
 <!DOCTYPE html>
 <html>
@@ -158,15 +240,14 @@ usort($otherByEvent, fn($a,$b) => ($b['latest_timestamp']??0) <=> ($a['latest_ti
 
     /* Score breakdown modal */
     .breakdown-modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 20px; }
-    .breakdown-modal { background:#fff; border-radius:8px; max-width:760px; width:100%; max-height:90vh; overflow-y:auto; padding:30px 34px 28px; position:relative; box-shadow:0 8px 30px rgba(0,0,0,.25); }
-    .breakdown-modal-close { position:absolute; top:18px; right:18px; background:none; border:0; font-size:2em; line-height:1; cursor:pointer; color:#666; padding:0; }
-    .breakdown-modal-close:hover { color:#222; }
-    .breakdown-modal h3 { margin:0 42px 28px 0; font-size:28px; line-height:1.2; color:#111; }
-    .breakdown-section { margin-top:24px; }
-    .breakdown-section h4 { margin:0 0 12px; color:var(--primary-color); font-size:24px; line-height:1.2; }
-    .breakdown-item { display:flex; justify-content:space-between; align-items:center; gap:16px; padding:12px 0; border-bottom:1px solid #eee; font-size:20px; line-height:1.25; }
-    .breakdown-item-points { font-weight:800; color:#18a348; white-space:nowrap; }
-    .breakdown-total { margin-top:16px; padding-top:4px; font-weight:800; font-size:22px; text-align:right; color:#111; }
+    .breakdown-modal { background: #fff; border-radius: 8px; max-width: 500px; width: 100%; max-height: 80vh; overflow-y: auto; padding: 25px; position: relative; box-shadow: 0 4px 20px rgba(0,0,0,0.3); }
+    .breakdown-modal-close { position: absolute; top: 12px; right: 15px; background: none; border: none; font-size: 1.5em; cursor: pointer; color: #666; }
+    .breakdown-modal-close:hover { color: #000; }
+    .breakdown-section { margin-top: 15px; }
+    .breakdown-section h4 { margin-bottom: 8px; color: var(--primary-color); }
+    .breakdown-item { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #eee; font-size: 0.9em; }
+    .breakdown-item-points { font-weight: bold; color: #28a745; }
+    .breakdown-total { margin-top: 10px; font-weight: bold; text-align: right; }
     
     /* Event Cards Grid */
     .events-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 20px; margin-bottom: 30px; }
@@ -179,40 +260,39 @@ usort($otherByEvent, fn($a,$b) => ($b['latest_timestamp']??0) <=> ($a['latest_ti
     .event-header { background: var(--secondary-color); color: #fff; padding: 12px; font-weight: bold; font-size: 0.9em; text-align: center; }
     .event-body { padding: 15px; }
     
-    /* Tournament cards: compact legacy-style matchup layout. */
+    /* Tournament card */
     .tournament-card { background: #fff; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); overflow: hidden; grid-column: span 2; }
     @media (max-width: 768px) { .tournament-card { grid-column: 1 / -1; } }
-    .tournament-header { background: var(--primary-color); color: #fff; padding: 12px 16px; font-weight: bold; font-size: 1.25em; text-align: center; }
-    .tournament-body { padding: 10px 12px; }
-
-    .bracket-meta { text-align: center; color: #667; font-size: 0.82em; margin: 0 0 8px; }
-
-    .tournament-match { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; margin-bottom: 8px; border-radius: 6px; background: #f9f9f9; min-height: 58px; }
+    .tournament-header { background: var(--primary-color); color: #fff; padding: 16px; font-weight: bold; font-size: 1.3em; text-align: center; }
+    .tournament-body { padding: 15px; }
+    
+    .tournament-match { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px; margin-bottom: 10px; border-radius: 6px; background: #f9f9f9; }
     .tournament-match:last-child { margin-bottom: 0; }
-
-    .match-team { flex: 1 1 0; min-width: 0; display: flex; align-items: center; gap: 8px; }
+    
+    .match-team { flex: 1; display: flex; align-items: center; gap: 10px; }
     .match-team.team-right { flex-direction: row-reverse; text-align: right; }
-    .match-team-icon { width: 40px; height: 40px; border-radius: 4px; object-fit: cover; flex: 0 0 40px; }
-    .match-team-name { font-weight: bold; font-size: 0.95em; line-height: 1.15; overflow-wrap: anywhere; }
-
-    .match-score-block { flex: 0 0 auto; display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 1.15em; font-weight: bold; color: var(--primary-color); padding: 0 8px; min-width: 76px; }
-    .match-vs-label { font-weight: bold; color: #999; font-size: 0.82em; }
-    .match-points { font-size: 0.68em; color: #666; margin-top: 2px; text-align: center; white-space: nowrap; }
-
+    .match-team-icon { width: 45px; height: 45px; border-radius: 4px; object-fit: cover; flex-shrink: 0; }
+    .match-team-name { font-weight: bold; font-size: 0.95em; }
+    
+    .match-score-block { display: flex; align-items: center; gap: 8px; font-size: 1.3em; font-weight: bold; color: #002147; padding: 0 15px; }
+    .match-vs-label { font-weight: bold; color: #999; font-size: 0.9em; }
+    .match-points { font-size: 0.75em; color: #666; margin-top: 4px; text-align: center; }
+    
     .match-winner { background: var(--accent-color); }
-    .match-winner-check { color: #28a745; font-weight: bold; margin-left: 5px; }
+    .match-winner-check { color: #28a745; font-weight: bold; margin-left: 6px; }
+    
     /* SAMI card (all squadron results for one SAMI round grouped together) */
     .sami-card { background: #fff; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); overflow: hidden; grid-column: span 2; }
     @media (max-width: 768px) { .sami-card { grid-column: 1 / -1; } }
-    .sami-header { background:#063f73; color:#fff; padding:18px; font-weight:800; font-size:1.55em; text-align:center; }
-    .sami-body { padding:22px; }
+    .sami-header { background: var(--secondary-color); color: #fff; padding: 16px; font-weight: bold; font-size: 1.3em; text-align: center; }
+    .sami-body { padding: 15px; }
     
-    .sami-result { display:flex; align-items:center; justify-content:space-between; gap:14px; padding:18px; margin-bottom:14px; border-radius:8px; background:#f9f9f9; }
+    .sami-result { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px; margin-bottom: 10px; border-radius: 6px; background: #f9f9f9; }
     .sami-result:last-child { margin-bottom: 0; }
-    .sami-result-icon { width:67px; height:67px; border-radius:6px; object-fit:cover; flex-shrink:0; }
-    .sami-result-info { flex:1; display:flex; align-items:center; gap:15px; min-width:0; }
-    .sami-result-name { font-weight:700; font-size:1.25em; text-align:left; }
-    .sami-result-score { font-weight:800; font-size:1.6em; color:#18a348; text-align:right; }
+    .sami-result-icon { width: 45px; height: 45px; border-radius: 4px; object-fit: cover; flex-shrink: 0; }
+    .sami-result-info { flex: 1; display: flex; align-items: center; gap: 10px; }
+    .sami-result-name { font-weight: bold; font-size: 0.95em; text-align: left; }
+    .sami-result-score { font-weight: bold; font-size: 1.3em; color: #28a745; text-align: right; }
     
     .sami-timestamp { font-size: 0.75em; color: #666; margin-top: 10px; text-align: center; }
     
@@ -293,22 +373,22 @@ usort($otherByEvent, fn($a,$b) => ($b['latest_timestamp']??0) <=> ($a['latest_ti
                  regular events. Both lists are pre-sorted newest-first above, so within
                  each section the most recent activity always appears first. */ ?>
         <?php foreach ($bracketsByTournament as $tournament): ?>
-        <!-- Single-round brackets use the original compact matchup card layout. -->
-        <div class="tournament-card">
+        <!-- Tournaments (newest first) -->
+        <div class="tournament-card" style="order: <?php echo -((int) (strtotime($tournament['latest_timestamp'] ?? '') ?: 0)); ?>;">
             <div class="tournament-header">🏆 <?php echo htmlspecialchars($tournament['tournament_name']); ?></div>
             <div class="tournament-body">
                 <?php foreach ($tournament['matches'] as $match):
                     $t1 = $squadronMap[$match['squadron_id']] ?? null;
                     $t2 = $squadronMap[$match['opponent_id']] ?? null;
                     $winnerId = $match['winner_id'] ?? null;
-                    $t1IsWinner = $winnerId !== null && $winnerId == $match['squadron_id'];
-                    $t2IsWinner = $winnerId !== null && $winnerId == $match['opponent_id'];
+                    $t1IsWinner = $winnerId && $winnerId === $match['squadron_id'];
+                    $t2IsWinner = $winnerId && $winnerId === $match['opponent_id'];
                     $pointsAwarded = $match['value'] ?? 0;
                 ?>
                 <div class="tournament-match">
                     <div class="match-team <?php echo $t1IsWinner ? 'match-winner' : ''; ?>">
                         <?php if ($t1 && !empty($t1['icon_filename'])): ?>
-                            <img src="<?php echo htmlspecialchars(iconUrl($t1['icon_filename'])); ?>" alt="" class="match-team-icon">
+                            <img src="<?php echo htmlspecialchars(iconUrl($t1['icon_filename'])); ?>" alt="icon" class="match-team-icon">
                         <?php else: ?>
                             <div class="match-team-icon" style="background:#ccc;"></div>
                         <?php endif; ?>
@@ -320,14 +400,13 @@ usort($otherByEvent, fn($a,$b) => ($b['latest_timestamp']??0) <=> ($a['latest_ti
 
                     <div class="match-score-block">
                         <span><?php echo htmlspecialchars((string)($match['team1_score'] ?? '-')); ?></span>
-                        <span class="match-vs-label">vs</span>
+                        <span class="match-vs-label">—</span>
                         <span><?php echo htmlspecialchars((string)($match['team2_score'] ?? '-')); ?></span>
-                        <div class="match-points">+<?php echo htmlspecialchars((string)$pointsAwarded); ?> pts</div>
                     </div>
 
                     <div class="match-team team-right <?php echo $t2IsWinner ? 'match-winner' : ''; ?>">
                         <?php if ($t2 && !empty($t2['icon_filename'])): ?>
-                            <img src="<?php echo htmlspecialchars(iconUrl($t2['icon_filename'])); ?>" alt="" class="match-team-icon">
+                            <img src="<?php echo htmlspecialchars(iconUrl($t2['icon_filename'])); ?>" alt="icon" class="match-team-icon">
                         <?php else: ?>
                             <div class="match-team-icon" style="background:#ccc;"></div>
                         <?php endif; ?>
@@ -337,6 +416,7 @@ usort($otherByEvent, fn($a,$b) => ($b['latest_timestamp']??0) <=> ($a['latest_ti
                         </span>
                     </div>
                 </div>
+                <div class="match-points">+<?php echo $pointsAwarded; ?> pts</div>
                 <?php endforeach; ?>
             </div>
         </div>
@@ -344,7 +424,7 @@ usort($otherByEvent, fn($a,$b) => ($b['latest_timestamp']??0) <=> ($a['latest_ti
 
         <?php foreach ($samisByEvent as $sami): ?>
         <!-- SAMI events (all squadrons for one round, newest first) -->
-        <div class="sami-card">
+        <div class="sami-card" style="order: <?php echo -((int) ($sami['latest_timestamp'] ?? 0)); ?>;">
             <div class="sami-header">🏅 <?php echo htmlspecialchars($sami['event_name']); ?></div>
             <div class="sami-body">
                 <?php foreach ($sami['results'] as $result):
@@ -371,7 +451,7 @@ usort($otherByEvent, fn($a,$b) => ($b['latest_timestamp']??0) <=> ($a['latest_ti
 
         <?php foreach ($pftByEvent as $pft): ?>
         <!-- PFT events (all squadrons for one round, newest first) -->
-        <div class="sami-card">
+        <div class="sami-card" style="order: <?php echo -((int) ($pft['latest_timestamp'] ?? 0)); ?>;">
             <div class="sami-header">💪 <?php echo htmlspecialchars($pft['event_name']); ?></div>
             <div class="sami-body">
                 <?php foreach ($pft['results'] as $result):
@@ -398,7 +478,7 @@ usort($otherByEvent, fn($a,$b) => ($b['latest_timestamp']??0) <=> ($a['latest_ti
 
         <?php foreach ($otherByEvent as $other): ?>
         <!-- Other events (all squadrons for one event, newest first) -->
-        <div class="sami-card">
+        <div class="sami-card" style="order: <?php echo -((int) ($other['latest_timestamp'] ?? 0)); ?>;">
             <div class="sami-header">📌 <?php echo htmlspecialchars($other['event_name']); ?></div>
             <div class="sami-body">
                 <?php foreach ($other['results'] as $result):
@@ -424,8 +504,9 @@ usort($otherByEvent, fn($a,$b) => ($b['latest_timestamp']??0) <=> ($a['latest_ti
         <?php endforeach; ?>
 
         <?php foreach ($regularEvents as $event): ?>
+        <?php $eventCardTimestamp = strtotime($event['timestamp'] ?? '') ?: 0; ?>
         <!-- Regular events (newest first) -->
-        <div class="event-card">
+        <div class="event-card" style="order: <?php echo -$eventCardTimestamp; ?>;">
             <div class="event-header"><?php echo strtoupper($event['event_type'] ?? 'Event'); ?></div>
             <div class="event-body regular-event">
                 <?php $squad = $squadronMap[$event['squadron_id']] ?? null; ?>
