@@ -75,6 +75,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
         if ($action === 'create') {
             $name = trim($_POST['name'] ?? '');
+            $type = ($_POST['bracket_type'] ?? 'single_round') === 'multi_round' ? 'multi_round' : 'single_round';
             $ids = array_values(array_unique(array_map('intval', $_POST['participant_ids'] ?? [])));
 
             if ($name === '') throw new Exception('Enter a bracket name.');
@@ -86,15 +87,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             );
             if (array_diff($ids, $valid)) throw new Exception('One or more selected teams are invalid.');
 
+            if ($type === 'multi_round') {
+                $count = count($ids);
+                if ($count > 64 || ($count & ($count - 1)) !== 0) {
+                    throw new Exception('Multi-round brackets require 2, 4, 8, 16, 32, or 64 teams.');
+                }
+            }
+
             $db->beginTransaction();
             $now = date('c');
             $id = makeId();
 
-            // One supported bracket format: a single round of independent matchups.
             $db->prepare(
                 'INSERT INTO brackets(id,name,created_date,updated_at,champion_id,rounds,bracket_type)
                  VALUES(?,?,?,?,?,?,?)'
-            )->execute([$id, $name, $now, $now, null, null, 'single_round']);
+            )->execute([$id, $name, $now, $now, null, null, $type]);
 
             $participantStmt = $db->prepare(
                 'INSERT INTO bracket_participants(bracket_id,squadron_id,seed,created_at) VALUES(?,?,?,?)'
@@ -106,9 +113,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $roundStmt = $db->prepare(
                 'INSERT INTO bracket_rounds(bracket_id,round_number,name,created_at) VALUES(?,?,?,?)'
             );
-            $roundStmt->execute([$id, 1, 'Matchups', $now]);
-            $roundId = (int)$db->lastInsertId();
-
             $matchStmt = $db->prepare(
                 'INSERT INTO bracket_matchups
                 (id,bracket_id,round_id,match_number,team1_id,team2_id,
@@ -117,16 +121,59 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)'
             );
 
-            for ($i = 0, $matchNumber = 1; $i < count($ids); $i += 2, $matchNumber++) {
-                $team1 = $ids[$i] ?? null;
-                $team2 = $ids[$i + 1] ?? null;
-                $status = ($team1 !== null && $team2 !== null) ? 'ready' : 'pending';
+            if ($type === 'single_round') {
+                $roundStmt->execute([$id, 1, 'Matchups', $now]);
+                $roundId = (int)$db->lastInsertId();
 
-                $matchStmt->execute([
-                    makeId(), $id, $roundId, $matchNumber,
-                    $team1, $team2, null, null,
-                    null, null, null, 0, $status, null, $now, $now
-                ]);
+                for ($i = 0, $matchNumber = 1; $i < count($ids); $i += 2, $matchNumber++) {
+                    $team1 = $ids[$i] ?? null;
+                    $team2 = $ids[$i + 1] ?? null;
+                    $status = ($team1 !== null && $team2 !== null) ? 'ready' : 'pending';
+                    $matchStmt->execute([
+                        makeId(), $id, $roundId, $matchNumber,
+                        $team1, $team2, null, null,
+                        null, null, null, 0, $status, null, $now, $now
+                    ]);
+                }
+            } else {
+                $numRounds = (int)log(count($ids), 2);
+                $roundIds = [];
+                $matchIds = [];
+
+                for ($round = 1; $round <= $numRounds; $round++) {
+                    $matchesThisRound = count($ids) / (2 ** $round);
+                    $roundName = $round === $numRounds ? 'Final' : (
+                        $round === $numRounds - 1 ? 'Semifinals' :
+                        ($round === $numRounds - 2 ? 'Quarterfinals' : 'Round ' . $round)
+                    );
+                    $roundStmt->execute([$id, $round, $roundName, $now]);
+                    $roundIds[$round] = (int)$db->lastInsertId();
+                    $matchIds[$round] = [];
+
+                    for ($m = 1; $m <= $matchesThisRound; $m++) {
+                        $matchId = makeId();
+                        $matchIds[$round][$m] = $matchId;
+                        $team1 = $round === 1 ? ($ids[($m - 1) * 2] ?? null) : null;
+                        $team2 = $round === 1 ? ($ids[($m - 1) * 2 + 1] ?? null) : null;
+                        $status = ($team1 !== null && $team2 !== null) ? 'ready' : 'pending';
+                        $matchStmt->execute([
+                            $matchId, $id, $roundIds[$round], $m,
+                            $team1, $team2,
+                            null, null, null, null, null, 0, $status, null,
+                            $now, $now
+                        ]);
+                    }
+                }
+
+                // Wire advancement after every matchup exists.
+                for ($round = 1; $round < $numRounds; $round++) {
+                    $matchCount = count($matchIds[$round]);
+                    for ($m = 1; $m <= $matchCount; $m++) {
+                        $nextId = $matchIds[$round + 1][intdiv($m - 1, 2) + 1];
+                        $db->prepare('UPDATE bracket_matchups SET next_matchup_id=? WHERE id=?')
+                            ->execute([$nextId, $matchIds[$round][$m]]);
+                    }
+                }
             }
 
             $db->commit();
@@ -148,9 +195,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $existing = $old->fetch(PDO::FETCH_ASSOC);
             if (!$existing) throw new Exception('Matchup not found.');
 
-            // Do not silently erase an already-posted result when teams are changed.
+            // Completed matches are immutable. Multi-round matchups also derive
+            // their teams from winners of the preceding round.
             if (($existing['status'] ?? '') === 'completed') {
-                throw new Exception('Completed matchups cannot have their teams changed.');
+                throw new Exception('Completed matchups are immutable and cannot be changed.');
+            }
+            if ($existing['team1_source_matchup_id'] !== null || $existing['team2_source_matchup_id'] !== null) {
+                throw new Exception('Later-round teams are populated automatically from previous winners.');
             }
 
             $status = ($team1 !== null && $team2 !== null) ? 'ready' : 'pending';
@@ -207,6 +258,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $match['points'] = $points;
             $match['status'] = 'completed';
             syncBracketEvent($db, $match, $match['bracket_name']);
+
+            if (!empty($match['next_matchup_id'])) {
+                $next = $db->prepare('SELECT * FROM bracket_matchups WHERE id=? AND bracket_id=?');
+                $next->execute([$match['next_matchup_id'], $bracketId]);
+                $nextMatch = $next->fetch(PDO::FETCH_ASSOC);
+                if ($nextMatch) {
+                    $slot = ((int)$match['match_number'] % 2 === 1) ? 'team1_id' : 'team2_id';
+                    $nextTeam1 = $slot === 'team1_id' ? $winner : $nextMatch['team1_id'];
+                    $nextTeam2 = $slot === 'team2_id' ? $winner : $nextMatch['team2_id'];
+                    $nextStatus = ($nextTeam1 !== null && $nextTeam2 !== null) ? 'ready' : 'pending';
+                    $db->prepare("UPDATE bracket_matchups SET $slot=?, status=?, updated_at=? WHERE id=?")
+                        ->execute([$winner, $nextStatus, date('c'), $nextMatch['id']]);
+                }
+            } else {
+                $db->prepare('UPDATE brackets SET champion_id=?,updated_at=? WHERE id=?')
+                    ->execute([$winner, date('c'), $bracketId]);
+            }
 
             $db->prepare('UPDATE brackets SET updated_at=? WHERE id=?')
                 ->execute([date('c'), $bracketId]);
@@ -304,7 +372,7 @@ h1,h2,h3 { color:var(--primary); }
     <div class="header">
         <div>
             <h1 style="margin:0;">Bracket Manager</h1>
-            <div class="subtitle">Create one simple matchup bracket, post the teams, then add scores as games are played.</div>
+            <div class="subtitle">Create either independent single-round matchups or a multi-round elimination bracket. Teams can be posted before scores are entered.</div>
         </div>
         <a class="btn secondary" href="index.php">View Public Tracker</a>
     </div>
@@ -332,13 +400,21 @@ h1,h2,h3 { color:var(--primary); }
 
         <div class="card">
             <h2 style="margin-top:0;">New Bracket</h2>
-            <p class="muted">Select the teams now. Their matchups can be displayed publicly before any scores exist.</p>
+            <p class="muted"><strong>Single Round:</strong> independent matchups that never feed into another round.<br><strong>Multi-Round:</strong> elimination bracket where winners automatically advance. Multi-Round requires 2, 4, 8, 16, 32, or 64 teams.</p>
             <form method="post">
                 <input type="hidden" name="action" value="create">
                 <label>
                     Bracket name
                     <input class="input" name="name" placeholder="e.g. Flag Football" required>
                 </label>
+                <label>
+                    Bracket type
+                    <select class="input" name="bracket_type" id="bracket-type">
+                        <option value="single_round">Single Round — independent matchups</option>
+                        <option value="multi_round">Multi-Round — winners advance to the next round</option>
+                    </select>
+                </label>
+                <p class="muted" id="bracket-type-help">Single Round keeps every matchup independent.</p>
                 <div class="team-grid">
                     <?php foreach ($teams as $team): ?>
                         <label class="team-option">
@@ -356,28 +432,45 @@ h1,h2,h3 { color:var(--primary); }
     <?php if (!$bracket): ?>
         <div class="card">
             <h2 style="margin-top:0;"><?php echo $all ? 'Select a bracket' : 'Create your first bracket'; ?></h2>
-            <p class="muted">Brackets are intentionally simple: one round, fixed matchups, teams first, scores later.</p>
+            <p class="muted">Single Round uses independent matchups. Multi-Round connects each round so winners advance automatically. Completed scores are locked after posting.</p>
         </div>
     <?php else: ?>
         <div class="card">
+            <?php
+            $sourceLabels = [];
+            foreach ($bracket['rounds'] as $sourceRound) {
+                foreach ($sourceRound['matchups'] as $sourceMatch) {
+                    $sourceLabels[$sourceMatch['id']] = $sourceRound['name'] . ' Match ' . (int)$sourceMatch['match_number'];
+                }
+            }
+            ?>
             <div class="header">
                 <div>
                     <h2 style="margin:0;"><?php echo h($bracket['name']); ?></h2>
-                    <p class="subtitle">Teams are shown immediately. Scores are optional until each matchup is played.</p>
+                    <p class="subtitle">
+                        <?php echo $bracket['bracket_type'] === 'multi_round'
+                            ? 'Multi-Round Elimination · winners advance automatically.'
+                            : 'Single Round · independent matchups.'; ?>
+                    </p>
                 </div>
                 <span class="status"><?php echo count($bracket['participants'] ?? []); ?> teams</span>
             </div>
 
             <?php foreach ($bracket['rounds'] as $round): ?>
                 <section class="round">
-                    <?php foreach ($round['matchups'] as $match): ?>
+                    <?php if ($bracket['bracket_type'] === 'multi_round'): ?>
+                        <h3 class="round-title"><?php echo h($round['name']); ?></h3>
+                    <?php endif; ?>
+                    <?php foreach ($round['matchups'] as $match):
+                        $isDerived = $match['team1_source_matchup_id'] !== null || $match['team2_source_matchup_id'] !== null;
+                    ?>
                         <div class="match <?php echo $match['status'] === 'completed' ? 'completed' : ''; ?>">
                             <div class="match-header">
                                 <strong>Match <?php echo (int)$match['match_number']; ?></strong>
                                 <span class="status"><?php echo h($match['status']); ?></span>
                             </div>
 
-                            <?php if ($match['status'] !== 'completed'): ?>
+                            <?php if ($match['status'] !== 'completed' && !$isDerived): ?>
                                 <form method="post">
                                     <input type="hidden" name="action" value="assign">
                                     <input type="hidden" name="bracket_id" value="<?php echo h($bracketId); ?>">
@@ -408,6 +501,20 @@ h1,h2,h3 { color:var(--primary); }
                                     </div>
                                     <p><button class="btn secondary" type="submit">Save Teams</button></p>
                                 </form>
+                            <?php elseif ($match['status'] !== 'completed' && $isDerived): ?>
+                                <div class="teams">
+                                    <div class="team-box derived-team">
+                                        <div class="muted">Team 1</div>
+                                        <div class="team-name"><?php echo $match['team1_id'] !== null ? h(teamName($db, (int)$match['team1_id'])) : 'TBD'; ?></div>
+                                        <?php if ($match['team1_source_matchup_id'] !== null): ?><div class="muted">Winner of <?php echo h($sourceLabels[$match['team1_source_matchup_id']] ?? 'previous match'); ?></div><?php endif; ?>
+                                    </div>
+                                    <div class="team-box derived-team">
+                                        <div class="muted">Team 2</div>
+                                        <div class="team-name"><?php echo $match['team2_id'] !== null ? h(teamName($db, (int)$match['team2_id'])) : 'TBD'; ?></div>
+                                        <?php if ($match['team2_source_matchup_id'] !== null): ?><div class="muted">Winner of <?php echo h($sourceLabels[$match['team2_source_matchup_id']] ?? 'previous match'); ?></div><?php endif; ?>
+                                    </div>
+                                </div>
+                                <p class="locked-note">Teams advance here automatically from the previous round.</p>
                             <?php else: ?>
                                 <div class="teams">
                                     <div class="team-box">
@@ -420,6 +527,10 @@ h1,h2,h3 { color:var(--primary); }
                                     </div>
                                 </div>
                                 <p class="muted"><strong><?php echo h(teamName($db, $match['winner_id'])); ?></strong> · +<?php echo h($match['points']); ?> pts</p>
+                            <?php endif; ?>
+
+                            <?php if ($match['status'] === 'completed'): ?>
+                                <p class="locked-note">✓ Completed match · score and teams are locked.</p>
                             <?php endif; ?>
 
                             <?php if ($match['status'] === 'ready'): ?>
@@ -451,5 +562,17 @@ h1,h2,h3 { color:var(--primary); }
     </main>
 </div>
 </div>
+<script>
+(function () {
+    var type = document.getElementById('bracket-type');
+    var help = document.getElementById('bracket-type-help');
+    if (!type || !help) return;
+    type.addEventListener('change', function () {
+        help.textContent = this.value === 'multi_round'
+            ? 'Multi-Round requires a power-of-two number of teams (2, 4, 8, 16, 32, or 64).'
+            : 'Single Round keeps every matchup independent.';
+    });
+})();
+</script>
 </body>
 </html>

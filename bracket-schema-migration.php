@@ -75,6 +75,9 @@ function bracketLoad(PDO $db, string $bracketId): ?array
     }
     unset($round);
     $bracket['rounds'] = $rounds;
+    if (count($rounds) > 1) {
+        $bracket['bracket_type'] = 'multi_round';
+    }
     return $bracket;
 }
 

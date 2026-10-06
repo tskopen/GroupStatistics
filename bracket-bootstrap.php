@@ -32,15 +32,9 @@ function bracketBootstrap(PDO $db): void
         error_log('Bracket score-event backfill failed: '.$e->getMessage());
     }
 
-    // The homepage renders the bracket matches as a flat list. Round sections
-    // are added in the browser from the relational round metadata rather than
-    // by injecting closing tags into already-rendered HTML. This keeps the
-    // matchup markup intact and prevents the last matchup from being split.
-    static $roundRendererRegistered = false;
-    if (!$roundRendererRegistered) {
-        ob_start('bracketRenderRoundSections');
-        $roundRendererRegistered = true;
-    }
+    // Homepage presentation is intentionally owned by index.php so the
+    // public tracker can preserve the proven PR61 matchup UI.
+
 }
 
 function bracketRenderRoundSections(string $html): string
