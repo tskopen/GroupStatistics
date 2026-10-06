@@ -83,7 +83,7 @@ foreach ($bracketRows as $bracketRow) {
 // Regular events still come from scores.json, newest first.
 $regularEvents = array_values(array_filter(
     $scores,
-    fn($event) => ($event['event_type'] ?? 'other') !== 'bracket'
+    fn($event) => !in_array($event['event_type'] ?? 'other', ['bracket', 'cadet_of_month'], true)
 ));
 
 // Group SAMI events by event_name into a single card per round.
@@ -378,7 +378,11 @@ usort(
     <p style="text-align: center; margin-bottom: 20px;">
         <a href="intramural-standings.php" style="color: var(--primary-color); text-decoration: none; font-weight: bold;">View Full Intramural Standings →</a>
     </p>
-<?php endif; ?>
+    <?php endif; ?>
+
+    <p style="text-align: center; margin: 0 0 20px;">
+        <a href="cadet-of-month.php" style="color: var(--primary-color); text-decoration: none; font-weight: bold;">⭐ View Cadet of the Month →</a>
+    </p>
             
     <?php if ($bracketsByTournament || $samisByEvent || $pftByEvent || $otherByEvent || $regularEvents): ?>
     <h2>🔥 Recent Events &amp; Results</h2>
