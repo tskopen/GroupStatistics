@@ -370,51 +370,78 @@ usort(
                  regular events. Both lists are pre-sorted newest-first above, so within
                  each section the most recent activity always appears first. */ ?>
         <?php foreach ($bracketsByTournament as $tournament): ?>
-        <!-- Tournaments (newest first) -->
         <div class="tournament-card" style="order: <?php echo -((int) (strtotime($tournament['latest_timestamp'] ?? '') ?: 0)); ?>;">
             <div class="tournament-header">🏆 <?php echo htmlspecialchars($tournament['tournament_name']); ?></div>
             <div class="tournament-body">
-                <?php foreach ($tournament['matches'] as $match):
-                    $t1 = $squadronMap[$match['squadron_id']] ?? null;
-                    $t2 = $squadronMap[$match['opponent_id']] ?? null;
-                    $winnerId = $match['winner_id'] ?? null;
-                    $t1IsWinner = $winnerId && $winnerId === $match['squadron_id'];
-                    $t2IsWinner = $winnerId && $winnerId === $match['opponent_id'];
-                    $pointsAwarded = $match['value'] ?? 0;
+                <?php if (($tournament['bracket_type'] ?? 'single_round') === 'multi_round'): ?>
+                    <div class="bracket-meta">Multi-Round Elimination · winners advance automatically</div>
+                <?php endif; ?>
+                <?php
+                $roundGroups = [];
+                $matchLabels = [];
+                foreach ($tournament['matches'] as $match) {
+                    $roundKey = $match['round_name'] ?? 'Round';
+                    $roundGroups[$roundKey][] = $match;
+                    if (!empty($match['matchup_id'])) {
+                        $matchLabels[$match['matchup_id']] = $roundKey . ' Match ' . (int)($match['match_number'] ?? 0);
+                    }
+                }
+                foreach ($roundGroups as $roundName => $roundMatches):
                 ?>
-                <div class="tournament-match">
-                    <div class="match-team <?php echo $t1IsWinner ? 'match-winner' : ''; ?>">
-                        <?php if ($t1 && !empty($t1['icon_filename'])): ?>
-                            <img src="<?php echo htmlspecialchars(iconUrl($t1['icon_filename'])); ?>" alt="icon" class="match-team-icon">
-                        <?php else: ?>
-                            <div class="match-team-icon" style="background:#ccc;"></div>
+                    <section class="bracket-round-section">
+                        <?php if (($tournament['bracket_type'] ?? 'single_round') === 'multi_round'): ?>
+                            <h3 class="bracket-round-title"><?php echo htmlspecialchars($roundName); ?></h3>
                         <?php endif; ?>
-                        <span class="match-team-name">
-                            <?php echo htmlspecialchars($t1['name'] ?? 'TBD'); ?>
-                            <?php if ($t1IsWinner): ?><span class="match-winner-check">✓</span><?php endif; ?>
-                        </span>
-                    </div>
-
-                    <div class="match-score-block">
-                        <span><?php echo htmlspecialchars((string)($match['team1_score'] ?? '-')); ?></span>
-                        <span class="match-vs-label">—</span>
-                        <span><?php echo htmlspecialchars((string)($match['team2_score'] ?? '-')); ?></span>
-                    </div>
-
-                    <div class="match-team team-right <?php echo $t2IsWinner ? 'match-winner' : ''; ?>">
-                        <?php if ($t2 && !empty($t2['icon_filename'])): ?>
-                            <img src="<?php echo htmlspecialchars(iconUrl($t2['icon_filename'])); ?>" alt="icon" class="match-team-icon">
-                        <?php else: ?>
-                            <div class="match-team-icon" style="background:#ccc;"></div>
-                        <?php endif; ?>
-                        <span class="match-team-name">
-                            <?php if ($t2IsWinner): ?><span class="match-winner-check">✓</span><?php endif; ?>
-                            <?php echo htmlspecialchars($t2['name'] ?? 'TBD'); ?>
-                        </span>
-                    </div>
-                </div>
-                <div class="match-points">+<?php echo $pointsAwarded; ?> pts</div>
+                        <?php foreach ($roundMatches as $match):
+                            $t1 = $squadronMap[$match['squadron_id']] ?? null;
+                            $t2 = $squadronMap[$match['opponent_id']] ?? null;
+                            $winnerId = $match['winner_id'] ?? null;
+                            $t1IsWinner = $winnerId && $winnerId === $match['squadron_id'];
+                            $t2IsWinner = $winnerId && $winnerId === $match['opponent_id'];
+                            $pointsAwarded = $match['value'] ?? 0;
+                            $t1Source = $match['team1_source_matchup_id'] ?? null;
+                            $t2Source = $match['team2_source_matchup_id'] ?? null;
+                            $t1Label = $t1['name'] ?? null;
+                            $t2Label = $t2['name'] ?? null;
+                        ?>
+                        <div class="tournament-match">
+                            <div class="match-team <?php echo $t1IsWinner ? 'match-winner' : ''; ?>">
+                                <?php if ($t1 && !empty($t1['icon_filename'])): ?>
+                                    <img src="<?php echo htmlspecialchars(iconUrl($t1['icon_filename'])); ?>" alt="icon" class="match-team-icon">
+                                <?php else: ?>
+                                    <div class="match-team-icon" style="background:#ccc;"></div>
+                                <?php endif; ?>
+                                <span class="match-team-name">
+                                    <?php echo htmlspecialchars($t1Label ?? ($t1Source ? 'Winner of ' . ($matchLabels[$t1Source] ?? 'Match') : 'TBD')); ?>
+                                    <?php if (!$t1Label && $t1Source): ?><span class="match-team-source">Advances automatically</span><?php endif; ?>
+                                    <?php if ($t1IsWinner): ?><span class="match-winner-check">✓</span><?php endif; ?>
+                                </span>
+                            </div>
+                            <div class="match-score-block">
+                                <span><?php echo htmlspecialchars((string)($match['team1_score'] ?? '-')); ?></span>
+                                <span class="match-vs-label">—</span>
+                                <span><?php echo htmlspecialchars((string)($match['team2_score'] ?? '-')); ?></span>
+                                <?php if ($pointsAwarded): ?><span class="match-points">+<?php echo htmlspecialchars((string)$pointsAwarded); ?> pts</span><?php endif; ?>
+                            </div>
+                            <div class="match-team team-right <?php echo $t2IsWinner ? 'match-winner' : ''; ?>">
+                                <?php if ($t2 && !empty($t2['icon_filename'])): ?>
+                                    <img src="<?php echo htmlspecialchars(iconUrl($t2['icon_filename'])); ?>" alt="icon" class="match-team-icon">
+                                <?php else: ?>
+                                    <div class="match-team-icon" style="background:#ccc;"></div>
+                                <?php endif; ?>
+                                <span class="match-team-name">
+                                    <?php if ($t2IsWinner): ?><span class="match-winner-check">✓</span><?php endif; ?>
+                                    <?php echo htmlspecialchars($t2Label ?? ($t2Source ? 'Winner of ' . ($matchLabels[$t2Source] ?? 'Match') : 'TBD')); ?>
+                                    <?php if (!$t2Label && $t2Source): ?><span class="match-team-source">Advances automatically</span><?php endif; ?>
+                                </span>
+                            </div>
+                        </div>
+                        <?php endforeach; ?>
+                    </section>
                 <?php endforeach; ?>
+            </div>
+        </div>
+        <?php endforeach; ?>
             </div>
         </div>
         <?php endforeach; ?>
