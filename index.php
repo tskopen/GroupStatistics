@@ -442,9 +442,6 @@ usort(
             </div>
         </div>
         <?php endforeach; ?>
-            </div>
-        </div>
-        <?php endforeach; ?>
 
         <?php foreach ($samisByEvent as $sami): ?>
         <!-- SAMI events (all squadrons for one round, newest first) -->
