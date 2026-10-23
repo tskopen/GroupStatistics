@@ -14,9 +14,9 @@ This checklist tracks the custom app icon and the remaining verification needed 
 
 ## Required before merge/deploy
 
-- [ ] Add `assets/pwa-icon-192.png` (exactly 192×192 pixels).
-- [ ] Add `assets/pwa-icon-512.png` (exactly 512×512 pixels).
-- [ ] Confirm both images are the supplied squadron patch, centered and legible at small sizes.
+- [x] Add `assets/pwa-icon-192.png` (exactly 192×192 pixels).
+- [x] Add `assets/pwa-icon-512.png` (exactly 512×512 pixels).
+- [x] Confirm both images show the supplied circular squadron patch centered on a square canvas. (Fine emblem details may be small at launcher size; visually verify on target devices.)
 - [ ] Keep manifest icon purpose as `any` unless a separate maskable-safe icon is created and tested. The circular patch should not be advertised as maskable by default.
 
 ## Verification after the images are added
