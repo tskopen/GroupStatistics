@@ -11,6 +11,7 @@ This checklist tracks the custom app icon and the remaining verification needed 
 - [x] Keep login/admin routes network-only and do not cache their responses.
 - [x] Avoid storing responses marked `private` or `no-store`, or responses that set cookies.
 - [x] Add a repeatable checklist for the asset upload and post-deployment checks.
+- [x] Add a browser-native install button that appears when the PWA install prompt is available and hides after installation.
 
 ## Required before merge/deploy
 
