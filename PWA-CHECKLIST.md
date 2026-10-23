@@ -39,3 +39,36 @@ This checklist tracks the custom app icon and the remaining verification needed 
 - A service worker improves offline behavior but does not itself guarantee every page works offline.
 - The cache is intended for public read-only pages/assets. Admin/login routes are deliberately excluded.
 - This PR does not deploy anything. Complete the image and browser checks above before merging/deploying.
+
+## Push notification completion checklist
+
+### Security and configuration
+- [ ] Rotate the previously committed fallback VAPID key pair in Railway; existing device subscriptions will need to be renewed.
+- [ ] Configure both `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY` as a matching pair, plus a valid `VAPID_SUBJECT`, or provision the matching pair through persistent `DATA_DIR/vapid-keys.json`.
+- [x] Remove hardcoded fallback VAPID credentials from the public-key endpoint.
+- [x] Keep private VAPID values and raw push subscription endpoints out of logs and admin diagnostics.
+- [x] Require a session CSRF token on subscription, preference, unsubscribe, and test-push POST requests.
+- [x] Rate-limit user/admin connection-test pushes.
+- [x] Restrict outbound push endpoints to HTTPS hostnames belonging to supported push providers.
+- [x] Remove expired subscriptions when the push service returns HTTP 404/410.
+- [ ] Confirm key rotation and stored environment variables in the actual Railway service; this cannot be verified from the repository.
+
+### Preferences and delivery consistency
+- [x] Persist an explicit `all_scores` preference independently of the selected-squad list.
+- [x] Reload saved preferences when the settings page opens.
+- [x] Recover a browser-held subscription missing on the server without automatically opting the user into all squads.
+- [x] Give score events unique notification tags so rapid/bulk score updates do not replace one another.
+- [x] Standardize the notification icon and click-through behavior in the service worker.
+- [x] Redact subscription credentials from admin test output.
+- [x] Align setup documentation with the implemented standard Web Push protocol.
+- [ ] Test that selected-squad/all-squad/none preferences deliver to the correct devices.
+
+### Installed-device verification (required before calling push complete)
+- [ ] Windows Edge: installed PWA receives a background test notification and tap/click opens the tracker.
+- [ ] Windows Chrome: installed PWA receives a background test notification and tap/click opens the tracker.
+- [ ] Android Chrome: installed PWA receives a background test notification while backgrounded/closed and tap opens the tracker.
+- [ ] iPhone/iPad: supported Home Screen web app can subscribe and receive a background notification, then open the tracker when tapped.
+- [ ] Uninstall/reinstall, permission denied/revoked, service-worker update, server subscription missing, stale endpoint, and offline/network error behavior.
+- [ ] Confirm a push-service HTTP success is reported as “accepted for delivery,” not guaranteed display.
+- [ ] Review Railway logs and confirm they contain no private VAPID values or raw endpoint URLs.
+
