@@ -317,6 +317,12 @@ usort(
     .regular-event-type { display: inline-block; background: #e3f2fd; color: #003366; padding: 4px 8px; border-radius: 3px; font-size: 0.75em; margin-bottom: 8px; }
     .regular-event-score { font-size: 1.5em; font-weight: bold; color: #28a745; }
     
+    .pwa-install-wrap { text-align: right; margin: 0 0 -10px; min-height: 38px; }
+    .pwa-install-button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 9px 13px; border: 0; border-radius: 6px; background: var(--primary-color); color: #fff; font-weight: 700; font-size: .92rem; cursor: pointer; box-shadow: 0 2px 5px rgba(0,0,0,.16); }
+    @media (max-width: 600px) { .pwa-install-wrap { margin-bottom: 0; } .pwa-install-button { padding: 8px 10px; font-size: .85rem; } }
+    .pwa-install-button:hover, .pwa-install-button:focus-visible { background: var(--secondary-color); }
+    .pwa-install-button[hidden], .pwa-install-help[hidden] { display: none !important; }
+    .pwa-install-help { max-width: 560px; margin: 10px auto 0; color: var(--text-color); font-size: .9rem; line-height: 1.45; }
     .footer { text-align: center; margin-top: 40px; }
     .footer a { color: #002147; text-decoration: none; margin: 0 15px; }
     .footer a:hover { text-decoration: underline; }
@@ -324,6 +330,10 @@ usort(
 </head>
 <body>
 <div class="container">
+    <div class="pwa-install-wrap">
+        <button type="button" id="pwa-install-button" class="pwa-install-button" hidden>⬇ Install App</button>
+        <p id="pwa-install-help" class="pwa-install-help" hidden></p>
+    </div>
     <h1>⚔️ USAFA Group 1 Squadron Tracker</h1>
     
     <h2>Overall Rankings</h2>
@@ -718,6 +728,85 @@ if ('serviceWorker' in navigator) {
                     console.error('Failed to load score breakdown:', err);
                 });
         });
+    });
+})();
+</script>
+<script>
+// Offer native installation when supported, otherwise link to device-specific instructions.
+(function () {
+    var installPrompt = null;
+    var installButton = document.getElementById('pwa-install-button');
+    var installHelp = document.getElementById('pwa-install-help');
+    if (!installButton) return;
+
+    var userAgent = window.navigator.userAgent || '';
+    var isIOS = /iPad|iPhone|iPod/.test(userAgent) ||
+        (window.navigator.platform === 'MacIntel' && window.navigator.maxTouchPoints > 1);
+    var isAndroid = /Android/i.test(userAgent);
+    var guideUrl = 'https://support.google.com/chrome/answer/9658361?co=GENIE.Platform%3DAndroid&hl=en-0';
+
+    if (isIOS) {
+        guideUrl = 'https://support.apple.com/guide/iphone/bookmark-a-website-iph42ab2f3a7/ios';
+        installButton.textContent = '＋ Add to Home Screen';
+        installHelp.textContent = 'For iPhone and iPad, open this page in Safari, tap Share, then choose Add to Home Screen.';
+    } else if (isAndroid) {
+        installButton.textContent = '＋ Add to Home Screen';
+        installHelp.textContent = 'If the install prompt does not appear, follow the Chrome instructions to add this site to your home screen.';
+    } else {
+        guideUrl = 'https://developer.chrome.com/blog/how_chrome_helps_users_install_the_apps_they_value';
+        installButton.textContent = '⬇ Install App';
+        installHelp.textContent = 'If installation is not offered automatically, open the browser menu and look for Install app or Install page as app.';
+    }
+
+    function isStandalone() {
+        return window.matchMedia('(display-mode: standalone)').matches ||
+            window.navigator.standalone === true;
+    }
+
+    function hideInstallUi() {
+        installButton.hidden = true;
+        installHelp.hidden = true;
+    }
+
+    if (isStandalone()) {
+        hideInstallUi();
+        return;
+    }
+
+    // Show a useful fallback immediately; a native prompt replaces the guide action when available.
+    installButton.hidden = false;
+    installHelp.hidden = false;
+
+    window.addEventListener('beforeinstallprompt', function (event) {
+        event.preventDefault();
+        installPrompt = event;
+        installButton.hidden = false;
+        installButton.textContent = isIOS ? '＋ Add to Home Screen' : '⬇ Install App';
+        installHelp.hidden = true;
+    });
+
+    installButton.addEventListener('click', async function () {
+        if (!installPrompt) {
+            window.open(guideUrl, '_blank', 'noopener,noreferrer');
+            return;
+        }
+
+        installButton.disabled = true;
+        try {
+            await installPrompt.prompt();
+            await installPrompt.userChoice;
+        } catch (error) {
+            console.error('PWA installation prompt failed:', error);
+        } finally {
+            installPrompt = null;
+            installButton.disabled = false;
+            hideInstallUi();
+        }
+    });
+
+    window.addEventListener('appinstalled', function () {
+        installPrompt = null;
+        hideInstallUi();
     });
 })();
 </script>
