@@ -12,7 +12,31 @@ if (empty($_SESSION['admin'])) {
 // dummy payload against the first available subscription, bypassing the
 // score-notification flow entirely so we can isolate delivery problems.
 if (isset($_GET['ajax']) && $_GET['ajax'] === 'test_connection') {
-    header('Content-Type: application/json');
+    header('Content-Type: application/json; charset=utf-8');
+    header('Cache-Control: no-store');
+    if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
+        header('Allow: POST');
+        http_response_code(405);
+        echo json_encode(['success' => false, 'message' => 'POST required']);
+        exit;
+    }
+
+    $expectedToken = (string) ($_SESSION['_csrf'] ?? '');
+    $providedToken = (string) ($_SERVER['HTTP_X_CSRF_TOKEN'] ?? '');
+    if ($expectedToken === '' || $providedToken === '' || !hash_equals($expectedToken, $providedToken)) {
+        http_response_code(419);
+        echo json_encode(['success' => false, 'message' => 'Session security token expired. Reload the page and try again.']);
+        exit;
+    }
+
+    $lastTestAt = (int) ($_SESSION['_admin_push_test_at'] ?? 0);
+    if (time() - $lastTestAt < 15) {
+        http_response_code(429);
+        echo json_encode(['success' => false, 'message' => 'Please wait 15 seconds between connection tests.']);
+        exit;
+    }
+    $_SESSION['_admin_push_test_at'] = time();
+
     require __DIR__ . '/push-service.php';
 
     $subs = loadSubscriptions();
@@ -78,8 +102,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $allNotifications = [];
     foreach ($targetSquadrons as $sid) {
         $scoreData = [
+            'event_id' => 'admin-test-' . bin2hex(random_bytes(8)),
             'squadron_id' => $sid,
             'value' => $value,
+            'timestamp' => date('c'),
         ];
         $notifications = sendNotificationForScore($scoreData, $message !== '' ? $message : null);
         $allNotifications = array_merge($allNotifications, $notifications);
@@ -96,7 +122,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $result = [
         'target_squadrons' => count($targetSquadrons),
         'matched_subscribers' => count($allNotifications),
-        'notifications' => $allNotifications,
+        'notifications' => array_map(static function (array $notification): array {
+            $payload = $notification['payload'] ?? [];
+            $data = $payload['data'] ?? [];
+            return [
+                'title' => (string) ($payload['title'] ?? ''),
+                'body' => (string) ($payload['body'] ?? ''),
+                'squadron_id' => $data['squadron_id'] ?? null,
+            ];
+        }, $allNotifications),
         'message' => $message,
         'sent' => $sendResult['sent'],
         'failed' => $sendResult['failed'],
@@ -313,12 +347,17 @@ $subscriberPreview = array_map(function ($sub) use ($squadrons) {
             }
         }
 
+        const adminCsrfToken = <?php echo json_encode(csrf_token(), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
+
         async function testConnection() {
             const resultEl = document.getElementById('test-connection-result');
             resultEl.textContent = 'Sending test push...';
 
             try {
-                const resp = await fetch('admin-test-notification.php?ajax=test_connection');
+                const resp = await fetch('admin-test-notification.php?ajax=test_connection', {
+                    method: 'POST',
+                    headers: { 'X-CSRF-Token': adminCsrfToken }
+                });
                 const data = await resp.json();
 
                 if (!data.success) {
