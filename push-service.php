@@ -102,7 +102,7 @@ function sendPushNotifications($notifications) {
             error_log('[push] ✗ Invalid subscription: missing endpoint/auth/p256dh');
             $failed++;
             $results[] = [
-                'endpoint' => $endpoint ? substr($endpoint, 0, 60) : '(missing)',
+                'endpoint' => $endpoint ? substr(hash('sha256', (string) $endpoint), 0, 12) : '(missing)',
                 'status' => 'failed',
                 'reason' => 'missing endpoint/auth/p256dh'
             ];
