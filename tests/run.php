@@ -44,6 +44,64 @@ check($roundCount===1,'legacy import reuses an existing bracket round');
 check($matchCount===1,'legacy import adds the missing matchup without duplicating the round');
 check(is_file($dataDir.'/brackets.json.legacy.bak'),'legacy bracket JSON is archived after successful import');
 
+
+// Web Push configuration regression checks. These use synthetic format fixtures
+// only; they do not contain or access production credentials.
+require_once __DIR__ . '/../vapid-config.php';
+$oldVapidPublic = getenv('VAPID_PUBLIC_KEY');
+$oldVapidPrivate = getenv('VAPID_PRIVATE_KEY');
+$oldVapidSubject = getenv('VAPID_SUBJECT');
+$oldDataDir = getenv('DATA_DIR');
+putenv('DATA_DIR=' . $dataDir);
+putenv('VAPID_PUBLIC_KEY');
+putenv('VAPID_PRIVATE_KEY');
+putenv('VAPID_SUBJECT=mailto:notification-test@example.test');
+
+$missingVapidRejected = false;
+try {
+    loadVapidConfiguration();
+} catch (RuntimeException $e) {
+    $missingVapidRejected = true;
+}
+check($missingVapidRejected, 'push configuration rejects missing keys instead of generating demo credentials');
+
+$testPublicKey = rtrim(strtr(base64_encode(chr(4) . str_repeat(chr(1), 64)), '+/', '-_'), '=');
+$testPrivateKey = rtrim(strtr(base64_encode(str_repeat(chr(2), 32)), '+/', '-_'), '=');
+putenv('VAPID_PUBLIC_KEY=' . $testPublicKey);
+putenv('VAPID_PRIVATE_KEY=' . $testPrivateKey);
+$validFormatAccepted = false;
+try {
+    $vapidConfig = loadVapidConfiguration();
+    $validFormatAccepted = $vapidConfig['publicKey'] === $testPublicKey
+        && $vapidConfig['privateKey'] === $testPrivateKey
+        && $vapidConfig['subject'] === 'mailto:notification-test@example.test';
+} catch (Throwable $e) {
+    $validFormatAccepted = false;
+}
+check($validFormatAccepted, 'push configuration accepts correctly formatted configured key values and contact subject');
+
+$publishedDemoKeyRejected = false;
+putenv('VAPID_PUBLIC_KEY=BOEd7Z3e-DesqeCznrwgIHe6o9o-M_bROcmhfJxkqOo6WNlIOPxQnYOq6Tp_RdGq9aBxvFlyOtMDLJ2e5r6hUWA');
+try {
+    loadVapidConfiguration();
+} catch (RuntimeException $e) {
+    $publishedDemoKeyRejected = true;
+}
+check($publishedDemoKeyRejected, 'push configuration rejects the previously published demo public key');
+
+foreach ([
+    'VAPID_PUBLIC_KEY' => $oldVapidPublic,
+    'VAPID_PRIVATE_KEY' => $oldVapidPrivate,
+    'VAPID_SUBJECT' => $oldVapidSubject,
+    'DATA_DIR' => $oldDataDir,
+] as $name => $value) {
+    if ($value === false) {
+        putenv($name);
+    } else {
+        putenv($name . '=' . $value);
+    }
+}
+
 @unlink($dataDir.'/brackets.json.legacy.bak');
 @rmdir($dataDir);
 if($failures){fwrite(STDERR,"{$failures} test(s) failed.\n");exit(1);}echo "All tests passed.\n";
