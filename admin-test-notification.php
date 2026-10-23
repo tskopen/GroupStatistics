@@ -159,7 +159,7 @@ $subscriberPreview = array_map(function ($sub) use ($squadrons) {
         }, $squadronIds);
 
     return [
-        'endpoint_hash' => substr($sub['endpoint'] ?? '', 0, 20),
+        'endpoint_hash' => substr(hash('sha256', (string) ($sub['endpoint'] ?? '')), 0, 12),
         'squadrons' => $names,
         'last_active' => $sub['last_active'] ?? $sub['subscribed_at'] ?? 'unknown',
     ];
