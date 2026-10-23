@@ -65,21 +65,50 @@ try {
 }
 check($missingVapidRejected, 'push configuration rejects missing keys instead of generating demo credentials');
 
-$testPublicKey = rtrim(strtr(base64_encode(chr(4) . str_repeat(chr(1), 64)), '+/', '-_'), '=');
-$testPrivateKey = rtrim(strtr(base64_encode(str_repeat(chr(2), 32)), '+/', '-_'), '=');
+$testKeyObject = openssl_pkey_new([
+    'private_key_type' => OPENSSL_KEYTYPE_EC,
+    'curve_name' => 'prime256v1',
+]);
+$testKeyDetails = $testKeyObject ? openssl_pkey_get_details($testKeyObject) : false;
+$testPrivateKey = is_array($testKeyDetails) && isset($testKeyDetails['ec']['d'])
+    ? rtrim(strtr(base64_encode($testKeyDetails['ec']['d']), '+/', '-_'), '=')
+    : '';
+$testPublicKey = is_array($testKeyDetails) && isset($testKeyDetails['ec']['x'], $testKeyDetails['ec']['y'])
+    ? rtrim(strtr(base64_encode(chr(4) . $testKeyDetails['ec']['x'] . $testKeyDetails['ec']['y']), '+/', '-_'), '=')
+    : '';
+check($testPrivateKey !== '' && $testPublicKey !== '', 'test runner can create a synthetic P-256 key pair');
+
 putenv('VAPID_PUBLIC_KEY=' . $testPublicKey);
 putenv('VAPID_PRIVATE_KEY=' . $testPrivateKey);
-$validFormatAccepted = false;
+$validPairAccepted = false;
 try {
     $vapidConfig = loadVapidConfiguration();
-    $validFormatAccepted = $vapidConfig['publicKey'] === $testPublicKey
+    $validPairAccepted = $vapidConfig['publicKey'] === $testPublicKey
         && $vapidConfig['privateKey'] === $testPrivateKey
         && $vapidConfig['subject'] === 'mailto:notification-test@example.test';
 } catch (Throwable $e) {
-    $validFormatAccepted = false;
+    $validPairAccepted = false;
 }
-check($validFormatAccepted, 'push configuration accepts correctly formatted configured key values and contact subject');
+check($validPairAccepted, 'push configuration accepts a matching P-256 key pair and contact subject');
 
+$otherKeyObject = openssl_pkey_new([
+    'private_key_type' => OPENSSL_KEYTYPE_EC,
+    'curve_name' => 'prime256v1',
+]);
+$otherKeyDetails = $otherKeyObject ? openssl_pkey_get_details($otherKeyObject) : false;
+$otherPrivateKey = is_array($otherKeyDetails) && isset($otherKeyDetails['ec']['d'])
+    ? rtrim(strtr(base64_encode($otherKeyDetails['ec']['d']), '+/', '-_'), '=')
+    : '';
+putenv('VAPID_PRIVATE_KEY=' . $otherPrivateKey);
+$mismatchedPairRejected = false;
+try {
+    loadVapidConfiguration();
+} catch (RuntimeException $e) {
+    $mismatchedPairRejected = str_contains($e->getMessage(), 'same key pair');
+}
+check($mismatchedPairRejected, 'push configuration rejects mismatched public/private key values');
+
+putenv('VAPID_PRIVATE_KEY=' . $testPrivateKey);
 $publishedDemoKeyRejected = false;
 putenv('VAPID_PUBLIC_KEY=BOEd7Z3e-DesqeCznrwgIHe6o9o-M_bROcmhfJxkqOo6WNlIOPxQnYOq6Tp_RdGq9aBxvFlyOtMDLJ2e5r6hUWA');
 try {
