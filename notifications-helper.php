@@ -94,7 +94,7 @@ function sendNotificationForScore(array $scoreData,?string $customMessage=null):
     $squadronId=$scoreData['squadron_id']??null;
     if (!$squadronId) return [];
     $body=$customMessage ?: ('Squadron '.$squadronId.' scored '.($scoreData['value']??0).' points!');
-    $payload=['title'=>'Score Update','body'=>$body,'icon'=>'/pwa-icon.php?size=192','badge'=>'/pwa-icon.php?size=192','tag'=>'score-update-'.bin2hex(random_bytes(8)),'data'=>['type'=>'score_update','squadron_id'=>$squadronId,'url'=>'/index.php']];
+    $payload=['title'=>'Score Update','body'=>$body,'icon'=>'/assets/pwa-icon-192.png','badge'=>'/assets/pwa-icon-192.png','tag'=>'score-update-'.bin2hex(random_bytes(8)),'data'=>['type'=>'score_update','squadron_id'=>$squadronId,'url'=>'/index.php']];
     if (!isValidNotificationPayload($payload)) return [];
     $matched=[];
     foreach (loadSubscriptions()['subscriptions'] as $sub) {
