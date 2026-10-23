@@ -317,6 +317,11 @@ usort(
     .regular-event-type { display: inline-block; background: #e3f2fd; color: #003366; padding: 4px 8px; border-radius: 3px; font-size: 0.75em; margin-bottom: 8px; }
     .regular-event-score { font-size: 1.5em; font-weight: bold; color: #28a745; }
     
+    .pwa-install-wrap { text-align: center; margin: -12px 0 24px; }
+    .pwa-install-button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 11px 18px; border: 0; border-radius: 6px; background: var(--primary-color); color: #fff; font-weight: 700; font-size: 1rem; cursor: pointer; box-shadow: 0 2px 5px rgba(0,0,0,.16); }
+    .pwa-install-button:hover, .pwa-install-button:focus-visible { background: var(--secondary-color); }
+    .pwa-install-button[hidden], .pwa-install-help[hidden] { display: none !important; }
+    .pwa-install-help { max-width: 560px; margin: 10px auto 0; color: var(--text-color); font-size: .9rem; line-height: 1.45; }
     .footer { text-align: center; margin-top: 40px; }
     .footer a { color: #002147; text-decoration: none; margin: 0 15px; }
     .footer a:hover { text-decoration: underline; }
@@ -568,6 +573,10 @@ usort(
     <p style="text-align: center; color: #999; margin: 20px 0;">No recent events to display yet.</p>
     <?php endif; ?>
     
+    <div class="pwa-install-wrap">
+        <button type="button" id="pwa-install-button" class="pwa-install-button" hidden>⬇ Install App</button>
+        <p id="pwa-install-help" class="pwa-install-help" hidden></p>
+    </div>
     <div class="footer">
         <a href="admin-login.php">Admin Login</a>
         <a href="notification-preferences.php" style="margin-left:10px;">🔔 Notifications</a>
@@ -718,6 +727,58 @@ if ('serviceWorker' in navigator) {
                     console.error('Failed to load score breakdown:', err);
                 });
         });
+    });
+})();
+</script>
+<script>
+// Show an in-page install button when the browser exposes the native PWA prompt.
+// Supported in Chromium-based desktop browsers and many Android browsers.
+(function () {
+    var installPrompt = null;
+    var installButton = document.getElementById('pwa-install-button');
+    var installHelp = document.getElementById('pwa-install-help');
+    if (!installButton) return;
+
+    function isStandalone() {
+        return window.matchMedia('(display-mode: standalone)').matches ||
+            window.navigator.standalone === true;
+    }
+
+    function hideInstallUi() {
+        installButton.hidden = true;
+        installHelp.hidden = true;
+    }
+
+    if (isStandalone()) {
+        hideInstallUi();
+        return;
+    }
+
+    window.addEventListener('beforeinstallprompt', function (event) {
+        event.preventDefault();
+        installPrompt = event;
+        installButton.hidden = false;
+        installHelp.hidden = true;
+    });
+
+    installButton.addEventListener('click', async function () {
+        if (!installPrompt) return;
+        installButton.disabled = true;
+        try {
+            await installPrompt.prompt();
+            await installPrompt.userChoice;
+        } catch (error) {
+            console.error('PWA installation prompt failed:', error);
+        } finally {
+            installPrompt = null;
+            installButton.disabled = false;
+            hideInstallUi();
+        }
+    });
+
+    window.addEventListener('appinstalled', function () {
+        installPrompt = null;
+        hideInstallUi();
     });
 })();
 </script>
