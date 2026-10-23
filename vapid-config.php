@@ -77,6 +77,41 @@ function loadVapidConfiguration(): array
         throw new RuntimeException('The VAPID keys have an invalid Web Push key format.');
     }
 
+    // Derive the P-256 public point from the private scalar and compare it
+    // with the configured public key. This catches mismatched values before
+    // browsers create subscriptions the server cannot authenticate.
+    if (!function_exists('openssl_pkey_get_private') || !function_exists('openssl_pkey_get_details')) {
+        throw new RuntimeException('The OpenSSL extension is required for Web Push key validation.');
+    }
+
+    $privateDer = chr(0x30) . chr(0x31) . chr(0x02) . chr(0x01) . chr(0x01)
+        . chr(0x04) . chr(0x20) . $decodedPrivate
+        . chr(0xA0) . chr(0x0A) . chr(0x06) . chr(0x08)
+        . chr(0x2A) . chr(0x86) . chr(0x48) . chr(0xCE)
+        . chr(0x3D) . chr(0x03) . chr(0x01) . chr(0x07);
+    $privatePem = "-----BEGIN EC PRIVATE KEY-----\\n"
+        . chunk_split(base64_encode($privateDer), 64, "\\n")
+        . "-----END EC PRIVATE KEY-----\\n";
+    $privateKeyObject = @openssl_pkey_get_private($privatePem);
+    if ($privateKeyObject === false) {
+        throw new RuntimeException('The configured VAPID private key is not a valid P-256 key.');
+    }
+
+    $privateDetails = @openssl_pkey_get_details($privateKeyObject);
+    if (
+        !is_array($privateDetails) ||
+        ($privateDetails['ec']['curve_name'] ?? '') !== 'prime256v1' ||
+        !is_string($privateDetails['ec']['x'] ?? null) ||
+        !is_string($privateDetails['ec']['y'] ?? null)
+    ) {
+        throw new RuntimeException('The configured VAPID private key is not a valid P-256 key.');
+    }
+
+    $derivedPublic = chr(0x04) . $privateDetails['ec']['x'] . $privateDetails['ec']['y'];
+    if (!hash_equals($decodedPublic, $derivedPublic)) {
+        throw new RuntimeException('VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY do not belong to the same key pair.');
+    }
+
     $subject = getenv('VAPID_SUBJECT');
     if (!is_string($subject)) {
         $subject = '';
