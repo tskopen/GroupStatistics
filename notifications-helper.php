@@ -19,11 +19,33 @@ function loadSubscriptions(): array {
     return ['subscriptions'=>$subscriptions];
 }
 
+function isAllowedPushEndpoint(string $endpoint): bool {
+    $parts = parse_url($endpoint);
+    if (!is_array($parts) || strtolower((string)($parts['scheme'] ?? '')) !== 'https' || empty($parts['host'])) {
+        return false;
+    }
+
+    $host = strtolower(rtrim((string)$parts['host'], '.'));
+    $allowedDomains = [
+        'fcm.googleapis.com',
+        'push.services.mozilla.com',
+        'push.apple.com',
+        'notify.windows.com',
+    ];
+
+    foreach ($allowedDomains as $domain) {
+        if ($host === $domain || str_ends_with($host, '.' . $domain)) return true;
+    }
+    return false;
+}
+
 function addSubscription(string $endpoint, string $auth, string $p256dh, array $squadrons = [], ?bool $allScores = null): bool {
     $endpoint = trim($endpoint);
     $auth = trim($auth);
     $p256dh = trim($p256dh);
-    if ($endpoint === '' || !filter_var($endpoint, FILTER_VALIDATE_URL) || $auth === '' || $p256dh === '') return false;
+    // Browser push endpoints are capability URLs; accept only HTTPS endpoints
+    // from common browser push services, not arbitrary URLs supplied by clients.
+    if (!isAllowedPushEndpoint($endpoint) || $auth === '' || $p256dh === '') return false;
     if (strlen($endpoint) > 2048 || strlen($auth) > 512 || strlen($p256dh) > 512) return false;
 
     $normalizedSquadrons = [];
