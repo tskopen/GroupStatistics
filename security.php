@@ -19,7 +19,9 @@ function isAdminEndpoint(): bool {
 function verify_csrf(): void {
     if ($_SERVER['REQUEST_METHOD'] !== 'POST' || !isAdminEndpoint()) return;
     $expected = $_SESSION['_csrf'] ?? '';
-    $provided = $_POST['_csrf'] ?? '';
+    // JSON/fetch requests cannot populate $_POST when sent as application/json;
+    // accept the same session token through a custom header for those requests.
+    $provided = $_POST['_csrf'] ?? ($_SERVER['HTTP_X_CSRF_TOKEN'] ?? '');
     if ($expected === '' || $provided === '' || !hash_equals($expected, (string)$provided)) {
         http_response_code(419);
         exit('Invalid or expired form token. Please reload the page and try again.');
