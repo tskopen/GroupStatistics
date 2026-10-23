@@ -1,3 +1,4 @@
+<?php require __DIR__ . '/config.php'; ?>
 <!DOCTYPE html>
 <html>
 <head>
@@ -35,7 +36,12 @@
             </label>
 
             <div id="preferences" style="display:none;">
-                <label>Follow Squadrons:</label>
+                <label>
+                    <input type="checkbox" id="all-squadrons" checked>
+                    Notify me about all squadrons
+                </label>
+                <p class="status info" style="margin-top:8px;">Turn this off to choose specific squadrons. If no squadrons are selected, score notifications will be paused.</p>
+                <label>Follow specific squadrons:</label>
                 <div class="checkbox-group" id="squadron-list"></div>
                 <button onclick="savePreferences()">Save Preferences</button>
 
@@ -63,28 +69,40 @@
         let currentSubscription = null;
         let squadrons = [];
         let lastVapidKeyPrefix = '';
+        const csrfToken = <?php echo json_encode(csrf_token(), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
 
         async function init() {
-            // Load squadrons
-            const resp = await fetch('api-get-squadrons.php');
-            const data = await resp.json();
-            squadrons = data.squadrons || [];
+            try {
+                const resp = await fetch('api-get-squadrons.php', { cache: 'no-store' });
+                if (!resp.ok) throw new Error('Could not load squadron list.');
+                const data = await resp.json();
+                squadrons = data.squadrons || [];
 
-            // Render squadron checkboxes
-            const list = document.getElementById('squadron-list');
-            squadrons.forEach(sq => {
-                const label = document.createElement('label');
-                label.className = 'checkbox-item';
-                label.innerHTML = `<input type="checkbox" value="${sq.id}"> ${sq.name}`;
-                list.appendChild(label);
-            });
+                const list = document.getElementById('squadron-list');
+                list.replaceChildren();
+                squadrons.forEach(sq => {
+                    const label = document.createElement('label');
+                    label.className = 'checkbox-item';
+                    const input = document.createElement('input');
+                    input.type = 'checkbox';
+                    input.value = String(sq.id);
+                    const name = document.createElement('span');
+                    name.textContent = String(sq.name || ('Squadron ' + sq.id));
+                    label.append(input, name);
+                    list.appendChild(label);
+                });
 
-            // Check if SW is registered
-            if ('serviceWorker' in navigator) {
-                registration = await navigator.serviceWorker.ready;
-                checkSubscription();
-            } else {
-                showStatus('Service Worker not supported', 'error');
+                document.getElementById('all-squadrons').addEventListener('change', toggleSquadronSelection);
+
+                if ('serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window) {
+                    registration = await navigator.serviceWorker.ready;
+                    await checkSubscription();
+                } else {
+                    document.getElementById('enable-notifications').disabled = true;
+                    showStatus('Push notifications are not supported in this browser or installation.', 'error');
+                }
+            } catch (error) {
+                showStatus('Unable to load notification settings: ' + error.message, 'error');
             }
         }
 
@@ -98,12 +116,64 @@
                 checkbox.checked = true;
                 document.getElementById('preferences').style.display = 'block';
                 document.getElementById('disabled-message').style.display = 'none';
+                await loadSavedPreferences();
                 await showSubscriptionDiagnostics();
             } else {
                 checkbox.checked = false;
                 document.getElementById('preferences').style.display = 'none';
                 document.getElementById('disabled-message').style.display = 'block';
+                document.getElementById('all-squadrons').checked = true;
+                toggleSquadronSelection();
             }
+        }
+
+        function toggleSquadronSelection() {
+            const allSquadrons = document.getElementById('all-squadrons').checked;
+            document.querySelectorAll('#squadron-list input[type="checkbox"]').forEach(input => {
+                input.disabled = allSquadrons;
+            });
+        }
+
+        async function loadSavedPreferences() {
+            if (!currentSubscription) return;
+
+            const resp = await fetch('subscribe-notifications-api.php?action=get_preferences', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+                cache: 'no-store',
+                body: JSON.stringify({ endpoint: currentSubscription.endpoint })
+            });
+
+            if (resp.status === 404) {
+                // Recover a browser subscription that was lost from the server.
+                // Start with no score categories selected rather than silently
+                // re-enabling all-squad notifications.
+                const recovery = await fetch('subscribe-notifications-api.php?action=subscribe', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+                    body: JSON.stringify({
+                        subscription: currentSubscription.toJSON(),
+                        all_scores: false,
+                        squadrons: []
+                    })
+                });
+                if (!recovery.ok) throw new Error('Could not restore this device subscription.');
+                document.getElementById('all-squadrons').checked = false;
+                document.querySelectorAll('#squadron-list input[type="checkbox"]').forEach(input => { input.checked = false; });
+                toggleSquadronSelection();
+                showStatus('This device subscription was restored. Choose all squadrons or select the squadrons you want to follow.', 'info');
+                return;
+            }
+
+            const data = await resp.json();
+            if (!resp.ok || !data.success) throw new Error(data.message || 'Could not load saved preferences.');
+
+            document.getElementById('all-squadrons').checked = !!data.all_scores;
+            const selected = new Set((data.squadrons || []).map(String));
+            document.querySelectorAll('#squadron-list input[type="checkbox"]').forEach(input => {
+                input.checked = selected.has(input.value);
+            });
+            toggleSquadronSelection();
         }
 
         // Client-side subscription diagnostics: immediately re-fetch the
@@ -145,7 +215,7 @@
             try {
                 const resp = await fetch('subscribe-notifications-api.php?action=test_notification', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
                     body: JSON.stringify({ endpoint: currentSubscription.endpoint })
                 });
 
@@ -164,39 +234,61 @@
         }
 
         async function toggleNotifications(enable) {
+            const checkbox = document.getElementById('enable-notifications');
+
             if (!registration) {
-                showStatus('Service Worker not available', 'error');
+                checkbox.checked = false;
+                showStatus('Service Worker not available. Reload the page and try again.', 'error');
                 return;
             }
 
             if (enable) {
-                // Request notification permission
-                if ('Notification' in window && Notification.permission === 'granted') {
-                    subscribe();
-                } else if ('Notification' in window) {
-                    const permission = await Notification.requestPermission();
-                    if (permission === 'granted') {
-                        subscribe();
-                    } else {
-                        document.getElementById('enable-notifications').checked = false;
-                        showStatus('Notification permission denied', 'error');
-                    }
+                if (Notification.permission === 'denied') {
+                    checkbox.checked = false;
+                    showStatus('Notifications are blocked in browser settings. Allow notifications for this site, then try again.', 'error');
+                    return;
                 }
-            } else {
-                // Unsubscribe
-                if (currentSubscription) {
-                    await currentSubscription.unsubscribe();
-                    await fetch('subscribe-notifications-api.php?action=unsubscribe', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ endpoint: currentSubscription.endpoint })
-                    });
-                    currentSubscription = null;
-                    document.getElementById('preferences').style.display = 'none';
-                    document.getElementById('disabled-message').style.display = 'block';
-                    document.getElementById('subscription-diagnostics').style.display = 'none';
-                    showStatus('Notifications disabled', 'info');
+
+                const permission = Notification.permission === 'granted'
+                    ? 'granted'
+                    : await Notification.requestPermission();
+                if (permission !== 'granted') {
+                    checkbox.checked = false;
+                    showStatus('Notification permission was not granted.', 'error');
+                    return;
                 }
+
+                await subscribe();
+                return;
+            }
+
+            if (!currentSubscription) {
+                document.getElementById('preferences').style.display = 'none';
+                document.getElementById('disabled-message').style.display = 'block';
+                showStatus('Notifications are already disabled for this device.', 'info');
+                return;
+            }
+
+            try {
+                const resp = await fetch('subscribe-notifications-api.php?action=unsubscribe', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+                    body: JSON.stringify({ endpoint: currentSubscription.endpoint })
+                });
+                const data = await resp.json();
+                if (!resp.ok || !data.success) {
+                    throw new Error(data.message || 'Could not clear the server subscription.');
+                }
+
+                await currentSubscription.unsubscribe();
+                currentSubscription = null;
+                document.getElementById('preferences').style.display = 'none';
+                document.getElementById('disabled-message').style.display = 'block';
+                document.getElementById('subscription-diagnostics').style.display = 'none';
+                showStatus('Notifications disabled on this device.', 'info');
+            } catch (error) {
+                checkbox.checked = !!currentSubscription;
+                showStatus('Could not disable notifications cleanly: ' + error.message, 'error');
             }
         }
 
@@ -204,68 +296,49 @@
             if (!registration) return;
 
             try {
-                // Get VAPID public key from server
-                const vapidResp = await fetch('get-vapid-key.php');
-                if (!vapidResp.ok) {
-                    throw new Error('Failed to fetch VAPID key: HTTP ' + vapidResp.status);
-                }
+                const vapidResp = await fetch('get-vapid-key.php', { cache: 'no-store' });
                 const vapidData = await vapidResp.json();
-
-                // Validate public key exists and is not empty
-                if (!vapidData.publicKey || vapidData.publicKey === '') {
-                    throw new Error('Invalid VAPID public key from server: empty');
+                if (!vapidResp.ok || !vapidData.success || !vapidData.publicKey) {
+                    throw new Error(vapidData.message || 'Push notifications are not configured on the server.');
                 }
 
-                // Log the key for debugging (first 20 chars only for security)
-                console.log('Using VAPID key: ' + vapidData.publicKey.substring(0, 20) + '...');
-                lastVapidKeyPrefix = vapidData.publicKey.substring(0, 20);
-
-                // Validate key format (should be base64url, 80+ chars for 65 bytes)
-                if (!/^[A-Za-z0-9_-]+$/.test(vapidData.publicKey)) {
-                    throw new Error('Invalid VAPID key format: contains invalid characters');
+                const applicationServerKey = urlBase64ToUint8Array(vapidData.publicKey);
+                if (applicationServerKey.length !== 65 || applicationServerKey[0] !== 4) {
+                    throw new Error('The server returned an invalid VAPID public key.');
                 }
-
-                if (vapidData.publicKey.length < 80) {
-                    throw new Error('Invalid VAPID key length: ' + vapidData.publicKey.length + ' (expected 87-88)');
-                }
-
-                let applicationServerKey;
-                try {
-                    applicationServerKey = urlBase64ToUint8Array(vapidData.publicKey);
-                } catch (e) {
-                    throw new Error('Failed to decode VAPID key: ' + e.message);
-                }
-
-                // Validate decoded key is 65 bytes
-                if (applicationServerKey.length !== 65) {
-                    throw new Error('Decoded VAPID key is ' + applicationServerKey.length + ' bytes, expected 65');
-                }
+                lastVapidKeyPrefix = vapidData.publicKey.substring(0, 12);
 
                 const subscription = await registration.pushManager.subscribe({
                     userVisibleOnly: true,
-                    applicationServerKey: applicationServerKey
+                    applicationServerKey
                 });
 
-                // Send subscription to server
+                const allScores = document.getElementById('all-squadrons').checked;
+                const selectedSquadrons = Array.from(document.querySelectorAll('#squadron-list input:checked'))
+                    .map(input => Number(input.value));
+
                 const subResp = await fetch('subscribe-notifications-api.php?action=subscribe', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ subscription })
+                    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+                    body: JSON.stringify({
+                        subscription: subscription.toJSON(),
+                        all_scores: allScores,
+                        squadrons: selectedSquadrons
+                    })
                 });
-
-                if (subResp.ok) {
-                    currentSubscription = subscription;
-                    document.getElementById('preferences').style.display = 'block';
-                    document.getElementById('disabled-message').style.display = 'none';
-                    showStatus('Notifications enabled!', 'success');
-                    await savePreferences();
-                    await showSubscriptionDiagnostics();
-                } else {
-                    throw new Error('Failed to subscribe on server');
+                const subData = await subResp.json();
+                if (!subResp.ok || !subData.success) {
+                    throw new Error(subData.message || 'Failed to save this device subscription.');
                 }
+
+                currentSubscription = subscription;
+                document.getElementById('preferences').style.display = 'block';
+                document.getElementById('disabled-message').style.display = 'none';
+                await loadSavedPreferences();
+                await showSubscriptionDiagnostics();
+                showStatus('Notifications enabled. Your preferences are saved.', 'success');
             } catch (error) {
                 console.error('Subscribe error:', error);
-                console.error('Error stack:', error.stack);
                 showStatus('Failed to enable notifications: ' + error.message, 'error');
                 document.getElementById('enable-notifications').checked = false;
             }
@@ -274,22 +347,25 @@
         async function savePreferences() {
             if (!currentSubscription) return;
 
+            const allScores = document.getElementById('all-squadrons').checked;
             const checked = Array.from(document.querySelectorAll('#squadron-list input:checked'));
-            const squadrons = checked.map(input => parseInt(input.value));
+            const selectedSquadrons = checked.map(input => Number(input.value));
 
-            const resp = await fetch('subscribe-notifications-api.php?action=update_preferences', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    endpoint: currentSubscription.endpoint,
-                    squadrons
-                })
-            });
-
-            if (resp.ok) {
-                showStatus('Preferences saved', 'success');
-            } else {
-                showStatus('Failed to save preferences', 'error');
+            try {
+                const resp = await fetch('subscribe-notifications-api.php?action=update_preferences', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+                    body: JSON.stringify({
+                        endpoint: currentSubscription.endpoint,
+                        all_scores: allScores,
+                        squadrons: selectedSquadrons
+                    })
+                });
+                const data = await resp.json();
+                if (!resp.ok || !data.success) throw new Error(data.message || 'Failed to save preferences.');
+                showStatus('Preferences saved.', 'success');
+            } catch (error) {
+                showStatus('Failed to save preferences: ' + error.message, 'error');
             }
         }
 
