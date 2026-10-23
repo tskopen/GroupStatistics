@@ -25,6 +25,7 @@ function isAllowedPushEndpoint(string $endpoint): bool {
         return false;
     }
 
+    if (isset($parts['port']) && (int)$parts['port'] !== 443) return false;
     $host = strtolower(rtrim((string)$parts['host'], '.'));
     $allowedDomains = [
         'fcm.googleapis.com',
