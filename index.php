@@ -732,13 +732,31 @@ if ('serviceWorker' in navigator) {
 })();
 </script>
 <script>
-// Show an in-page install button when the browser exposes the native PWA prompt.
-// Supported in Chromium-based desktop browsers and many Android browsers.
+// Offer native installation when supported, otherwise link to device-specific instructions.
 (function () {
     var installPrompt = null;
     var installButton = document.getElementById('pwa-install-button');
     var installHelp = document.getElementById('pwa-install-help');
     if (!installButton) return;
+
+    var userAgent = window.navigator.userAgent || '';
+    var isIOS = /iPad|iPhone|iPod/.test(userAgent) ||
+        (window.navigator.platform === 'MacIntel' && window.navigator.maxTouchPoints > 1);
+    var isAndroid = /Android/i.test(userAgent);
+    var guideUrl = 'https://support.google.com/chrome/answer/9658361?co=GENIE.Platform%3DAndroid&hl=en-0';
+
+    if (isIOS) {
+        guideUrl = 'https://support.apple.com/guide/iphone/bookmark-a-website-iph42ab2f3a7/ios';
+        installButton.textContent = '＋ Add to Home Screen';
+        installHelp.textContent = 'For iPhone and iPad, open this page in Safari, tap Share, then choose Add to Home Screen.';
+    } else if (isAndroid) {
+        installButton.textContent = '＋ Add to Home Screen';
+        installHelp.textContent = 'If the install prompt does not appear, follow the Chrome instructions to add this site to your home screen.';
+    } else {
+        guideUrl = 'https://developer.chrome.com/blog/how_chrome_helps_users_install_the_apps_they_value';
+        installButton.textContent = '⬇ Install App';
+        installHelp.textContent = 'If installation is not offered automatically, open the browser menu and look for Install app or Install page as app.';
+    }
 
     function isStandalone() {
         return window.matchMedia('(display-mode: standalone)').matches ||
@@ -755,15 +773,24 @@ if ('serviceWorker' in navigator) {
         return;
     }
 
+    // Show a useful fallback immediately; a native prompt replaces the guide action when available.
+    installButton.hidden = false;
+    installHelp.hidden = false;
+
     window.addEventListener('beforeinstallprompt', function (event) {
         event.preventDefault();
         installPrompt = event;
         installButton.hidden = false;
+        installButton.textContent = isIOS ? '＋ Add to Home Screen' : '⬇ Install App';
         installHelp.hidden = true;
     });
 
     installButton.addEventListener('click', async function () {
-        if (!installPrompt) return;
+        if (!installPrompt) {
+            window.open(guideUrl, '_blank', 'noopener,noreferrer');
+            return;
+        }
+
         installButton.disabled = true;
         try {
             await installPrompt.prompt();
