@@ -111,6 +111,7 @@
                 document.getElementById('preferences').style.display = 'block';
                 document.getElementById('disabled-message').style.display = 'none';
                 await loadPreferences();
+                await verifySubscriptionKey();
                 await showSubscriptionDiagnostics();
             } else {
                 checkbox.checked = false;
@@ -170,6 +171,39 @@
                 updateSquadronControls();
             } catch (error) {
                 showStatus(error.message || 'Unable to load notification preferences.', 'error');
+            }
+        }
+
+        async function verifySubscriptionKey() {
+            if (!currentSubscription) return;
+
+            try {
+                const response = await fetch('get-vapid-key.php', { cache: 'no-store' });
+                if (!response.ok) {
+                    showStatus('Push notifications are not configured on the server. Contact the site administrator.', 'error');
+                    return;
+                }
+                const config = await response.json();
+                if (!config.success || !config.publicKey) {
+                    showStatus('The server did not provide a valid push public key.', 'error');
+                    return;
+                }
+
+                const subscribedKey = currentSubscription.options && currentSubscription.options.applicationServerKey;
+                if (!subscribedKey) return; // Some browsers do not expose the key for comparison.
+
+                const actualBytes = subscribedKey instanceof ArrayBuffer
+                    ? new Uint8Array(subscribedKey)
+                    : new Uint8Array(subscribedKey.buffer, subscribedKey.byteOffset, subscribedKey.byteLength);
+                const expectedBytes = urlBase64ToUint8Array(config.publicKey);
+                const matches = actualBytes.length === expectedBytes.length &&
+                    actualBytes.every((value, index) => value === expectedBytes[index]);
+
+                if (!matches) {
+                    showStatus('This device subscription uses an older push key. Turn notifications off, then back on to create a fresh subscription.', 'error');
+                }
+            } catch (_) {
+                // A temporary diagnostics failure must not destroy a valid subscription.
             }
         }
 
