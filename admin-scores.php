@@ -153,6 +153,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $success = true;
 
                 $scoreData = [
+                    'event_id' => (int) $newEventId,
                     'squadron_id' => $squadronId,
                     'event_type' => $eventType,
                     'value' => $value,
