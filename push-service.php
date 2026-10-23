@@ -37,6 +37,13 @@ use Minishlink\WebPush\Subscription;
 function createWebPushClient() {
     try {
         $vapidData = loadVapidConfiguration();
+    } catch (Throwable $e) {
+        // loadVapidConfiguration only emits static, non-secret validation messages.
+        error_log('[push] VAPID configuration rejected: ' . $e->getMessage());
+        return null;
+    }
+
+    try {
         return new WebPush([
             'VAPID' => [
                 'subject' => $vapidData['subject'],
@@ -45,8 +52,8 @@ function createWebPushClient() {
             ],
         ]);
     } catch (Throwable $e) {
-        // The validator emits configuration messages only; key material is never logged.
-        error_log('[push] Web Push client could not be initialized: ' . $e->getMessage());
+        // Library exception messages are not logged because they may include key details.
+        error_log('[push] Web Push client initialization failed (' . get_class($e) . ').');
         return null;
     }
 }
