@@ -85,12 +85,7 @@ function sendPushNotifications($notifications) {
             ];
         }
 
-        if (!empty($expiredEndpoints)) {
-        removeExpiredSubscriptions($expiredEndpoints);
-        error_log('[push] Removed ' . count(array_unique($expiredEndpoints)) . ' expired subscription(s).');
-    }
-
-    error_log("[push] Push delivery complete: $sent accepted, $failed failed; accepted means the push service accepted the request, not that the device displayed it.");
+        error_log("[push] Delivery could not start: 0 accepted, $failed failed.");
         return ['sent' => $sent, 'failed' => $failed, 'results' => $results];
     }
 
@@ -190,7 +185,12 @@ function sendPushNotifications($notifications) {
         }
     }
 
-    error_log("[push] Push delivery complete: $sent sent, $failed failed");
+    if (!empty($expiredEndpoints)) {
+        removeExpiredSubscriptions($expiredEndpoints);
+        error_log('[push] Removed ' . count(array_unique($expiredEndpoints)) . ' expired subscription(s).');
+    }
+
+    error_log("[push] Push delivery complete: $sent accepted, $failed failed; accepted means the push service accepted the request, not that the device displayed it.");
     return ['sent' => $sent, 'failed' => $failed, 'results' => $results];
 }
 
