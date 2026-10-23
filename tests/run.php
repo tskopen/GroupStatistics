@@ -12,6 +12,22 @@ $dataDir=sys_get_temp_dir().'/groupstats-test-'.bin2hex(random_bytes(6));
 mkdir($dataDir,0777,true);
 define('DATA_DIR',$dataDir);
 
+require_once __DIR__.'/../vapid-config.php';
+$fixturePublicKey = 'BA' . str_repeat('A', 85);
+$fixturePrivateKey = str_repeat('A', 43);
+putenv('VAPID_PUBLIC_KEY='.$fixturePublicKey);
+putenv('VAPID_PRIVATE_KEY='.$fixturePrivateKey);
+$fixtureKeys = loadVapidKeys();
+check($fixtureKeys !== null, 'VAPID config accepts correctly encoded key lengths');
+check(strlen(decodeVapidBase64Url($fixturePublicKey) ?? '') === 65, 'VAPID public key decoder yields 65 bytes');
+check(strlen(decodeVapidBase64Url($fixturePrivateKey) ?? '') === 32, 'VAPID private key decoder yields 32 bytes');
+check(decodeVapidBase64Url('invalid+base64') === null, 'VAPID decoder rejects non-base64url characters');
+putenv('VAPID_PUBLIC_KEY='.$fixturePublicKey);
+putenv('VAPID_PRIVATE_KEY');
+check(loadVapidKeys() === null, 'VAPID configuration rejects a partial environment key pair');
+putenv('VAPID_PUBLIC_KEY');
+putenv('VAPID_PRIVATE_KEY');
+
 foreach(glob(__DIR__.'/../migrations/00[1-5]_*.php') as $file){$migration=require $file; $migration($db);}
 check((bool)$db->query("SELECT 1 FROM sqlite_master WHERE type='table' AND name='squadrons'")->fetchColumn(),'core schema migration creates squadrons');
 check((bool)$db->query("SELECT 1 FROM sqlite_master WHERE type='table' AND name='notification_subscriptions'")->fetchColumn(),'notification migration creates subscription table');
