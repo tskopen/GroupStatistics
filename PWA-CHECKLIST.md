@@ -39,3 +39,20 @@ This checklist tracks the custom app icon and the remaining verification needed 
 - A service worker improves offline behavior but does not itself guarantee every page works offline.
 - The cache is intended for public read-only pages/assets. Admin/login routes are deliberately excluded.
 - This PR does not deploy anything. Complete the image and browser checks above before merging/deploying.
+
+
+## Push notification implementation
+
+- [x] Load VAPID configuration from explicit environment variables or a pre-existing persistent key file; do not generate a published demo key.
+- [x] Reject the previously published demo public key and require a configured VAPID subject.
+- [x] Remove private-key material, complete endpoints, and endpoint prefixes from diagnostic logging and admin HTML output.
+- [x] Require same-origin POST requests for notification API writes and the admin test push.
+- [x] Restrict new subscriptions to HTTPS endpoints from common browser push providers.
+- [x] Restore saved squadron preferences and distinguish all squadrons, selected squadrons, and no squadrons.
+- [x] Clean up subscriptions when a push provider reports an expired endpoint.
+- [ ] Configure a fresh production VAPID key pair and VAPID subject in Railway before rollout.
+- [ ] Run PHP syntax checks and the project test runner.
+- [ ] Test preference persistence, subscription recovery, and per-device/admin test notifications.
+- [ ] Verify real background delivery and notification click-through on Windows, Android, and supported iOS/iPadOS installed PWAs.
+- [ ] Confirm score-entry and bulk-score flows send exactly the intended notifications.
+- [ ] If keys are rotated, communicate the required off/on re-subscription process and verify existing device subscriptions recover.

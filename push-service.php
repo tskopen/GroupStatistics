@@ -22,6 +22,8 @@
  */
 
 require_once __DIR__ . '/vendor/autoload.php';
+require_once __DIR__ . '/vapid-config.php';
+require_once __DIR__ . '/notifications-helper.php';
 
 use Minishlink\WebPush\WebPush;
 use Minishlink\WebPush\Subscription;
@@ -33,43 +35,25 @@ use Minishlink\WebPush\Subscription;
  * @return WebPush|null Null if VAPID keys are missing/invalid.
  */
 function createWebPushClient() {
-    $vapidFile = (getenv('DATA_DIR') ?: '/data') . '/vapid-keys.json';
-
-    if (!file_exists($vapidFile)) {
-        error_log('[push] ✗ VAPID keys file not found at ' . $vapidFile);
-        error_log('[PUSH-DIAG] ✗ VAPID FILE NOT FOUND: expected at ' . $vapidFile);
-        error_log('[PUSH-DIAG] DATA_DIR=' . getenv('DATA_DIR') . ' | /data exists: ' . (is_dir('/data') ? 'YES' : 'NO'));
-        error_log('[PUSH-DIAG] Contents of /data: ' . implode(', ', glob('/data/*') ?: []));
+    try {
+        $vapidData = loadVapidConfiguration();
+    } catch (Throwable $e) {
+        // loadVapidConfiguration only emits static, non-secret validation messages.
+        error_log('[push] VAPID configuration rejected: ' . $e->getMessage());
         return null;
     }
-
-    $fileSize = filesize($vapidFile);
-    error_log('[PUSH-DIAG] ✓ VAPID file found: ' . $vapidFile . ' size=' . $fileSize . ' bytes');
-
-    $vapidData = json_decode(file_get_contents($vapidFile), true);
-    if (empty($vapidData['publicKey']) || empty($vapidData['privateKey'])) {
-        error_log('[push] ✗ VAPID keys not configured (missing publicKey/privateKey)');
-        error_log('[PUSH-DIAG] ✗ VAPID keys incomplete: publicKey=' . (empty($vapidData['publicKey']) ? 'MISSING' : 'OK ' . strlen($vapidData['publicKey'])) . ' chars, privateKey=' . (empty($vapidData['privateKey']) ? 'MISSING' : 'OK ' . strlen($vapidData['privateKey'])) . ' chars');
-        return null;
-    }
-
-    error_log('[PUSH-DIAG] ✓ VAPID keys loaded: pub=' . substr($vapidData['publicKey'], 0, 20) . '... priv=' . substr($vapidData['privateKey'], 0, 20) . '...');
 
     try {
-        $webPush = new WebPush([
+        return new WebPush([
             'VAPID' => [
-                'subject' => 'mailto:admin@example.com',
+                'subject' => $vapidData['subject'],
                 'publicKey' => $vapidData['publicKey'],
                 'privateKey' => $vapidData['privateKey'],
             ],
         ]);
-
-        error_log('[PUSH-DIAG] ✓ WebPush initialized');
-
-        return $webPush;
-    } catch (\Throwable $e) {
-        error_log('[push] ✗ Failed to initialize WebPush client: ' . $e->getMessage());
-        error_log('[PUSH-DIAG] ✗ WebPush init failed: ' . $e->getMessage());
+    } catch (Throwable $e) {
+        // Library exception messages are not logged because they may include key details.
+        error_log('[push] Web Push client initialization failed (' . get_class($e) . ').');
         return null;
     }
 }
@@ -81,7 +65,6 @@ function createWebPushClient() {
  * @return array ['sent' => int, 'failed' => int]
  */
 function sendPushNotifications($notifications) {
-    error_log('[PUSH-DIAG] sendPushNotifications called with ' . count($notifications) . ' notifications');
 
     if (empty($notifications)) {
         return ['sent' => 0, 'failed' => 0, 'results' => []];
@@ -94,6 +77,7 @@ function sendPushNotifications($notifications) {
     // Validate notifications up front, tracking which ones are actually
     // queued so results line up with the reports returned by flush().
     $queued = [];
+    $expiredEndpoints = [];
 
     $webPush = createWebPushClient();
 
@@ -102,13 +86,13 @@ function sendPushNotifications($notifications) {
             $endpoint = $notif['endpoint'] ?? null;
             $failed++;
             $results[] = [
-                'endpoint' => $endpoint ? substr($endpoint, 0, 60) : '(missing)',
+                'endpoint' => $endpoint ? notificationEndpointId((string)$endpoint) : '(missing)',
                 'status' => 'failed',
                 'reason' => 'VAPID keys not configured or WebPush init failed'
             ];
         }
 
-        error_log("[push] Push delivery complete: $sent sent, $failed failed");
+        error_log("[push] Delivery could not start: 0 accepted, $failed failed.");
         return ['sent' => $sent, 'failed' => $failed, 'results' => $results];
     }
 
@@ -122,14 +106,14 @@ function sendPushNotifications($notifications) {
             error_log('[push] ✗ Invalid subscription: missing endpoint/auth/p256dh');
             $failed++;
             $results[] = [
-                'endpoint' => $endpoint ? substr($endpoint, 0, 60) : '(missing)',
+                'endpoint' => $endpoint ? notificationEndpointId((string)$endpoint) : '(missing)',
                 'status' => 'failed',
                 'reason' => 'missing endpoint/auth/p256dh'
             ];
             continue;
         }
 
-        $endpointPreview = substr($endpoint, 0, 60);
+        $endpointPreview = notificationEndpointId((string)$endpoint);
         $message = json_encode($payload);
 
         if ($message === false) {
@@ -170,7 +154,7 @@ function sendPushNotifications($notifications) {
     if (!empty($queued)) {
         try {
             foreach ($webPush->flush() as $report) {
-                $endpointPreview = substr($report->getEndpoint(), 0, 60);
+                $endpointPreview = notificationEndpointId($report->getEndpoint());
 
                 if ($report->isSuccess()) {
                     $sent++;
@@ -182,6 +166,9 @@ function sendPushNotifications($notifications) {
                 } else {
                     $failed++;
                     $reason = $report->getReason();
+                    if ($report->isSubscriptionExpired()) {
+                        $expiredEndpoints[] = $report->getEndpoint();
+                    }
                     error_log('[push] ✗ Notification failed for ' . $endpointPreview . '...: ' . $reason);
                     $results[] = [
                         'endpoint' => $endpointPreview,
@@ -194,7 +181,6 @@ function sendPushNotifications($notifications) {
         catch (\Throwable $e) {
             error_log('[push] ✗ WebPush flush() failed: ' . $e->getMessage());
             error_log('[push] ✗ Exception class: ' . get_class($e));
-            error_log('[push] ✗ Full trace: ' . $e->getTraceAsString());
             foreach ($queued as $q) {
                 $failed++;
                 $results[] = [
@@ -206,7 +192,12 @@ function sendPushNotifications($notifications) {
         }
     }
 
-    error_log("[push] Push delivery complete: $sent sent, $failed failed");
+    if (!empty($expiredEndpoints)) {
+        removeExpiredSubscriptions($expiredEndpoints);
+        error_log('[push] Removed ' . count(array_unique($expiredEndpoints)) . ' expired subscription(s).');
+    }
+
+    error_log("[push] Push delivery complete: $sent accepted, $failed failed; accepted means the push service accepted the request, not that the device displayed it.");
     return ['sent' => $sent, 'failed' => $failed, 'results' => $results];
 }
 
