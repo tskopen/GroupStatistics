@@ -44,8 +44,8 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'test_connection') {
             'payload' => [
                 'title' => 'Test Connection',
                 'body' => 'This is a test push from the admin panel. If you see this, delivery works!',
-                'icon' => '/pwa-icon.php?size=192',
-                'badge' => '/pwa-icon.php?size=192',
+                'icon' => '/assets/pwa-icon-192.png',
+                'badge' => '/assets/pwa-icon-192.png',
                 'tag' => 'admin-test-connection-' . time(),
                 'data' => [
                     'type' => 'test_connection',
