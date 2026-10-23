@@ -56,6 +56,7 @@ if ($_POST) {
                     ]);
 
                     $newScores[] = [
+                        'event_id' => (int) $db->lastInsertId(),
                         'squadron_id' => $sid,
                         'event_name' => $eventName,
                         'event_type' => $eventType,
