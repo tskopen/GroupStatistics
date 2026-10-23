@@ -11,7 +11,7 @@ The old source included a fallback VAPID private key. Treat that pair as comprom
 Generate a fresh key pair in a trusted environment with the installed PHP library:
 
 ```sh
-php -r 'require "vendor/autoload.php"; print_r(\\Minishlink\\WebPush\\VAPID::createVapidKeys());'
+php -r 'require "vendor/autoload.php"; print_r(\Minishlink\WebPush\VAPID::createVapidKeys());'
 ```
 
 Set these Railway service variables to the matching generated values:
