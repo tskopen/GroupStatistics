@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/vapid-config.php';
 
 /**
  * Normalize preferences to squadron IDs that actually exist in the database.
@@ -69,8 +70,16 @@ function addSubscription(
         strlen($p256dh) > 512 ||
         $auth === '' ||
         $p256dh === '' ||
+        !filter_var($endpoint, FILTER_VALIDATE_URL) ||
         !isAllowedPushEndpoint($endpoint)
     ) {
+        return false;
+    }
+
+    $authBytes = decodeVapidBase64Url($auth);
+    $p256dhBytes = decodeVapidBase64Url($p256dh);
+    if ($authBytes === null || strlen($authBytes) !== 16 ||
+        $p256dhBytes === null || strlen($p256dhBytes) !== 65 || $p256dhBytes[0] !== "\x04") {
         return false;
     }
 
@@ -123,7 +132,11 @@ function isAllowedPushEndpoint(string $endpoint): bool
     $allowedExact = [
         'fcm.googleapis.com',
         'updates.push.services.mozilla.com',
+        'push.services.mozilla.com',
         'web.push.apple.com',
+        'push.apple.com',
+        'notify.windows.com',
+        'wns.windows.com',
     ];
     if (in_array($host, $allowedExact, true)) {
         return true;
