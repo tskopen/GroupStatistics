@@ -47,7 +47,7 @@ function createWebPushClient(): ?WebPush
                 'privateKey' => $vapidData['privateKey'],
             ],
         ]);
-    } catch (\\Throwable $e) {
+    } catch (\Throwable $e) {
         error_log('[push] Failed to initialize WebPush client: ' . get_class($e) . ': ' . $e->getMessage());
         return null;
     }
@@ -82,7 +82,7 @@ function sendPushNotifications($notifications) {
             $endpoint = $notif['endpoint'] ?? null;
             $failed++;
             $results[] = [
-                'endpoint' => $endpoint ? substr($endpoint, 0, 60) : '(missing)',
+                'endpoint' => $endpoint ? substr(hash('sha256', (string) $endpoint), 0, 12) : '(missing)',
                 'status' => 'failed',
                 'reason' => 'VAPID keys not configured or WebPush init failed'
             ];
@@ -137,12 +137,13 @@ function sendPushNotifications($notifications) {
 
             $queued[] = ['endpoint' => $endpoint, 'endpointPreview' => $endpointPreview];
         } catch (\Throwable $e) {
-            error_log('[push] ✗ Failed to queue notification for ' . $endpointPreview . '...: ' . $e->getMessage());
+            $safeMessage = str_replace($endpoint, '[endpoint redacted]', $e->getMessage());
+            error_log('[push] Failed to queue notification for ' . $endpointPreview . ': ' . $safeMessage);
             $failed++;
             $results[] = [
                 'endpoint' => $endpointPreview,
                 'status' => 'failed',
-                'reason' => $e->getMessage()
+                'reason' => $safeMessage
             ];
         }
     }
@@ -164,8 +165,8 @@ function sendPushNotifications($notifications) {
                     if ($report->isSubscriptionExpired()) {
                         $expiredEndpoints[] = $report->getEndpoint();
                     }
-                    $reason = $report->getReason();
-                    error_log('[push] ✗ Notification failed for ' . $endpointPreview . '...: ' . $reason);
+                    $reason = str_replace($report->getEndpoint(), '[endpoint redacted]', $report->getReason());
+                    error_log('[push] Notification failed for ' . $endpointPreview . ': ' . $reason);
                     $results[] = [
                         'endpoint' => $endpointPreview,
                         'status' => 'failed',
@@ -175,14 +176,17 @@ function sendPushNotifications($notifications) {
             }
         } 
         catch (\Throwable $e) {
-            error_log('[push] ✗ WebPush flush() failed: ' . $e->getMessage());
-            error_log('[push] ✗ Exception class: ' . get_class($e));
+            $safeMessage = $e->getMessage();
+            foreach ($queued as $queuedItem) {
+                $safeMessage = str_replace($queuedItem['endpoint'], '[endpoint redacted]', $safeMessage);
+            }
+            error_log('[push] WebPush flush failed (' . get_class($e) . '): ' . $safeMessage);
             foreach ($queued as $q) {
                 $failed++;
                 $results[] = [
                     'endpoint' => $q['endpointPreview'],
                     'status' => 'failed',
-                    'reason' => 'flush error: ' . $e->getMessage()
+                    'reason' => 'flush error: ' . $safeMessage
                 ];
             }
         }
