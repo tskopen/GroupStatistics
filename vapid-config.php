@@ -89,9 +89,9 @@ function loadVapidConfiguration(): array
         . chr(0xA0) . chr(0x0A) . chr(0x06) . chr(0x08)
         . chr(0x2A) . chr(0x86) . chr(0x48) . chr(0xCE)
         . chr(0x3D) . chr(0x03) . chr(0x01) . chr(0x07);
-    $privatePem = "-----BEGIN EC PRIVATE KEY-----\\n"
-        . chunk_split(base64_encode($privateDer), 64, "\\n")
-        . "-----END EC PRIVATE KEY-----\\n";
+    $privatePem = "-----BEGIN EC PRIVATE KEY-----\n"
+        . chunk_split(base64_encode($privateDer), 64, "\n")
+        . "-----END EC PRIVATE KEY-----\n";
     $privateKeyObject = @openssl_pkey_get_private($privatePem);
     if ($privateKeyObject === false) {
         throw new RuntimeException('The configured VAPID private key is not a valid P-256 key.');
