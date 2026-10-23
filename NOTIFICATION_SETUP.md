@@ -9,7 +9,7 @@ Configure these Railway service variables before deploying this change:
 - `VAPID_PUBLIC_KEY`: the URL-safe Base64 public application-server key.
 - `VAPID_PRIVATE_KEY`: the matching URL-safe Base64 private application-server key. Treat this as a secret; never put it in source control, logs, screenshots, or support output.
 - `VAPID_SUBJECT`: a valid `mailto:` contact address or HTTPS URL for the application owner.
-- `APP_ORIGIN`: recommended; set this to the exact public origin for the app, such as `https://groupstatistics-production.up.railway.app` (no path).
+- `APP_ORIGIN`: set this to the exact public origin for the app, such as `https://groupstatistics-production.up.railway.app` (no path).
 
 Generate one VAPID pair using a trusted local environment with the `web-push` command-line package:
 
