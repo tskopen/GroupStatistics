@@ -5,7 +5,7 @@
  * are always network-only and are never written to Cache Storage.
  */
 
-const CACHE_VERSION = 'v4';
+const CACHE_VERSION = 'v5';
 const CACHE_NAME = `squadron-tracker-${CACHE_VERSION}`;
 
 const PRECACHE_URLS = [
@@ -143,12 +143,13 @@ self.addEventListener('push', event => {
         catch { data = { title: 'Squadron Tracker', body: raw }; }
     }
 
+    const fallbackIcon = new URL('./assets/pwa-icon-192.png', self.registration.scope).href;
     event.waitUntil(self.registration.showNotification(
         data.title || 'Squadron Tracker',
         {
             body: data.body || 'New update available',
-            icon: './assets/pwa-icon-192.png',
-            badge: './assets/pwa-icon-192.png',
+            icon: data.icon || fallbackIcon,
+            badge: data.badge || fallbackIcon,
             tag: data.tag || `push-${Date.now()}`,
             data: data.data || {}
         }
@@ -159,15 +160,26 @@ self.addEventListener('notificationclick', event => {
     event.notification.close();
     const targetUrl = new URL(
         event.notification?.data?.url || './index.php',
-        self.location.origin
-    ).href;
+        self.registration.scope
+    );
 
     event.waitUntil(clients.matchAll({ type: 'window', includeUncontrolled: true })
-        .then(clientList => {
-            for (const client of clientList) {
-                if (client.url === targetUrl && 'focus' in client) return client.focus();
+        .then(async clientList => {
+            const sameOriginClient = clientList.find(client => {
+                try { return new URL(client.url).origin === targetUrl.origin; }
+                catch { return false; }
+            });
+
+            if (sameOriginClient) {
+                if ('navigate' in sameOriginClient &&
+                    (new URL(sameOriginClient.url).pathname !== targetUrl.pathname ||
+                     new URL(sameOriginClient.url).search !== targetUrl.search)) {
+                    await sameOriginClient.navigate(targetUrl.href);
+                }
+                if ('focus' in sameOriginClient) return sameOriginClient.focus();
             }
-            if (clients.openWindow) return clients.openWindow(targetUrl);
+
+            if (clients.openWindow) return clients.openWindow(targetUrl.href);
         }));
 });
 
