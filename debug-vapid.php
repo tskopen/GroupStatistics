@@ -8,32 +8,17 @@ if (empty($_SESSION['admin'])) {
 
 require __DIR__ . '/config.php';
 
-$vapidFile = DATA_DIR . '/vapid-keys.json';
-$keys = [];
+require_once __DIR__ . '/vapid-config.php';
 
-if (file_exists($vapidFile)) {
-    $keys = json_decode(file_get_contents($vapidFile), true) ?? [];
-}
-
-$publicKey = $keys['publicKey'] ?? 'MISSING';
-
-// Decode to show byte length
-$decoded = null;
-$byteLength = 0;
-$isValid = false;
-
-if (!empty($publicKey)) {
-    try {
-        $base64 = str_replace(['-', '_'], ['+', '/'], $publicKey);
-        $decoded = base64_decode($base64, true);
-        if ($decoded !== false) {
-            $byteLength = strlen($decoded);
-            $isValid = $byteLength === 65;
-        }
-    } catch (Exception $e) {
-        // Silent fail
-    }
-}
+$keys = loadVapidKeys();
+$publicKey = $keys['publicKey'] ?? '';
+$displayPublicKey = $publicKey !== '' ? $publicKey : 'MISSING';
+$decoded = $publicKey !== '' ? decodeVapidBase64Url($publicKey) : null;
+$byteLength = $decoded === null ? 0 : strlen($decoded);
+$isValid = $keys !== null;
+$usingEnvironment = trim((string) getenv('VAPID_PUBLIC_KEY')) !== '' &&
+    trim((string) getenv('VAPID_PRIVATE_KEY')) !== '';
+$configurationSource = $usingEnvironment ? 'Railway environment variables' : 'DATA_DIR/vapid-keys.json';
 ?>
 <!DOCTYPE html>
 <html>
@@ -67,23 +52,24 @@ if (!empty($publicKey)) {
 
         <h3>Key Details</h3>
         <div class="status info">
-            <strong>Public Key (first 30 chars):</strong> <code><?php echo htmlspecialchars(substr($publicKey, 0, 30)); ?>...</code><br>
-            <strong>Public Key Length:</strong> <?php echo strlen($publicKey); ?> characters<br>
+            <strong>Public Key (first 30 chars):</strong> <code><?php echo htmlspecialchars(substr($displayPublicKey, 0, 30)); ?>...</code><br>
+            <strong>Public Key Length:</strong> <?php echo strlen($displayPublicKey); ?> characters<br>
             <strong>Decoded Byte Length:</strong> <?php echo $byteLength; ?> bytes (expected: 65)<br>
-            <strong>Format:</strong> base64url (uses - and _ not + and /)<br>
+            <strong>Format:</strong> base64url P-256 VAPID key<br>
+            <strong>Configuration source:</strong> <?php echo htmlspecialchars($configurationSource); ?><br>
+            <strong>Private key:</strong> configured (value is never displayed)<br>
         </div>
 
         <h3>Requirements for Valid VAPID Key</h3>
         <ul>
-            <li>✓ RFC 7748 Curve25519 format</li>
-            <li>✓ Exactly 65 bytes when decoded (87-88 chars base64url)</li>
-            <li>✓ Base64url encoding (- and _ instead of + and /)</li>
-            <li>✓ No padding characters (=)</li>
+            <li>Uncompressed P-256 public point must decode to 65 bytes and begin with 0x04.</li>
+            <li>Private scalar must decode to 32 bytes.</li>
+            <li>Both keys must be the matching pair generated for this application.</li>
+            <li>Keys must be base64url encoded and remain stable after deployment.</li>
         </ul>
 
         <h3>To Generate New Keys</h3>
-        <pre>npm install -g web-push
-web-push generate-vapid-keys</pre>
+        <pre>php -r 'require "vendor/autoload.php"; print_r(\\Minishlink\\WebPush\\VAPID::createVapidKeys());'</pre>
 
         <a href="admin-panel.php" class="back">← Back to Admin Panel</a>
     </div>
