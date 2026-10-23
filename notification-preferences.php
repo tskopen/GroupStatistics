@@ -371,8 +371,9 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         subscription,
-                        squadrons: [],
-                        all_scores: true
+                        squadrons: Array.from(document.querySelectorAll('#squadron-list input:checked'))
+                            .map(input => Number.parseInt(input.value, 10)),
+                        all_scores: document.getElementById('all-squadrons').checked
                     })
                 });
                 const saved = await subResp.json();
