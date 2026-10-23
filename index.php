@@ -213,7 +213,7 @@ usort(
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Squadron Tracker">
-<link rel="apple-touch-icon" href="pwa-icon.php?size=192">
+<link rel="apple-touch-icon" href="assets/pwa-icon-192.png">
 <style>
     :root {
         --primary-color: <?php echo htmlspecialchars($theme['primary_color']); ?>;

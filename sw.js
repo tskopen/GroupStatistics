@@ -1,183 +1,130 @@
 /**
  * USAFA Squadron Tracker PWA Service Worker
+ *
+ * Public pages may be cached for offline viewing. Authentication/admin pages
+ * are always network-only and are never written to Cache Storage.
  */
 
-const CACHE_VERSION = 'v3';
+const CACHE_VERSION = 'v4';
 const CACHE_NAME = `squadron-tracker-${CACHE_VERSION}`;
 
 const PRECACHE_URLS = [
-    '/',
-    '/index.php',
-    '/bracket.php',
-    '/admin-login.php',
-    '/manifest.json',
-    '/pwa-icon.php?size=192',
-    '/pwa-icon.php?size=512'
+    './',
+    './index.php',
+    './manifest.json',
+    './assets/pwa-icon-192.png',
+    './assets/pwa-icon-512.png'
 ];
 
-/* =========================
-   INSTALL
-========================= */
+const NEVER_CACHE_PATHS = [
+    '/admin-login.php',
+    '/admin-panel.php'
+];
 
 self.addEventListener('install', event => {
-    const precachePromise = caches.open(CACHE_NAME).then(cache => {
-        // Fire off precache without waiting for completion
-        // Individual URL failures won't block the install
-        PRECACHE_URLS.forEach(url => {
-            cache.add(url).catch(err => {
-                console.warn('Precache failed:', url, err);
-            });
-        });
-    });
-
-    event.waitUntil(precachePromise);
-    self.skipWaiting();
+    event.waitUntil((async () => {
+        const cache = await caches.open(CACHE_NAME);
+        // Missing optional entries should not prevent the worker installing.
+        // Await every attempt so install work does not continue in the background.
+        await Promise.allSettled(PRECACHE_URLS.map(url => cache.add(url)));
+        await self.skipWaiting();
+    })());
 });
-
-/* =========================
-   ACTIVATE
-========================= */
 
 self.addEventListener('activate', event => {
-    event.waitUntil(
-        caches.keys().then(keys =>
-            Promise.all(
-                keys
-                    .filter(
-                        key =>
-                            key.startsWith('squadron-tracker-') &&
-                            key !== CACHE_NAME
-                    )
-                    .map(key => caches.delete(key))
-            )
-        )
-    );
-
-    self.clients.claim();
+    event.waitUntil((async () => {
+        const keys = await caches.keys();
+        await Promise.all(keys
+            .filter(key => key.startsWith('squadron-tracker-') && key !== CACHE_NAME)
+            .map(key => caches.delete(key)));
+        await self.clients.claim();
+    })());
 });
 
-/* =========================
-   HELPERS
-========================= */
+function isNeverCachePath(path) {
+    return NEVER_CACHE_PATHS.some(page => path.endsWith(page));
+}
 
 function isNavigationRequest(request) {
-    return (
-        request.mode === 'navigate' ||
-        (
-            request.method === 'GET' &&
-            request.headers.get('accept') &&
-            request.headers.get('accept').includes('text/html')
-        )
-    );
+    return request.mode === 'navigate' ||
+        (request.method === 'GET' &&
+         (request.headers.get('accept') || '').includes('text/html'));
+}
+
+function isCacheablePublicResponse(response, path) {
+    if (!response || !response.ok || isNeverCachePath(path)) return false;
+    const cacheControl = (response.headers.get('Cache-Control') || '').toLowerCase();
+    if (cacheControl.includes('private') || cacheControl.includes('no-store')) return false;
+    if (response.headers.has('Set-Cookie')) return false;
+    return true;
 }
 
 async function networkFirst(request) {
+    const url = new URL(request.url);
     const cache = await caches.open(CACHE_NAME);
 
     try {
         const response = await fetch(request);
-
-        if (response && response.ok) {
-            cache.put(request, response.clone());
+        if (isCacheablePublicResponse(response, url.pathname)) {
+            try { await cache.put(request, response.clone()); }
+            catch (err) { console.warn('Could not cache response:', url.pathname, err); }
         }
-
         return response;
     } catch (err) {
         const cached = await cache.match(request);
-
-        if (cached) {
-            return cached;
-        }
+        if (cached) return cached;
 
         if (isNavigationRequest(request)) {
-            const fallback = await cache.match('/index.php');
-
-            if (fallback) {
-                return fallback;
-            }
+            const fallback = await cache.match('./index.php');
+            if (fallback) return fallback;
         }
 
         return new Response(
-            `
-            <html>
-            <body>
-                <h1>Offline</h1>
-                <p>No network connection available.</p>
-            </body>
-            </html>
-            `,
-            {
-                headers: {
-                    'Content-Type': 'text/html'
-                }
-            }
+            '<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Offline</title><body><h1>You are offline</h1><p>This page is not available offline. Reconnect and try again.</p></body></html>',
+            { headers: { 'Content-Type': 'text/html; charset=utf-8' }, status: 503 }
         );
     }
 }
 
 async function cacheFirst(request) {
+    const url = new URL(request.url);
     const cache = await caches.open(CACHE_NAME);
-
     const cached = await cache.match(request);
-
-    if (cached) {
-        return cached;
-    }
+    if (cached) return cached;
 
     try {
         const response = await fetch(request);
-
-        if (response && response.ok) {
-            cache.put(request, response.clone());
+        if (isCacheablePublicResponse(response, url.pathname)) {
+            try { await cache.put(request, response.clone()); }
+            catch (err) { console.warn('Could not cache asset:', url.pathname, err); }
         }
-
         return response;
     } catch (err) {
         return Response.error();
     }
 }
 
-/* =========================
-   FETCH
-========================= */
-
 self.addEventListener('fetch', event => {
-    const { request } = event;
-
-    if (request.method !== 'GET') {
-        return;
-    }
+    const request = event.request;
+    if (request.method !== 'GET') return;
 
     const url = new URL(request.url);
+    if (url.origin !== self.location.origin) return;
 
-    if (url.origin !== self.location.origin) {
+    // Never cache admin/login routes, including HTML navigation requests.
+    if (isNeverCachePath(url.pathname)) {
+        event.respondWith(fetch(request));
         return;
     }
 
-    const path = url.pathname;
-
-    const dynamicPages = [
-        'index.php',
-        'bracket.php',
-        'admin-login.php',
-        'admin-panel.php'
-    ];
-
-    const isDynamicPage =
-        dynamicPages.some(page => path.endsWith(page)) ||
-        path === '/' ||
-        path.endsWith('/');
-
-    if (isDynamicPage || isNavigationRequest(request)) {
+    if (isNavigationRequest(request)) {
         event.respondWith(networkFirst(request));
         return;
     }
 
     const isStaticAsset =
-        /\.(png|jpg|jpeg|gif|svg|webp|ico|css|js|woff2?|ttf)$/i.test(path) ||
-        path.endsWith('manifest.json') ||
-        path.includes('pwa-icon.php') ||
-        path.includes('image.php');
+        /\.(png|jpg|jpeg|gif|svg|webp|ico|css|js|woff2?|ttf)$/i.test(url.pathname) ||
+        url.pathname.endsWith('manifest.json');
 
     if (isStaticAsset) {
         event.respondWith(cacheFirst(request));
@@ -187,111 +134,51 @@ self.addEventListener('fetch', event => {
     event.respondWith(networkFirst(request));
 });
 
-/* =========================
-   PUSH NOTIFICATIONS
-========================= */
-
-self.addEventListener('push', (event) => {
-
-    console.log('Push event received');
-
+/* Push notifications */
+self.addEventListener('push', event => {
     let data = {};
-
     if (event.data) {
-
         const raw = event.data.text();
-
-        console.log('Raw payload:', raw);
-
-        try {
-
-            data = JSON.parse(raw);
-
-        } catch (err) {
-
-            console.warn('Payload was not JSON');
-
-            data = {
-                title: 'Squadron Tracker',
-                body: raw
-            };
-        }
+        try { data = JSON.parse(raw); }
+        catch { data = { title: 'Squadron Tracker', body: raw }; }
     }
 
-    event.waitUntil(
-        self.registration.showNotification(
-            data.title || 'Squadron Tracker',
-            {
-                body: data.body || 'New update available',
-                icon: '/pwa-icon.php?size=192',
-                badge: '/pwa-icon.php?size=192',
-                tag: data.tag || `push-${Date.now()}`,
-                data: data.data || {}
-            }
-        )
-    );
+    event.waitUntil(self.registration.showNotification(
+        data.title || 'Squadron Tracker',
+        {
+            body: data.body || 'New update available',
+            icon: './assets/pwa-icon-192.png',
+            badge: './assets/pwa-icon-192.png',
+            tag: data.tag || `push-${Date.now()}`,
+            data: data.data || {}
+        }
+    ));
 });
-/* =========================
-   NOTIFICATION CLICK
-========================= */
 
 self.addEventListener('notificationclick', event => {
     event.notification.close();
-
     const targetUrl = new URL(
-        event.notification?.data?.url || '/index.php',
+        event.notification?.data?.url || './index.php',
         self.location.origin
     ).href;
 
-    event.waitUntil(
-        clients.matchAll({
-            type: 'window',
-            includeUncontrolled: true
-        }).then(clientList => {
-
+    event.waitUntil(clients.matchAll({ type: 'window', includeUncontrolled: true })
+        .then(clientList => {
             for (const client of clientList) {
-                if (client.url === targetUrl && 'focus' in client) {
-                    return client.focus();
-                }
+                if (client.url === targetUrl && 'focus' in client) return client.focus();
             }
-
-            if (clients.openWindow) {
-                return clients.openWindow(targetUrl);
-            }
-        })
-    );
+            if (clients.openWindow) return clients.openWindow(targetUrl);
+        }));
 });
-
-/* =========================
-   BADGE SUPPORT
-========================= */
 
 self.addEventListener('message', event => {
-    if (!event.data) {
-        return;
-    }
-
-    if (event.data.type === 'UPDATE_BADGE') {
-        const count = Number(event.data.count || 0);
-
-        if ('setAppBadge' in self.registration) {
-            if (count <= 0) {
-                self.registration.clearAppBadge();
-            } else {
-                self.registration.setAppBadge(count);
-            }
-        }
-    }
+    if (event.data?.type !== 'UPDATE_BADGE') return;
+    const count = Number(event.data.count || 0);
+    if (!('setAppBadge' in self.registration)) return;
+    event.waitUntil(count <= 0
+        ? self.registration.clearAppBadge()
+        : self.registration.setAppBadge(count));
 });
 
-/* =========================
-   ERROR LOGGING
-========================= */
-
-self.addEventListener('error', event => {
-    console.error('Service Worker Error:', event.error);
-});
-
-self.addEventListener('unhandledrejection', event => {
-    console.error('Unhandled Promise Rejection:', event.reason);
-});
+self.addEventListener('error', event => console.error('Service Worker Error:', event.error));
+self.addEventListener('unhandledrejection', event => console.error('Unhandled Service Worker rejection:', event.reason));
