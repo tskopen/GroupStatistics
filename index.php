@@ -317,8 +317,9 @@ usort(
     .regular-event-type { display: inline-block; background: #e3f2fd; color: #003366; padding: 4px 8px; border-radius: 3px; font-size: 0.75em; margin-bottom: 8px; }
     .regular-event-score { font-size: 1.5em; font-weight: bold; color: #28a745; }
     
-    .pwa-install-wrap { text-align: center; margin: -12px 0 24px; }
-    .pwa-install-button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 11px 18px; border: 0; border-radius: 6px; background: var(--primary-color); color: #fff; font-weight: 700; font-size: 1rem; cursor: pointer; box-shadow: 0 2px 5px rgba(0,0,0,.16); }
+    .pwa-install-wrap { text-align: right; margin: 0 0 -10px; min-height: 38px; }
+    .pwa-install-button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 9px 13px; border: 0; border-radius: 6px; background: var(--primary-color); color: #fff; font-weight: 700; font-size: .92rem; cursor: pointer; box-shadow: 0 2px 5px rgba(0,0,0,.16); }
+    @media (max-width: 600px) { .pwa-install-wrap { margin-bottom: 0; } .pwa-install-button { padding: 8px 10px; font-size: .85rem; } }
     .pwa-install-button:hover, .pwa-install-button:focus-visible { background: var(--secondary-color); }
     .pwa-install-button[hidden], .pwa-install-help[hidden] { display: none !important; }
     .pwa-install-help { max-width: 560px; margin: 10px auto 0; color: var(--text-color); font-size: .9rem; line-height: 1.45; }
@@ -329,6 +330,10 @@ usort(
 </head>
 <body>
 <div class="container">
+    <div class="pwa-install-wrap">
+        <button type="button" id="pwa-install-button" class="pwa-install-button" hidden>⬇ Install App</button>
+        <p id="pwa-install-help" class="pwa-install-help" hidden></p>
+    </div>
     <h1>⚔️ USAFA Group 1 Squadron Tracker</h1>
     
     <h2>Overall Rankings</h2>
@@ -573,10 +578,6 @@ usort(
     <p style="text-align: center; color: #999; margin: 20px 0;">No recent events to display yet.</p>
     <?php endif; ?>
     
-    <div class="pwa-install-wrap">
-        <button type="button" id="pwa-install-button" class="pwa-install-button" hidden>⬇ Install App</button>
-        <p id="pwa-install-help" class="pwa-install-help" hidden></p>
-    </div>
     <div class="footer">
         <a href="admin-login.php">Admin Login</a>
         <a href="notification-preferences.php" style="margin-left:10px;">🔔 Notifications</a>
