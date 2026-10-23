@@ -1,83 +1,73 @@
-# Push Notification Setup Guide
+# Push Notification Setup and Verification
 
-Your Squadron Tracker has push notifications infrastructure, but needs configuration to actually deliver.
+The app uses the **Web Push Protocol** through `minishlink/web-push` and the browser's Push API. Browser vendors operate their own push services; the server sends encrypted Web Push messages to the endpoint returned by the browser. A Firebase service account or a separate WNS API key is not part of this implementation.
 
-## Current Status
-- ✅ VAPID keys generated
-- ✅ User subscriptions captured
-- ✅ Push service code deployed (PHP)
-- ❌ FCM needs authentication configured (Service Account or Legacy Server Key)
-- ⚠️ WNS works but requires proper Windows subscription
+## Production configuration
 
-## How to Enable FCM Notifications (Android/Chrome)
+### 1. Rotate the VAPID key pair
 
-### Option A: Modern Firebase V1 API + Service Account (Recommended)
+The old source included a fallback VAPID private key. Treat that pair as compromised and **rotate it before relying on production push notifications**. Existing browser subscriptions created with the old public key must be renewed after the server starts using a new pair.
 
-**Step 1: Generate Service Account JSON**
-1. Go to [Firebase Console](https://console.firebase.google.com)
-2. Select your project
-3. **Project Settings** → **Service Accounts** tab
-4. Click **Manage Service Accounts** (opens Google Cloud Console)
-5. Find your service account: `firebase-adminsdk-xxxxx@your-project.iam.gserviceaccount.com`
-6. Click the 3-dot menu → **Manage keys**
-7. **Create new key** → **JSON**
-8. Download the JSON file
+Generate a fresh key pair in a trusted environment with the installed PHP library:
 
-**Step 2: Add to Railway**
-1. Open the downloaded JSON file in a text editor
-2. Copy the entire contents
-3. SSH into Railway or use SFTP
-4. Create file: `/data/firebase-service-account.json`
-5. Paste the JSON contents
-6. Save and close
+```sh
+php -r 'require "vendor/autoload.php"; print_r(\\Minishlink\\WebPush\\VAPID::createVapidKeys());'
+```
 
-Or set as environment variable:
-- Base64 encode the JSON: `cat firebase-key.json | base64`
-- In Railway Variables: `FIREBASE_CREDENTIALS=<base64-encoded-json>`
+Set these Railway service variables to the matching generated values:
 
-**Step 3: Test**
-- Admin Panel → Send Notifications
-- Enter score
-- Check Railway logs for: `✓ FCM V1 sent to token...`
+- `VAPID_PUBLIC_KEY` — base64url-encoded uncompressed P-256 public key (65 decoded bytes).
+- `VAPID_PRIVATE_KEY` — matching base64url-encoded private scalar (32 decoded bytes).
+- `VAPID_SUBJECT` — a valid `mailto:` contact address or an HTTPS URL.
 
-### Option B: Legacy Server API Key (if available)
+Keep the private key in Railway's secret/environment-variable storage. **Never commit it, print it into application logs, or share it in diagnostics.** If using the persistent-file option instead, place a JSON object with `publicKey` and `privateKey` at `DATA_DIR/vapid-keys.json` and restrict file access. If either environment key is set, both must be set; the application does not combine environment and file keys.
 
-Some older Firebase projects have a Server API Key. If you see it in Firebase Console:
+The key loader checks encoding and expected lengths. Those checks alone cannot prove that the public/private values are a matching pair, so the end-to-end push test is required.
 
-1. Firebase Console → **Project Settings** → **Cloud Messaging**
-2. Look for **Server API Key** (below the Sender ID)
-3. Copy it
-4. In Railway Variables: `FCM_SERVER_KEY=your-server-api-key`
-5. Test same as above
+### 2. Confirm deploy configuration
 
-## WNS (Windows/Edge)
-Should work automatically - no configuration needed. Test by subscribing on Windows/Edge browser.
+- Confirm `/data` (or `DATA_DIR`) is persistent if the file-based key configuration is used.
+- Confirm the deployed app is HTTPS and the Composer dependencies are installed.
+- Confirm the service can make outbound HTTPS requests to the push providers used by subscribed browsers.
+- `get-vapid-key.php` returns only the public key; when configuration is missing or malformed it returns HTTP 503 instead of inventing fallback keys.
+- Subscription endpoints are restricted to HTTPS endpoints from recognized providers to prevent arbitrary URLs from becoming outbound server requests. If a browser uses a new push-service hostname, review and explicitly allow that provider in `notifications-helper.php` before enabling it.
+
+## User setup and preferences
+
+1. Open the app on the device/browser where notifications should appear.
+2. Open **Notifications**, enable notifications, and allow the browser permission prompt.
+3. Choose either **all squadrons** or specific squadrons. Unchecking all-squad notifications and selecting no squadron intentionally pauses score notifications.
+4. Save preferences, then use **Test Notification**.
+5. Check that the notification actually appears on the device. An HTTP success from the push service means it accepted the message; it does not guarantee the OS displayed it.
+6. Tap the notification and confirm the tracker opens/focuses the intended page.
+7. Disable notifications and confirm the browser subscription and server record are both cleared.
+
+The settings page saves preferences on the server and reloads them when reopened. If a device has a local subscription but its server record is missing, the page attempts to restore the record with no squadrons selected so it does not silently broaden the user's notification preferences.
+
+## Test the production flow
+
+1. Subscribe one test device on each supported target listed in `PWA-CHECKLIST.md`.
+2. Use the device-side test push and confirm the system notification appears while the app is backgrounded or closed.
+3. Record one score through `admin-scores.php`; verify that only users following that squadron (plus users who opted into all scores) receive it.
+4. Record a bulk event through `admin-bulk-scores.php`; verify that tags are unique per recorded squadron event and one user's bulk notifications do not overwrite one another.
+5. Test all-squad, selected-squad, and no-squad preferences, then reload the settings page and verify the values persist.
+6. Test denial/revocation of notification permission, lost server subscription rows, a stale endpoint, and delivery failure. Expired endpoints (HTTP 404/410 from the push service) should be removed automatically.
+7. Review Railway logs for delivery counts and hashed endpoint identifiers. Never paste or log raw subscription endpoints or subscription encryption keys.
 
 ## Troubleshooting
 
-### "FCM not configured" in logs
-- Create `/data/firebase-service-account.json`, OR
-- Set `FCM_SERVER_KEY` environment variable
+- **HTTP 503 from `get-vapid-key.php`:** configure a full matching VAPID pair and a valid `VAPID_SUBJECT`, or fix the persistent key file.
+- **Invalid application server key / subscribe failure:** ensure the public key is base64url encoded, is 65 decoded bytes, and matches the private key configured on the server. Existing subscriptions need to be recreated after key rotation.
+- **HTTP 401/403 from a push service:** verify the VAPID pair, subject, subscription validity, and provider response.
+- **HTTP 404/410:** the push subscription expired; the delivery service removes it so the user can subscribe again.
+- **Server says sent but no notification appears:** confirm OS/browser notifications are enabled, test from the installed PWA where required by the platform, and check the browser's notification settings.
+- **Preferences not sticking:** reload the page, inspect the API response, and check for HTTP 419 (expired session security token) or 404 (missing subscription; the settings page should offer recovery).
 
-### FCM V1 returns 401
-- Service Account credentials invalid
-- Re-download JSON from Firebase Console
-- Make sure JSON is valid (open in text editor, paste in online JSON validator)
+## Related code
 
-### FCM V1 returns 403 (Permission denied)
-- Service Account doesn't have FCM permissions
-- Go to Google Cloud Console
-- Grant "Firebase Cloud Messaging Agent" role to your service account
-
-### FCM Legacy returns 401
-- Server API Key is incorrect or expired
-- Generate new one in Firebase Console
-
-### WNS returns 401
-- WNS endpoints expire after time (user needs to re-subscribe)
-- Have user go to Notifications settings and re-enable
-
-## Files to Check
-- Railway logs for delivery status
-- `/data/notification-subscriptions.json` - see subscribed endpoints
-- `push-service.php` - handles actual delivery
+- `vapid-config.php` — shared VAPID key loading and format validation.
+- `get-vapid-key.php` — public-key endpoint used when subscribing.
+- `subscribe-notifications-api.php` — subscribe, unsubscribe, preference, and device-test operations.
+- `notifications-helper.php` — stored preferences, recipient matching, provider endpoint validation, and cleanup.
+- `push-service.php` — encrypted Web Push delivery and expiry handling.
+- `sw.js` — background notification display and click behavior.
