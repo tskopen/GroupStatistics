@@ -69,7 +69,7 @@ $configurationSource = $usingEnvironment ? 'Railway environment variables' : 'DA
         </ul>
 
         <h3>To Generate New Keys</h3>
-        <pre>php -r 'require "vendor/autoload.php"; print_r(\\Minishlink\\WebPush\\VAPID::createVapidKeys());'</pre>
+        <pre>php -r 'require "vendor/autoload.php"; print_r(\Minishlink\WebPush\VAPID::createVapidKeys());'</pre>
 
         <a href="admin-panel.php" class="back">← Back to Admin Panel</a>
     </div>
