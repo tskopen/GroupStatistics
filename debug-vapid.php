@@ -16,7 +16,7 @@ $displayPublicKey = $publicKey !== '' ? $publicKey : 'MISSING';
 $decoded = $publicKey !== '' ? decodeVapidBase64Url($publicKey) : null;
 $byteLength = $decoded === null ? 0 : strlen($decoded);
 $isValid = $keys !== null;
-$usingEnvironment = trim((string) getenv('VAPID_PUBLIC_KEY')) !== '' &&
+$usingEnvironment = trim((string) getenv('VAPID_PUBLIC_KEY')) !== '' ||
     trim((string) getenv('VAPID_PRIVATE_KEY')) !== '';
 $configurationSource = $usingEnvironment ? 'Railway environment variables' : 'DATA_DIR/vapid-keys.json';
 ?>
