@@ -169,6 +169,16 @@ foreach ($regularEvents as $event) {
 }
 $otherByEvent = array_values($otherGroups);
 
+// Rank squadrons within each grouped event card by points awarded, highest first.
+foreach ([$samisByEvent, $pftByEvent, $otherByEvent] as $eventGroups) {
+    foreach ($eventGroups as &$eventGroup) {
+        usort($eventGroup['results'], function ($a, $b) {
+            return (float) ($b['value'] ?? 0) <=> (float) ($a['value'] ?? 0);
+        });
+    }
+    unset($eventGroup);
+}
+
 // Non-SAMI/PFT/other regular events stay in regularEvents (no change to their display).
 $regularEvents = array_values(array_filter(
     $regularEvents,
