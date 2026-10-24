@@ -8,10 +8,20 @@ if (empty($_SESSION['admin'])) {
     exit;
 }
 
-// AJAX endpoint: "Test Connection" — hits push-service.php directly with a
-// dummy payload against the first available subscription, bypassing the
-// score-notification flow entirely so we can isolate delivery problems.
+if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && !isSameOriginNotificationRequest()) {
+    http_response_code(403);
+    exit('Request origin is not allowed');
+}
+
+// This endpoint sends notifications, so it must not be triggered by a GET request.
 if (isset($_GET['ajax']) && $_GET['ajax'] === 'test_connection') {
+    if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
+        header('Allow: POST');
+        http_response_code(405);
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['success' => false, 'message' => 'Method not allowed']);
+        exit;
+    }
     header('Content-Type: application/json');
     require __DIR__ . '/push-service.php';
 
@@ -34,8 +44,8 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'test_connection') {
             'payload' => [
                 'title' => 'Test Connection',
                 'body' => 'This is a test push from the admin panel. If you see this, delivery works!',
-                'icon' => '/pwa-icon.php?size=192',
-                'badge' => '/pwa-icon.php?size=192',
+                'icon' => '/assets/pwa-icon-192.png',
+                'badge' => '/assets/pwa-icon-192.png',
                 'tag' => 'admin-test-connection-' . time(),
                 'data' => [
                     'type' => 'test_connection',
@@ -96,7 +106,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $result = [
         'target_squadrons' => count($targetSquadrons),
         'matched_subscribers' => count($allNotifications),
-        'notifications' => $allNotifications,
+        // Never render subscription endpoints or encryption secrets in the HTML.
+        'notifications' => array_map(static function (array $item): array {
+            return [
+                'endpoint_id' => notificationEndpointId((string)($item['endpoint'] ?? '')),
+                'title' => $item['payload']['title'] ?? '',
+                'body' => $item['payload']['body'] ?? '',
+            ];
+        }, $allNotifications),
         'message' => $message,
         'sent' => $sendResult['sent'],
         'failed' => $sendResult['failed'],
@@ -125,7 +142,7 @@ $subscriberPreview = array_map(function ($sub) use ($squadrons) {
         }, $squadronIds);
 
     return [
-        'endpoint_hash' => substr($sub['endpoint'] ?? '', 0, 20),
+        'endpoint_hash' => notificationEndpointId((string)($sub['endpoint'] ?? '')),
         'squadrons' => $names,
         'last_active' => $sub['last_active'] ?? $sub['subscribed_at'] ?? 'unknown',
     ];
@@ -318,7 +335,11 @@ $subscriberPreview = array_map(function ($sub) use ($squadrons) {
             resultEl.textContent = 'Sending test push...';
 
             try {
-                const resp = await fetch('admin-test-notification.php?ajax=test_connection');
+                const resp = await fetch('admin-test-notification.php?ajax=test_connection', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({})
+                });
                 const data = await resp.json();
 
                 if (!data.success) {
