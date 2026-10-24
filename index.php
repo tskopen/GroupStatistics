@@ -323,6 +323,9 @@ usort(
     .pwa-install-button:hover, .pwa-install-button:focus-visible { background: var(--secondary-color); }
     .pwa-install-button[hidden], .pwa-install-help[hidden] { display: none !important; }
     .pwa-install-help { max-width: 560px; margin: 10px auto 0; color: var(--text-color); font-size: .9rem; line-height: 1.45; }
+    .events-toggle-wrap { text-align: center; margin: -10px 0 30px; }
+    .events-toggle-button { padding: 10px 18px; border: 0; border-radius: 6px; background: var(--primary-color); color: #fff; font-weight: bold; cursor: pointer; }
+    .events-toggle-button:hover, .events-toggle-button:focus-visible { background: var(--secondary-color); }
     .footer { text-align: center; margin-top: 40px; }
     .footer a { color: #002147; text-decoration: none; margin: 0 15px; }
     .footer a:hover { text-decoration: underline; }
@@ -574,6 +577,9 @@ usort(
         </div>
         <?php endforeach; ?>
     </div>
+    <div class="events-toggle-wrap" id="events-toggle-wrap" hidden>
+        <button type="button" class="events-toggle-button" id="events-toggle-button" aria-expanded="false">Show all events</button>
+    </div>
     <?php else: ?>
     <p style="text-align: center; color: #999; margin: 20px 0;">No recent events to display yet.</p>
     <?php endif; ?>
@@ -808,6 +814,41 @@ if ('serviceWorker' in navigator) {
         installPrompt = null;
         hideInstallUi();
     });
+})();
+</script>
+<script>
+// Show the six most recent event cards by default, based on their existing visual timestamp order.
+(function () {
+    var grid = document.querySelector('.events-grid');
+    var toggleWrap = document.getElementById('events-toggle-wrap');
+    var toggleButton = document.getElementById('events-toggle-button');
+    if (!grid || !toggleWrap || !toggleButton) return;
+
+    var cards = Array.prototype.slice.call(
+        grid.querySelectorAll('.tournament-card, .sami-card, .event-card')
+    );
+    cards.sort(function (a, b) {
+        return (parseFloat(a.style.order) || 0) - (parseFloat(b.style.order) || 0);
+    });
+
+    if (cards.length <= 6) return;
+
+    var expanded = false;
+    function renderEvents() {
+        cards.forEach(function (card, index) {
+            card.hidden = !expanded && index >= 6;
+        });
+        toggleButton.textContent = expanded ? 'Show fewer' : 'Show all events';
+        toggleButton.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+        toggleWrap.hidden = false;
+    }
+
+    toggleButton.addEventListener('click', function () {
+        expanded = !expanded;
+        renderEvents();
+    });
+
+    renderEvents();
 })();
 </script>
 </body>
