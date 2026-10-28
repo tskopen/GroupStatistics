@@ -22,3 +22,6 @@ Migrations are transactional. A failed migration is rolled back and is retried o
 - `002_notifications.php` — SQLite notification subscriptions.
 - `003_intramural_cleanup.php` — adds/backfills immutable `sport_id` for intramural games.
 - `004_legacy_import.php` — one-time import/archive of legacy squadron, score, and bracket JSON.
+- `005_cadet_of_month.php` — Cadet of the Month records.
+- `006_group_announcements.php` — public group announcements.
+- `007_engagement_awards.php` — flexible engagement awards, multi-squadron recipients, and optional photos.
