@@ -9,6 +9,20 @@ $theme = loadTheme();
 
 require_once __DIR__ . '/bracket-bootstrap.php';
 $db = getDb();
+
+// A small, public-facing preview makes the announcement board easy to discover.
+// This is a separate table from scoring events and never changes competition totals.
+$announcementNow = date('Y-m-d H:i:s');
+$homepageAnnouncementsStmt = $db->prepare(
+    "SELECT id, title, start_at, end_at, location FROM group_announcements
+     WHERE status = 'published'
+       AND (start_at IS NULL OR start_at >= ? OR (end_at IS NOT NULL AND end_at >= ?))
+     ORDER BY CASE WHEN start_at IS NULL THEN 1 ELSE 0 END, start_at ASC
+     LIMIT 3"
+);
+$homepageAnnouncementsStmt->execute([$announcementNow, $announcementNow]);
+$homepageAnnouncements = $homepageAnnouncementsStmt->fetchAll(PDO::FETCH_ASSOC);
+
 bracketBootstrap($db);
 bracketEnsureTables($db);
 
@@ -337,6 +351,14 @@ usort(
     .pwa-install-button:hover, .pwa-install-button:focus-visible { background: var(--secondary-color); }
     .pwa-install-button[hidden], .pwa-install-help[hidden] { display: none !important; }
     .pwa-install-help { max-width: 560px; margin: 10px auto 0; color: var(--text-color); font-size: .9rem; line-height: 1.45; }
+    .announcement-preview { margin: 0 auto 26px; padding: 18px; background: #fff; border: 1px solid #dbe3ed; border-left: 5px solid var(--accent-color); border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,.06); }
+    .announcement-preview-head { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:12px; }
+    .announcement-preview h2 { margin:0; border:0; padding:0; font-size:1.2rem; }
+    .announcement-preview-link { display:inline-block; color:#fff; background:var(--primary-color); border-radius:6px; padding:8px 12px; text-decoration:none; font-weight:bold; font-size:.88rem; }
+    .announcement-preview-list { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr)); gap:10px; }
+    .announcement-preview-item { padding:12px; background:#f7f9fc; border-radius:7px; border:1px solid #e7edf5; min-width:0; }
+    .announcement-preview-item strong { display:block; color:var(--primary-color); overflow-wrap:anywhere; }
+    .announcement-preview-item small { display:block; color:#596579; margin-top:4px; }
     .events-toggle-wrap { text-align: center; margin: -10px 0 30px; }
     .events-toggle-button { padding: 10px 18px; border: 0; border-radius: 6px; background: var(--primary-color); color: #fff; font-weight: bold; cursor: pointer; }
     .events-toggle-button:hover, .events-toggle-button:focus-visible { background: var(--secondary-color); }
@@ -352,6 +374,26 @@ usort(
         <p id="pwa-install-help" class="pwa-install-help" hidden></p>
     </div>
     <h1>⚔️ USAFA Group 1 Squadron Tracker</h1>
+
+    <section class="announcement-preview" aria-labelledby="announcements-preview-title">
+        <div class="announcement-preview-head">
+            <h2 id="announcements-preview-title">📣 Group Announcements</h2>
+            <a class="announcement-preview-link" href="announcements.php">View announcement board →</a>
+        </div>
+        <?php if ($homepageAnnouncements): ?>
+        <div class="announcement-preview-list">
+            <?php foreach ($homepageAnnouncements as $announcement): ?>
+            <article class="announcement-preview-item">
+                <strong><?php echo htmlspecialchars($announcement['title'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?></strong>
+                <small><?php echo !empty($announcement['start_at']) ? '🗓 ' . htmlspecialchars((new DateTimeImmutable($announcement['start_at']))->format('M j, Y · g:i A'), ENT_QUOTES, 'UTF-8') : 'Date to be announced'; ?></small>
+                <?php if (!empty($announcement['location'])): ?><small>📍 <?php echo htmlspecialchars($announcement['location'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?></small><?php endif; ?>
+            </article>
+            <?php endforeach; ?>
+        </div>
+        <?php else: ?>
+        <p style="margin:0;color:#64748b;">No upcoming announcements yet. Visit the board for the latest group updates.</p>
+        <?php endif; ?>
+    </section>
     
     <h2>Overall Rankings</h2>
     <table class="rankings-table" id="rankings-table">
@@ -599,6 +641,7 @@ usort(
     <?php endif; ?>
     
     <div class="footer">
+        <a href="announcements.php">📣 Group Announcements</a>
         <a href="admin-login.php">Admin Login</a>
         <a href="notification-preferences.php" style="margin-left:10px;">🔔 Notifications</a>
         <?php if (!empty($theme['active_preset'])): ?>
