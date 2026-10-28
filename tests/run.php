@@ -12,9 +12,20 @@ $dataDir=sys_get_temp_dir().'/groupstats-test-'.bin2hex(random_bytes(6));
 mkdir($dataDir,0777,true);
 define('DATA_DIR',$dataDir);
 
-foreach(glob(__DIR__.'/../migrations/00[1-5]_*.php') as $file){$migration=require $file; $migration($db);}
+foreach(glob(__DIR__.'/../migrations/[0-9][0-9][0-9]_*.php') as $file){$migration=require $file; $migration($db);}
 check((bool)$db->query("SELECT 1 FROM sqlite_master WHERE type='table' AND name='squadrons'")->fetchColumn(),'core schema migration creates squadrons');
 check((bool)$db->query("SELECT 1 FROM sqlite_master WHERE type='table' AND name='notification_subscriptions'")->fetchColumn(),'notification migration creates subscription table');
+check((bool)$db->query("SELECT 1 FROM sqlite_master WHERE type='table' AND name='group_announcements'")->fetchColumn(),'announcement migration creates separate announcements table');
+$announcementInsert = $db->prepare("INSERT INTO group_announcements(title,description,status,created_at,updated_at) VALUES(?,?,?,?,?)");
+$announcementInsert->execute(['Test event','Announcement body','draft','2026-10-28 12:00:00','2026-10-28 12:00:00']);
+$announcementId = (int)$db->lastInsertId();
+check($announcementId > 0,'announcement table supports creating a draft');
+$publicCount = (int)$db->query("SELECT COUNT(*) FROM group_announcements WHERE status='published'")->fetchColumn();
+check($publicCount === 0,'draft announcements remain hidden from public listing queries');
+$db->prepare("UPDATE group_announcements SET status='published' WHERE id=?")->execute([$announcementId]);
+check((int)$db->query("SELECT COUNT(*) FROM group_announcements WHERE status='published'")->fetchColumn() === 1,'announcement can be published');
+$db->prepare("DELETE FROM group_announcements WHERE id=?")->execute([$announcementId]);
+check((int)$db->query("SELECT COUNT(*) FROM group_announcements")->fetchColumn() === 0,'announcement can be permanently deleted');
 $cols=$db->query('PRAGMA table_info(intramural_games)')->fetchAll(PDO::FETCH_COLUMN,1);
 check(in_array('sport_id',$cols,true),'intramural games has sport_id');
 

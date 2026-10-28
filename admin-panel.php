@@ -37,6 +37,7 @@ if (isset($_GET['logout'])) {
         <a class="button" href="admin-intramural-sports.php">🏆 Intramural Sports</a>
         <a class="button" href="admin-intramural-games.php">🎮 Intramural Games</a>
         <a class="button" href="admin-cadet-of-month.php">⭐ Cadet of the Month</a>
+        <a class="button" href="admin-announcements.php">📣 Manage Group Announcements</a>
         <a class="button" href="admin-theme.php">Theme Settings</a>
         <a class="button" href="admin-record-snapshot.php">📋 Record Leaderboard Snapshot</a>
         <a class="button" href="admin-test-notification.php">Send Notifications</a>
