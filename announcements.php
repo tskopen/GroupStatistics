@@ -1,5 +1,7 @@
 <?php
 require __DIR__ . '/config.php';
+require __DIR__ . '/theme-loader.php';
+$theme = loadTheme();
 
 $db = getDb();
 $eventTimezone = new DateTimeZone('America/Denver');
@@ -72,7 +74,7 @@ function renderAnnouncementCard(array $announcement, bool $showDate = true): voi
 <meta name="theme-color" content="#002147">
 <title>Group Announcements | USAFA Group 1 Squadron Tracker</title>
 <style>
-:root{--navy:#002147;--blue:#003366;--accent:#667eea;--ink:#1e293b;--muted:#64748b;--line:#e2e8f0;--page:#f3f6fa}
+:root{--navy:<?php echo htmlspecialchars($theme['primary_color']); ?>;--blue:<?php echo htmlspecialchars($theme['secondary_color']); ?>;--accent:<?php echo htmlspecialchars($theme['accent_color']); ?>;--ink:<?php echo htmlspecialchars($theme['text_color']); ?>;--muted:#64748b;--line:#dbe3ed;--page:<?php echo htmlspecialchars($theme['background_color']); ?>}
 *{box-sizing:border-box}body{margin:0;background:var(--page);color:var(--ink);font-family:Arial,Helvetica,sans-serif;line-height:1.55}
 header{background:linear-gradient(120deg,var(--navy),var(--blue));color:#fff;padding:30px 20px}
 .header-inner,.container{max-width:1080px;margin:0 auto}.eyebrow{text-transform:uppercase;letter-spacing:.13em;font-size:.76rem;font-weight:700;opacity:.8}
@@ -83,7 +85,7 @@ header h1{font-size:clamp(1.8rem,4vw,2.6rem);margin:7px 0}header p{margin:0;max-
 .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:15px}
 .announcement-card{background:#fff;border:1px solid var(--line);border-radius:14px;box-shadow:0 4px 14px #0f172a0b;overflow:hidden;border-top:4px solid var(--accent)}
 .card-content{padding:19px}.announcement-card h3{margin:0 0 7px;color:var(--navy);font-size:1.16rem;overflow-wrap:anywhere}
-.event-date{margin:0 0 3px;color:var(--blue);font-weight:700}.event-countdown{display:inline-block;margin:5px 0 8px;padding:7px 10px;border-radius:8px;background:#edf3fb;border:1px solid #d7e4f3;color:var(--navy);font-size:.92rem;font-weight:800;font-variant-numeric:tabular-nums}.event-countdown.is-started{background:#eaf8ef;border-color:#c4ebd1;color:#155b35}.event-end{margin:0 0 8px;color:var(--muted);font-size:.88rem}.event-location{margin:8px 0;color:#475569;font-weight:600}
+.event-date{margin:0 0 3px;color:var(--blue);font-weight:700}.event-countdown{display:inline-block;margin:5px 0 8px;padding:7px 10px;border-radius:8px;background:color-mix(in srgb,var(--accent) 12%,white);border:1px solid color-mix(in srgb,var(--accent) 30%,white);color:var(--navy);font-size:.92rem;font-weight:800;font-variant-numeric:tabular-nums}.event-countdown.is-started{background:#eaf8ef;border-color:#c4ebd1;color:#155b35}.event-end{margin:0 0 8px;color:var(--muted);font-size:.88rem}.event-location{margin:8px 0;color:#475569;font-weight:600}
 .description{margin-top:10px;overflow-wrap:anywhere}.event-link{display:inline-block;margin-top:15px;color:var(--blue);font-weight:700;text-decoration:none}.event-link:hover{text-decoration:underline}
 .empty{background:#fff;border:1px dashed #cbd5e1;border-radius:12px;padding:24px;color:var(--muted);text-align:center}
 details.past{margin-top:28px;background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px}details.past summary{font-weight:700;color:var(--navy);cursor:pointer}
