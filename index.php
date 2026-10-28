@@ -15,12 +15,11 @@ $db = getDb();
 $announcementNow = (new DateTimeImmutable('now', new DateTimeZone('America/Denver')))->format('Y-m-d H:i:s');
 $homepageAnnouncementsStmt = $db->prepare(
     "SELECT id, title, start_at, end_at, location FROM group_announcements
-     WHERE status = 'published'
-       AND (start_at IS NULL OR start_at >= ? OR (end_at IS NOT NULL AND end_at >= ?))
-     ORDER BY CASE WHEN start_at IS NULL THEN 1 ELSE 0 END, start_at ASC
-     LIMIT 3"
+     WHERE status = 'published' AND start_at IS NOT NULL AND start_at >= ?
+     ORDER BY start_at ASC, id ASC
+     LIMIT 1"
 );
-$homepageAnnouncementsStmt->execute([$announcementNow, $announcementNow]);
+$homepageAnnouncementsStmt->execute([$announcementNow]);
 $homepageAnnouncements = $homepageAnnouncementsStmt->fetchAll(PDO::FETCH_ASSOC);
 
 bracketBootstrap($db);
@@ -377,8 +376,8 @@ usort(
 
     <section class="announcement-preview" aria-labelledby="announcements-preview-title">
         <div class="announcement-preview-head">
-            <h2 id="announcements-preview-title">📣 Group Announcements</h2>
-            <a class="announcement-preview-link" href="announcements.php">View announcement board →</a>
+            <h2 id="announcements-preview-title">📣 Next Group Event</h2>
+            <a class="announcement-preview-link" href="announcements.php">View all announcements →</a>
         </div>
         <?php if ($homepageAnnouncements): ?>
         <div class="announcement-preview-list">
@@ -391,7 +390,7 @@ usort(
             <?php endforeach; ?>
         </div>
         <?php else: ?>
-        <p style="margin:0;color:#64748b;">No upcoming announcements yet. Visit the board for the latest group updates.</p>
+        <p style="margin:0;color:#64748b;">No upcoming dated events. Visit the announcement board for all group announcements.</p>
         <?php endif; ?>
     </section>
     
