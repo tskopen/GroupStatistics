@@ -252,7 +252,7 @@ usort(
     * { box-sizing: border-box; }
     body { font-family: Arial, sans-serif; background: var(--background-color); margin: 0; padding: 20px; color: var(--text-color); }
     .container { max-width: 1200px; margin: 0 auto; }
-    h1 { text-align: center; color: var(--primary-color); margin-bottom: 30px; }
+    h1 { text-align: center; color: var(--primary-color); margin: 8px 0 34px; font-size: clamp(2.1rem, 5vw, 3.25rem); line-height: 1.15; }
     h2 { color: var(--primary-color); border-bottom: 2px solid var(--primary-color); padding-bottom: 8px; margin-top: 30px; }
     
     .rankings-table { width: 100%; border-collapse: collapse; background: #fff; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 30px; }
@@ -352,7 +352,9 @@ usort(
     .pwa-install-help { max-width: 560px; margin: 10px auto 0; color: var(--text-color); font-size: .9rem; line-height: 1.45; }
     .announcement-preview { margin: 0 auto 26px; padding: 18px; background: #fff; border: 1px solid #dbe3ed; border-left: 5px solid var(--accent-color); border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,.06); }
     .announcement-preview-head { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:12px; }
-    .announcement-preview h2 { margin:0; border:0; padding:0; font-size:1.2rem; }
+    .announcement-preview h2 { margin:0; border:0; padding:0; font-size:1.35rem; }
+     .announcement-countdown { display:inline-block; margin:12px 0 4px; padding:12px 16px; border-radius:9px; background:#edf3fb; border:1px solid #d7e4f3; color:var(--primary-color); font-size:clamp(1.25rem, 3vw, 1.75rem); font-weight:800; font-variant-numeric:tabular-nums; letter-spacing:.02em; }
+     .announcement-countdown.is-started { background:#eaf8ef; border-color:#c4ebd1; color:#155b35; }
     .announcement-preview-link { display:inline-block; color:#fff; background:var(--primary-color); border-radius:6px; padding:8px 12px; text-decoration:none; font-weight:bold; font-size:.88rem; }
     .announcement-preview-list { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr)); gap:10px; }
     .announcement-preview-item { padding:12px; background:#f7f9fc; border-radius:7px; border:1px solid #e7edf5; min-width:0; }
@@ -905,6 +907,35 @@ if ('serviceWorker' in navigator) {
     });
 
     renderEvents();
+})();
+</script>
+<script>
+// Keep the homepage's next-event countdown synchronized to the second.
+(function () {
+    var countdowns = Array.prototype.slice.call(document.querySelectorAll('[data-countdown-target]'));
+    function updateCountdowns() {
+        var now = Math.floor(Date.now() / 1000);
+        countdowns.forEach(function (element) {
+            var target = parseInt(element.getAttribute('data-countdown-target'), 10);
+            if (!Number.isFinite(target)) return;
+            var remaining = target - now;
+            if (remaining <= 0) {
+                element.textContent = 'Event has started';
+                element.classList.add('is-started');
+                return;
+            }
+            var days = Math.floor(remaining / 86400);
+            var hours = Math.floor((remaining % 86400) / 3600);
+            var minutes = Math.floor((remaining % 3600) / 60);
+            var seconds = remaining % 60;
+            element.textContent = 'Starts in ' + (days ? days + 'd ' : '') +
+                [hours, minutes, seconds].map(function (part) {
+                    return String(part).padStart(2, '0');
+                }).join(':');
+        });
+    }
+    updateCountdowns();
+    if (countdowns.length) window.setInterval(updateCountdowns, 1000);
 })();
 </script>
 </body>
