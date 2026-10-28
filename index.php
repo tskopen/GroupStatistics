@@ -387,6 +387,9 @@ usort(
             <article class="announcement-preview-item">
                 <strong><?php echo htmlspecialchars($announcement['title'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?></strong>
                 <small><?php echo !empty($announcement['start_at']) ? '🗓 ' . htmlspecialchars((new DateTimeImmutable($announcement['start_at'], new DateTimeZone('America/Denver')))->format('M j, Y · g:i A T'), ENT_QUOTES, 'UTF-8') : 'Date to be announced'; ?></small>
+                <?php if (!empty($announcement['start_at'])): ?>
+                <div class="announcement-countdown" data-countdown-target="<?php echo (int)(new DateTimeImmutable($announcement['start_at'], new DateTimeZone('America/Denver')))->getTimestamp(); ?>" aria-live="off">Countdown loading…</div>
+                <?php endif; ?>
                 <?php if (!empty($announcement['location'])): ?><small>📍 <?php echo htmlspecialchars($announcement['location'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?></small><?php endif; ?>
             </article>
             <?php endforeach; ?>
