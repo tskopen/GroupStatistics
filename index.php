@@ -12,7 +12,7 @@ $db = getDb();
 
 // A small, public-facing preview makes the announcement board easy to discover.
 // This is a separate table from scoring events and never changes competition totals.
-$announcementNow = date('Y-m-d H:i:s');
+$announcementNow = (new DateTimeImmutable('now', new DateTimeZone('America/Denver')))->format('Y-m-d H:i:s');
 $homepageAnnouncementsStmt = $db->prepare(
     "SELECT id, title, start_at, end_at, location FROM group_announcements
      WHERE status = 'published'
@@ -385,7 +385,7 @@ usort(
             <?php foreach ($homepageAnnouncements as $announcement): ?>
             <article class="announcement-preview-item">
                 <strong><?php echo htmlspecialchars($announcement['title'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?></strong>
-                <small><?php echo !empty($announcement['start_at']) ? '🗓 ' . htmlspecialchars((new DateTimeImmutable($announcement['start_at']))->format('M j, Y · g:i A'), ENT_QUOTES, 'UTF-8') : 'Date to be announced'; ?></small>
+                <small><?php echo !empty($announcement['start_at']) ? '🗓 ' . htmlspecialchars((new DateTimeImmutable($announcement['start_at'], new DateTimeZone('America/Denver')))->format('M j, Y · g:i A T'), ENT_QUOTES, 'UTF-8') : 'Date to be announced'; ?></small>
                 <?php if (!empty($announcement['location'])): ?><small>📍 <?php echo htmlspecialchars($announcement['location'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?></small><?php endif; ?>
             </article>
             <?php endforeach; ?>

@@ -2,7 +2,8 @@
 require __DIR__ . '/config.php';
 
 $db = getDb();
-$now = new DateTimeImmutable('now');
+$eventTimezone = new DateTimeZone('America/Denver');
+$now = new DateTimeImmutable('now', $eventTimezone);
 $announcements = $db->query(
     "SELECT * FROM group_announcements WHERE status = 'published'
      ORDER BY CASE WHEN start_at IS NULL THEN 1 ELSE 0 END, start_at ASC, created_at DESC"
@@ -14,8 +15,8 @@ $past = [];
 $undated = [];
 
 foreach ($announcements as $announcement) {
-    $start = !empty($announcement['start_at']) ? new DateTimeImmutable($announcement['start_at']) : null;
-    $end = !empty($announcement['end_at']) ? new DateTimeImmutable($announcement['end_at']) : null;
+    $start = !empty($announcement['start_at']) ? new DateTimeImmutable($announcement['start_at'], $eventTimezone) : null;
+    $end = !empty($announcement['end_at']) ? new DateTimeImmutable($announcement['end_at'], $eventTimezone) : null;
     if ($start === null) {
         $undated[] = $announcement;
     } elseif ($start > $now) {
@@ -91,7 +92,7 @@ details.past{margin-top:28px;background:#fff;border:1px solid var(--line);border
 <header><div class="header-inner">
 <div class="eyebrow">USAFA · Group 1</div>
 <h1>📣 Group Announcements</h1>
-<p>One place for upcoming group events, important dates, locations, and event details.</p>
+<p>One place for upcoming group events, important dates, locations, and event details. All event times are Mountain Time (America/Denver).</p>
 <div class="top-links"><a href="index.php">← Squadron Tracker</a><a href="admin-login.php">Admin Login</a></div>
 </div></header>
 <main class="container">

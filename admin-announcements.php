@@ -192,7 +192,7 @@ label{display:block;font-weight:700;color:#334155;font-size:.9rem;margin:14px 0 
 <input type="text" id="title" name="title" maxlength="120" required value="<?php echo adminAnnouncementEscape($form['title']); ?>" placeholder="e.g., Group 1 Fall Festival">
 <label for="description">Details <span class="hint">(required, max 5,000 characters)</span></label>
 <textarea id="description" name="description" maxlength="5000" required placeholder="What should cadets know? Include key instructions, schedule details, or what to bring."><?php echo adminAnnouncementEscape($form['description']); ?></textarea>
-<label for="start_at">Date and time <span class="hint">(optional)</span></label>
+<label for="start_at">Date and time <span class="hint">(optional · Mountain Time)</span></label>
 <div class="date-grid"><div><input type="datetime-local" id="start_at" name="start_at" value="<?php echo adminAnnouncementEscape($form['start_at']); ?>" aria-label="Start date and time"><p class="hint">Start date and time</p></div><div><input type="datetime-local" id="end_at" name="end_at" value="<?php echo adminAnnouncementEscape($form['end_at']); ?>" aria-label="End date and time"><p class="hint">End date and time (optional)</p></div></div>
 <label for="location">Location <span class="hint">(optional)</span></label>
 <input type="text" id="location" name="location" maxlength="160" value="<?php echo adminAnnouncementEscape($form['location']); ?>" placeholder="e.g., Arnold Hall">
@@ -219,7 +219,7 @@ label{display:block;font-weight:700;color:#334155;font-size:.9rem;margin:14px 0 
 <article class="announcement-row">
 <div class="row-title"><h3><?php echo adminAnnouncementEscape($item['title']); ?></h3><span class="status status-<?php echo adminAnnouncementEscape($item['status']); ?>"><?php echo adminAnnouncementEscape($item['status']); ?></span></div>
 <div class="row-meta">
-<?php echo !empty($item['start_at']) ? '🗓 ' . adminAnnouncementEscape((new DateTimeImmutable($item['start_at']))->format('M j, Y · g:i A')) : '🗓 Date not set'; ?>
+<?php echo !empty($item['start_at']) ? '🗓 ' . adminAnnouncementEscape((new DateTimeImmutable($item['start_at'], new DateTimeZone('America/Denver')))->format('M j, Y · g:i A T')) : '🗓 Date not set'; ?>
 <?php if (!empty($item['location'])): ?> · 📍 <?php echo adminAnnouncementEscape($item['location']); ?><?php endif; ?>
 <br>Updated <?php echo adminAnnouncementEscape((new DateTimeImmutable($item['updated_at']))->format('M j, Y')); ?>
 </div>
