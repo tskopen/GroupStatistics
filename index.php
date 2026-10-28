@@ -646,6 +646,7 @@ usort(
     
     <div class="footer">
         <a href="announcements.php">📣 Group Announcements</a>
+        <a href="awards.php">🏅 Challenge Awards</a>
         <a href="admin-login.php">Admin Login</a>
         <a href="notification-preferences.php" style="margin-left:10px;">🔔 Notifications</a>
         <?php if (!empty($theme['active_preset'])): ?>
