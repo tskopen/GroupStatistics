@@ -34,7 +34,7 @@ function announcementEscape($value): string {
 function announcementDateLabel(?string $value): string {
     if (!$value) return '';
     try {
-        return (new DateTimeImmutable($value))->format('D, M j, Y \a\t g:i A');
+        return (new DateTimeImmutable($value, new DateTimeZone('America/Denver')))->format('D, M j, Y \\a\\t g:i A T');
     } catch (Throwable $e) {
         return $value;
     }

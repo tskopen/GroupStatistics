@@ -29,7 +29,7 @@ function announcementTextExcerpt(string $value, int $limit = 220): string {
 }
 function announcementInputDate(?string $value): string {
     if (!$value) return '';
-    try { return (new DateTimeImmutable($value))->format('Y-m-d\TH:i'); }
+    try { return (new DateTimeImmutable($value, new DateTimeZone('America/Denver')))->format('Y-m-d\\TH:i'); }
     catch (Throwable $e) { return ''; }
 }
 function announcementParseInputDate(string $value, string $label, array &$errors): ?string {
