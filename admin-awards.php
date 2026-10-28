@@ -58,13 +58,25 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
                 $name=awardStorePhoto($file,$photoDir);if($name){$newPhotos[]=$name;$uploadPaths[]=$photoDir.'/'.$name;}
             }
         }
+        $removePhotoIds=array_values(array_unique(array_filter(array_map('intval',(array)($_POST['remove_photo_ids']??[])))));
+        $filesToDelete=[];
         $now=date('c'); $db->beginTransaction();
         if($old){$s=$db->prepare('UPDATE engagement_awards SET title=?,description=?,award_type=?,points_awarded=?,teams_url=?,status=?,updated_at=? WHERE id=?');$s->execute([$title,$description,$type,$points,$url?:null,$status,$now,$id]);$awardId=$id;}
         else{$s=$db->prepare('INSERT INTO engagement_awards(title,description,award_type,points_awarded,teams_url,status,created_by,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)');$s->execute([$title,$description,$type,$points,$url?:null,$status,(string)($_SESSION['username']??'admin'),$now,$now]);$awardId=(int)$db->lastInsertId();}
         $s=$db->prepare('DELETE FROM engagement_award_recipients WHERE award_id=?');$s->execute([$awardId]);
         $s=$db->prepare('INSERT INTO engagement_award_recipients(award_id,squadron_id,points_awarded,created_at) VALUES(?,?,?,?)');foreach($selected as $sid)$s->execute([$awardId,$sid,$points,$now]);
+        if($removePhotoIds){
+            $marks=implode(',',array_fill(0,count($removePhotoIds),'?'));
+            $params=array_merge([$awardId],$removePhotoIds);
+            $s=$db->prepare("SELECT filename FROM engagement_award_photos WHERE award_id=? AND id IN ($marks)");
+            $s->execute($params);
+            foreach($s->fetchAll(PDO::FETCH_COLUMN) as $filename)$filesToDelete[]=$photoDir.'/'.basename((string)$filename);
+            $s=$db->prepare("DELETE FROM engagement_award_photos WHERE award_id=? AND id IN ($marks)");
+            $s->execute($params);
+        }
         $s=$db->prepare('INSERT INTO engagement_award_photos(award_id,filename,alt_text,uploaded_by,created_at) VALUES(?,?,?,?,?)');foreach($newPhotos as $name)$s->execute([$awardId,$name,trim((string)($_POST['photo_alt_text']??'')),(string)($_SESSION['username']??'admin'),$now]);
         $db->commit();
+        foreach($filesToDelete as $path)if(is_file($path))@unlink($path);
         header('Location: admin-awards.php?notice='.($old?'updated':($status==='published'?'published':'draft')));exit;
     } catch(Throwable $e) {
         if($db->inTransaction())$db->rollBack();
@@ -93,7 +105,7 @@ $awards=$db->query("SELECT a.*,(SELECT COUNT(*) FROM engagement_award_recipients
 <label>Recipient squadrons <span class="hint">— select multiple</span></label><div class="sqs"><?php foreach($squadrons as $sq):?><label><input type="checkbox" name="squadron_ids[]" value="<?php echo (int)$sq['id'];?>" <?php echo in_array((int)$sq['id'],$selected,true)?'checked':'';?>> <?php echo awardEscape($sq['name']);?></label><?php endforeach;?></div>
 <label for="teams_url">Teams evidence channel/post (optional)</label><input id="teams_url" type="url" name="teams_url" placeholder="https://teams.microsoft.com/..." value="<?php echo awardEscape($form['teams_url']);?>">
 <label for="photos">Photos (optional; JPEG, PNG, WebP; max 5 MB each)</label><input id="photos" type="file" name="photos[]" accept="image/jpeg,image/png,image/webp" multiple><p class="hint">Up to 8 photos per save. Images are re-encoded to remove embedded metadata. Draft photos stay private.</p>
-<?php if($photos):?><div class="photo-list"><?php foreach($photos as $p):?><img src="award-image.php?id=<?php echo (int)$p['id'];?>" alt="<?php echo awardEscape($p['alt_text']);?>"><?php endforeach;?></div><p class="hint">Existing photos are retained when editing.</p><?php endif;?>
+<?php if($photos):?><div class="photo-list"><?php foreach($photos as $p):?><div><img src="award-image.php?id=<?php echo (int)$p['id'];?>" alt="<?php echo awardEscape($p['alt_text']);?>"><label class="hint"><input type="checkbox" name="remove_photo_ids[]" value="<?php echo (int)$p['id'];?>"> Remove photo</label></div><?php endforeach;?></div><?php endif;?>
 <label for="photo_alt_text">Photo alt text (optional)</label><input id="photo_alt_text" type="text" name="photo_alt_text" maxlength="240">
 <div class="actions"><button class="btn" type="submit" name="save_status" value="published">Save and publish</button><button class="btn secondary" type="submit" name="save_status" value="draft">Save draft</button><?php if($form['id']):?><a class="btn secondary" href="admin-awards.php">Cancel</a><?php endif;?></div></form></section>
 <section class="panel"><h2>Existing awards</h2><?php if(!$awards):?><p class="hint">No awards have been created yet.</p><?php endif;?><?php foreach($awards as $a):?><article class="row"><strong><?php echo awardEscape($a['title']);?></strong> <span class="status <?php echo awardEscape($a['status']);?>"><?php echo awardEscape($a['status']);?></span><div class="meta"><?php echo (int)$a['recipient_count'];?> squadron(s) · <?php echo (int)$a['photo_count'];?> photo(s) · <?php echo in_array($a['award_type'],['points','both'],true)?awardEscape($a['points_awarded']).' points per squadron':'No points';?></div><p><?php echo nl2br(awardEscape($a['description']));?></p><div class="actions"><a class="btn secondary" href="admin-awards.php?edit=<?php echo (int)$a['id'];?>#editor">Edit</a><a class="btn secondary" href="awards.php#award-<?php echo (int)$a['id'];?>">View</a><form method="post" onsubmit="return confirm('Delete this award and its photos?');"><input type="hidden" name="action" value="delete"><input type="hidden" name="award_id" value="<?php echo (int)$a['id'];?>"><button class="btn danger" type="submit">Delete</button></form></div></article><?php endforeach;?></section></div></main>
