@@ -389,17 +389,7 @@ usort(
 </head>
 <body>
 <div class="container">
-    <header class="site-header" aria-label="USAFA Group 1 Squadron Tracker">
-        <div class="site-header-mark" aria-label="Group 1 icon"><?php if ($groupIconFilename): ?><img src="<?php echo htmlspecialchars(iconUrl($groupIconFilename)); ?>" alt="Group 1 logo"><?php else: ?>G1<?php endif; ?></div>
-        <h1 class="site-header-title">USAFA Group 1 Squadron Tracker</h1>
-        <div class="site-header-squadron" aria-label="<?php echo htmlspecialchars($themeSquadron['name'] ?? 'Selected squadron logo', ENT_QUOTES, 'UTF-8'); ?>">
-            <?php if (!empty($themeSquadron['icon_filename'])): ?>
-                <img src="<?php echo htmlspecialchars(iconUrl($themeSquadron['icon_filename'])); ?>" alt="<?php echo htmlspecialchars($themeSquadron['name'] ?? 'Squadron logo', ENT_QUOTES, 'UTF-8'); ?> logo">
-            <?php else: ?>
-                <span class="site-header-squadron-placeholder" aria-hidden="true"></span>
-            <?php endif; ?>
-        </div>
-    </header>
+    <?php require_once __DIR__ . '/site-header.php'; renderGroupSiteHeader(); ?>
     <div class="pwa-install-wrap">
         <button type="button" id="pwa-install-button" class="pwa-install-button" hidden>⬇ Install App</button>
         <p id="pwa-install-help" class="pwa-install-help" hidden></p>
