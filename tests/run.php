@@ -35,6 +35,26 @@ check(in_array('bracket_score_events',$tables,true),'bracket score-event link ex
 check(in_array('cadet_of_month_awards',$tables,true),'Cadet of the Month table exists');
 check((bool)$db->query("SELECT 1 FROM event_type_config WHERE event_type='cadet_of_month'")->fetchColumn(),'Cadet of the Month event type is seeded');
 
+$directorySections = $db->query("SELECT id, name FROM directory_sections ORDER BY sort_order")->fetchAll(PDO::FETCH_ASSOC);
+check(count($directorySections) >= 4, 'Meet the Group migration seeds the starter sections');
+$sectionId = (int)$directorySections[0]['id'];
+$now = date('Y-m-d H:i:s');
+$personStmt = $db->prepare("INSERT INTO directory_people(display_name, bio, contact, created_at, updated_at) VALUES(?,?,?,?,?)");
+$personStmt->execute(['Directory Test Person', 'Test profile', '', $now, $now]);
+$personId = (int)$db->lastInsertId();
+$roleStmt = $db->prepare("INSERT INTO directory_roles(section_id, person_id, title, responsibilities, sort_order, status, created_at, updated_at) VALUES(?,?,?,?,?,?,?,?)");
+$roleStmt->execute([$sectionId, $personId, 'Test Role', 'Test responsibilities', 1, 'draft', $now, $now]);
+$roleId = (int)$db->lastInsertId();
+check($roleId > 0, 'directory supports creating a role assignment for a profile');
+check((int)$db->query("SELECT COUNT(*) FROM directory_roles WHERE status='published'")->fetchColumn() === 0, 'directory drafts are excluded from public role listings');
+$db->prepare("UPDATE directory_roles SET status='published' WHERE id=?")->execute([$roleId]);
+check((int)$db->query("SELECT COUNT(*) FROM directory_roles WHERE status='published'")->fetchColumn() === 1, 'directory role can be published');
+$db->prepare("UPDATE directory_roles SET section_id=? WHERE id=?")->execute([(int)$directorySections[1]['id'], $roleId]);
+check((int)$db->query("SELECT section_id FROM directory_roles WHERE id=" . $roleId)->fetchColumn() === (int)$directorySections[1]['id'], 'directory role can be moved to another section');
+$db->prepare("DELETE FROM directory_roles WHERE id=?")->execute([$roleId]);
+check((int)$db->query("SELECT COUNT(*) FROM directory_roles WHERE id=" . $roleId)->fetchColumn() === 0, 'directory role can be removed without deleting the profile');
+
+
 // Regression: production already had relational bracket rounds when migration
 // 004 ran. Legacy JSON import must reuse those rounds rather than inserting a
 // duplicate (bracket_id, round_number) row and taking the whole site down.
