@@ -55,7 +55,13 @@ button, input[type="button"], input[type="submit"], input[type="reset"] { cursor
     flex-wrap: wrap;
     gap: 12px;
   }
-  :where(table) { display: block; width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  :where(table) { width: 100%; }
+  :where(.rankings-table, .standings-table, .scores-table, .leaderboard-table) {
+    display: block;
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
   :where(input, select, textarea) { max-width: 100%; }
   :where(.card, .panel, .section, .form-section) { min-width: 0; }
 }
