@@ -99,7 +99,7 @@ $awards=$db->query("SELECT a.*,(SELECT COUNT(*) FROM engagement_award_recipients
 <link rel="stylesheet" href="site-components.css">
 </head><body>
 <?php require_once __DIR__ . '/site-header.php'; renderGroupSiteHeader(); ?>
-<header class="top"><div class="topinner"><div><h1>🏅 Challenge Awards</h1><p>One award can recognize multiple squadrons, with optional points and photos.</p></div><nav><a href="awards.php">Public awards ↗</a><a href="admin-panel.php">Admin panel</a><a href="index.php">Home</a></nav></div></header><main>
+<header class="page-banner"><div class="page-banner-inner"><div><h1>🏅 Challenge Awards</h1><p>One award can recognize multiple squadrons, with optional points and photos.</p></div></div></header><main>
 <?php if($notice):?><div class="alert"><?php echo awardEscape(['published'=>'Award published.','draft'=>'Draft saved.','updated'=>'Award updated.','deleted'=>'Award deleted.'][$notice]??$notice);?></div><?php endif;?>
 <?php if($errors):?><div class="alert error"><?php foreach($errors as $e):?><div><?php echo awardEscape($e);?></div><?php endforeach;?></div><?php endif;?>
 <div class="layout"><section class="panel" id="editor"><h2><?php echo $form['id']?'Edit award':'Create award';?></h2><p class="hint">Every selected squadron receives the full configured points value. Awards never alter official competition standings.</p>
