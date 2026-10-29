@@ -262,13 +262,7 @@ usort(
     * { box-sizing: border-box; }
     body { font-family: Arial, sans-serif; background: var(--background-color); margin: 0; padding: 20px; color: var(--text-color); }
     .container { max-width: 1200px; margin: 0 auto; }
-    .site-header { display:grid; grid-template-columns:minmax(64px,1fr) minmax(0,3fr) minmax(64px,1fr); align-items:center; gap:16px; margin:8px 0 30px; }
-    .site-header-mark { width:64px; height:64px; display:flex; align-items:center; justify-content:center; justify-self:start; border:2px dashed var(--border-color); border-radius:12px; color:var(--primary-color); background:var(--soft-primary-color); font-weight:800; font-size:1rem; letter-spacing:.04em; overflow:hidden; }
-    .site-header-mark img { width:100%; height:100%; object-fit:contain; padding:4px; }
-    .site-header-squadron { justify-self:end; width:64px; height:64px; display:flex; align-items:center; justify-content:center; }
-    .site-header-squadron img { display:block; width:100%; height:100%; object-fit:contain; border-radius:10px; }
-    .site-header-squadron-placeholder { width:64px; height:64px; border:2px dashed var(--border-color); border-radius:10px; background:var(--soft-primary-color); }
-    @media (max-width:520px) { body { padding:12px; } .site-header { grid-template-columns:44px minmax(0,1fr) 44px; gap:8px; margin-bottom:24px; } .site-header-mark,.site-header-squadron,.site-header-squadron-placeholder { width:44px; height:44px; } }
+    @media (max-width:520px) { body { padding:12px; } }
     h2 { color: var(--primary-color); border-bottom: 2px solid var(--primary-color); padding-bottom: 8px; margin-top: 30px; }
     
     .rankings-table { width: 100%; border-collapse: collapse; background: var(--surface-color); box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 30px; }
