@@ -142,7 +142,7 @@
   padding: 0;
   color: var(--ui-primary);
   font-family: Arial, Helvetica, sans-serif;
-  font-size: clamp(1.35rem, 3vw, 2.5rem);
+  font-size: clamp(1.55rem, 4vw, 3.1rem);
   font-weight: 700;
   line-height: 1.15;
   text-align: center;
