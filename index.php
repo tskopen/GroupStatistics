@@ -33,6 +33,9 @@ $squadronMap = [];
 foreach ($squadrons as $squadron) {
     $squadronMap[(int)$squadron['id']] = $squadron;
 }
+$themeSquadron = !empty($theme['selected_squadron_id'])
+    ? ($squadronMap[(int)$theme['selected_squadron_id']] ?? null)
+    : null;
 
 // Fetch scores (all events)
 $stmt = $db->prepare("SELECT * FROM events ORDER BY timestamp DESC");
@@ -233,7 +236,7 @@ usort(
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>USAFA Group 1 Squadron Tracker</title>
 <link rel="manifest" href="manifest.json">
-<meta name="theme-color" content="#002147">
+<meta name="theme-color" content="<?php echo htmlspecialchars($theme['primary_color'] ?? '#002147', ENT_QUOTES, 'UTF-8'); ?>">
 <meta name="description" content="Track USAFA Group 1 squadron competition scores and tournament brackets">
 
 <!-- iOS PWA support -->
@@ -248,20 +251,32 @@ usort(
         --accent-color: <?php echo htmlspecialchars($theme['accent_color']); ?>;
         --background-color: <?php echo htmlspecialchars($theme['background_color']); ?>;
         --text-color: <?php echo htmlspecialchars($theme['text_color']); ?>;
+        --surface-color: color-mix(in srgb, var(--background-color), white 92%);
+        --border-color: color-mix(in srgb, var(--primary-color), var(--background-color) 78%);
+        --muted-color: color-mix(in srgb, var(--text-color), var(--background-color) 42%);
+        --soft-accent-color: color-mix(in srgb, var(--accent-color), white 88%);
+        --soft-primary-color: color-mix(in srgb, var(--primary-color), white 92%);
     }
     * { box-sizing: border-box; }
     body { font-family: Arial, sans-serif; background: var(--background-color); margin: 0; padding: 20px; color: var(--text-color); }
     .container { max-width: 1200px; margin: 0 auto; }
+    .site-header { display:grid; grid-template-columns:minmax(64px,1fr) minmax(0,3fr) minmax(64px,1fr); align-items:center; gap:16px; margin:8px 0 30px; }
+    .site-header-title { min-width:0; text-align:center; color:var(--primary-color); margin:0; font-size:clamp(1.55rem,4vw,3.1rem); line-height:1.15; overflow-wrap:anywhere; }
+    .site-header-mark { width:64px; height:64px; display:flex; align-items:center; justify-content:center; justify-self:start; border:2px dashed var(--border-color); border-radius:12px; color:var(--primary-color); background:var(--soft-primary-color); font-weight:800; font-size:1rem; letter-spacing:.04em; }
+    .site-header-squadron { justify-self:end; width:64px; height:64px; display:flex; align-items:center; justify-content:center; }
+    .site-header-squadron img { display:block; width:100%; height:100%; object-fit:contain; border-radius:10px; }
+    .site-header-squadron-placeholder { width:64px; height:64px; border:2px dashed var(--border-color); border-radius:10px; background:var(--soft-primary-color); }
+    @media (max-width:520px) { body { padding:12px; } .site-header { grid-template-columns:44px minmax(0,1fr) 44px; gap:8px; margin-bottom:24px; } .site-header-mark,.site-header-squadron,.site-header-squadron-placeholder { width:44px; height:44px; } .site-header-title { font-size:clamp(1.2rem,5vw,1.8rem); } }
     h1 { text-align: center; color: var(--primary-color); margin: 8px 0 34px; font-size: clamp(2.1rem, 5vw, 3.25rem); line-height: 1.15; }
     h2 { color: var(--primary-color); border-bottom: 2px solid var(--primary-color); padding-bottom: 8px; margin-top: 30px; }
     
-    .rankings-table { width: 100%; border-collapse: collapse; background: #fff; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 30px; }
+    .rankings-table { width: 100%; border-collapse: collapse; background: var(--surface-color); box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 30px; }
     .rankings-table th { background: var(--primary-color); color: #fff; padding: 12px; text-align: left; }
     .rankings-table td { padding: 12px; border-bottom: 1px solid #ddd; }
-    .rankings-table tr:nth-child(2) { background: #fff8dc; font-weight: bold; }
-    .rankings-table tr:hover { background: #f9f9f9; }
+    .rankings-table tr:nth-child(2) { background: var(--soft-accent-color); font-weight: bold; }
+    .rankings-table tr:hover { background: var(--soft-primary-color); }
     .icon { width: 40px; height: 40px; border-radius: 4px; object-fit: cover; margin-right: 10px; vertical-align: middle; }
-    .icon-placeholder { width: 40px; height: 40px; border-radius: 4px; background: #ccc; display: inline-block; margin-right: 10px; vertical-align: middle; }
+    .icon-placeholder { width: 40px; height: 40px; border-radius: 4px; background: var(--border-color); display: inline-block; margin-right: 10px; vertical-align: middle; }
 
     /* Leaderboard movement indicators */
     .movement-up { color: #1a7a1a; font-weight: bold; }
@@ -274,7 +289,7 @@ usort(
 
     /* Score breakdown modal */
     .breakdown-modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 20px; }
-    .breakdown-modal { background: #fff; border-radius: 8px; max-width: 500px; width: 100%; max-height: 80vh; overflow-y: auto; padding: 25px; position: relative; box-shadow: 0 4px 20px rgba(0,0,0,0.3); }
+    .breakdown-modal { background: var(--surface-color); border-radius: 8px; max-width: 500px; width: 100%; max-height: 80vh; overflow-y: auto; padding: 25px; position: relative; box-shadow: 0 4px 20px rgba(0,0,0,0.3); }
     .breakdown-modal-close { position: absolute; top: 12px; right: 15px; background: none; border: none; font-size: 1.5em; cursor: pointer; color: #666; }
     .breakdown-modal-close:hover { color: #000; }
     .breakdown-section { margin-top: 15px; }
@@ -288,7 +303,7 @@ usort(
     @media (max-width: 768px) { .events-grid { grid-template-columns: repeat(2, 1fr); } }
     @media (max-width: 480px) { .events-grid { grid-template-columns: 1fr; } }
     
-    .event-card { background: #fff; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); overflow: hidden; transition: transform 0.2s, box-shadow 0.2s; }
+    .event-card { background: var(--surface-color); border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); overflow: hidden; transition: transform 0.2s, box-shadow 0.2s; }
     .event-card:hover { transform: translateY(-4px); box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
     
     .event-header { background: var(--secondary-color); color: #fff; padding: 12px; font-weight: bold; font-size: 0.9em; text-align: center; }
@@ -297,7 +312,7 @@ usort(
     /* Tournament card — one card per tournament; rounds live inside it. */
     .events-grid { align-items: start; }
     .events-grid > * { align-self: start; height: max-content; }
-    .tournament-card { background:#fff; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,.1); overflow:hidden; grid-column:span 2; align-self:start; height:max-content; }
+    .tournament-card { background:var(--surface-color); border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,.1); overflow:hidden; grid-column:span 2; align-self:start; height:max-content; }
     @media (max-width:768px) { .tournament-card { grid-column:1 / -1; } }
     .tournament-header { background:var(--primary-color); color:#fff; padding:16px; font-weight:bold; font-size:1.3em; text-align:center; }
     .tournament-body { padding:15px; }
@@ -323,7 +338,7 @@ usort(
         .match-team-icon { width:38px; height:38px; }
     }    
     /* SAMI card (all squadron results for one SAMI round grouped together) */
-    .sami-card { background: #fff; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); overflow: hidden; grid-column: span 2; }
+    .sami-card { background: var(--surface-color); border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); overflow: hidden; grid-column: span 2; }
     @media (max-width: 768px) { .sami-card { grid-column: 1 / -1; } }
     .sami-header { background: var(--secondary-color); color: #fff; padding: 16px; font-weight: bold; font-size: 1.3em; text-align: center; }
     .sami-body { padding: 15px; }
@@ -333,7 +348,7 @@ usort(
     .sami-result-icon { width: 45px; height: 45px; border-radius: 4px; object-fit: cover; flex-shrink: 0; }
     .sami-result-info { flex: 1; display: flex; align-items: center; gap: 10px; }
     .sami-result-name { font-weight: bold; font-size: 0.95em; text-align: left; }
-    .sami-result-score { font-weight: bold; font-size: 1.3em; color: #28a745; text-align: right; }
+    .sami-result-score { font-weight: bold; font-size: 1.3em; color: var(--accent-color); text-align: right; }
     
     .sami-timestamp { font-size: 0.75em; color: #666; margin-top: 10px; text-align: center; }
     
@@ -341,8 +356,8 @@ usort(
     .regular-event { text-align: center; }
     .regular-event-icon { width: 60px; height: 60px; margin: 0 auto 10px; border-radius: 4px; object-fit: cover; }
     .regular-event-name { font-weight: bold; margin: 5px 0; }
-    .regular-event-type { display: inline-block; background: #e3f2fd; color: #003366; padding: 4px 8px; border-radius: 3px; font-size: 0.75em; margin-bottom: 8px; }
-    .regular-event-score { font-size: 1.5em; font-weight: bold; color: #28a745; }
+    .regular-event-type { display: inline-block; background: var(--soft-accent-color); color: var(--primary-color); padding: 4px 8px; border-radius: 3px; font-size: 0.75em; margin-bottom: 8px; }
+    .regular-event-score { font-size: 1.5em; font-weight: bold; color: var(--accent-color); }
     
     .pwa-install-wrap { text-align: right; margin: 0 0 -10px; min-height: 38px; }
     .pwa-install-button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 9px 13px; border: 0; border-radius: 6px; background: var(--primary-color); color: #fff; font-weight: 700; font-size: .92rem; cursor: pointer; box-shadow: 0 2px 5px rgba(0,0,0,.16); }
@@ -350,21 +365,21 @@ usort(
     .pwa-install-button:hover, .pwa-install-button:focus-visible { background: var(--secondary-color); }
     .pwa-install-button[hidden], .pwa-install-help[hidden] { display: none !important; }
     .pwa-install-help { max-width: 560px; margin: 10px auto 0; color: var(--text-color); font-size: .9rem; line-height: 1.45; }
-    .announcement-preview { margin: 0 auto 26px; padding: 18px; background: #fff; border: 1px solid #dbe3ed; border-left: 5px solid var(--accent-color); border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,.06); }
+    .announcement-preview { margin: 0 auto 26px; padding: 18px; background: var(--surface-color); border: 1px solid var(--border-color); border-left: 5px solid var(--accent-color); border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,.06); }
     .announcement-preview-head { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:12px; }
     .announcement-preview h2 { margin:0; border:0; padding:0; font-size:1.35rem; }
-     .announcement-countdown { display:inline-block; margin:12px 0 4px; padding:12px 16px; border-radius:9px; background:#edf3fb; border:1px solid #d7e4f3; color:var(--primary-color); font-size:clamp(1.25rem, 3vw, 1.75rem); font-weight:800; font-variant-numeric:tabular-nums; letter-spacing:.02em; }
-     .announcement-countdown.is-started { background:#eaf8ef; border-color:#c4ebd1; color:#155b35; }
+     .announcement-countdown { display:inline-block; margin:12px 0 4px; padding:12px 16px; border-radius:9px; background:var(--soft-primary-color); border:1px solid var(--border-color); color:var(--primary-color); font-size:clamp(1.25rem, 3vw, 1.75rem); font-weight:800; font-variant-numeric:tabular-nums; letter-spacing:.02em; }
+     .announcement-countdown.is-started { background:var(--soft-accent-color); border-color:var(--accent-color); color:var(--primary-color); }
     .announcement-preview-link { display:inline-block; color:#fff; background:var(--primary-color); border-radius:6px; padding:8px 12px; text-decoration:none; font-weight:bold; font-size:.88rem; }
     .announcement-preview-list { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr)); gap:10px; }
-    .announcement-preview-item { padding:12px; background:#f7f9fc; border-radius:7px; border:1px solid #e7edf5; min-width:0; }
+    .announcement-preview-item { padding:12px; background:var(--soft-primary-color); border-radius:7px; border:1px solid var(--border-color); min-width:0; }
     .announcement-preview-item strong { display:block; color:var(--primary-color); overflow-wrap:anywhere; }
     .announcement-preview-item small { display:block; color:#596579; margin-top:4px; }
     .events-toggle-wrap { text-align: center; margin: -10px 0 30px; }
     .events-toggle-button { padding: 10px 18px; border: 0; border-radius: 6px; background: var(--primary-color); color: #fff; font-weight: bold; cursor: pointer; }
     .events-toggle-button:hover, .events-toggle-button:focus-visible { background: var(--secondary-color); }
     .footer { text-align: center; margin-top: 40px; }
-    .footer a { color: #002147; text-decoration: none; margin: 0 15px; }
+    .footer a { color: var(--primary-color); text-decoration: none; margin: 0 15px; }
     .footer a:hover { text-decoration: underline; }
 </style>
 </head>
@@ -374,8 +389,18 @@ usort(
         <button type="button" id="pwa-install-button" class="pwa-install-button" hidden>⬇ Install App</button>
         <p id="pwa-install-help" class="pwa-install-help" hidden></p>
     </div>
-    <h1>⚔️ USAFA Group 1 Squadron Tracker</h1>
-    <div style="text-align:center;margin:-18px 0 26px;"><a href="meet-the-group.php" style="display:inline-block;background:#002147;color:#fff;padding:10px 16px;border-radius:6px;text-decoration:none;font-weight:bold;">👥 Meet the Group</a></div>
+    <header class="site-header" aria-label="USAFA Group 1 Squadron Tracker">
+        <div class="site-header-mark" aria-label="Reserved space for the Group 1 icon">G1</div>
+        <h1 class="site-header-title">USAFA Group 1 Squadron Tracker</h1>
+        <div class="site-header-squadron" aria-label="<?php echo htmlspecialchars($themeSquadron['name'] ?? 'Selected squadron logo', ENT_QUOTES, 'UTF-8'); ?>">
+            <?php if (!empty($themeSquadron['icon_filename'])): ?>
+                <img src="<?php echo htmlspecialchars(iconUrl($themeSquadron['icon_filename'])); ?>" alt="<?php echo htmlspecialchars($themeSquadron['name'] ?? 'Squadron logo', ENT_QUOTES, 'UTF-8'); ?> logo">
+            <?php else: ?>
+                <span class="site-header-squadron-placeholder" aria-hidden="true"></span>
+            <?php endif; ?>
+        </div>
+    </header>
+    <div style="text-align:center;margin:-18px 0 26px;"><a href="meet-the-group.php" style="display:inline-block;background:var(--primary-color);color:#fff;padding:10px 16px;border-radius:6px;text-decoration:none;font-weight:bold;">👥 Meet the Group</a></div>
 
     <section class="announcement-preview" aria-labelledby="announcements-preview-title">
         <div class="announcement-preview-head">
