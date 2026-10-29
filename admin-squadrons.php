@@ -58,7 +58,7 @@ $groupIconFilename=$groupIconSettings['filename']??null;
 <link rel="stylesheet" href="site-components.css">
 </head>
 <body>
-<?php require_once __DIR__ . '/site-header.php'; renderGroupSiteHeader(); ?><div class="container"><h1>Manage Squadrons</h1>
+<?php require_once __DIR__ . '/site-header.php'; renderGroupSiteHeader(); ?><header class="page-banner"><div class="page-banner-inner"><h1>Manage Squadrons</h1></div></header><div class="container">
 <?php if($success): ?><p class="success"><?php echo htmlspecialchars($success); ?></p><?php endif; ?>
 <?php if($error): ?><p class="error"><?php echo htmlspecialchars($error); ?></p><?php endif; ?>
 <div class="squadron-card">
