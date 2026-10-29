@@ -94,6 +94,7 @@ foreach ($squadrons as $squad) {
 <link rel="stylesheet" href="site-ui.css">
 </head>
 <body>
+<?php require_once __DIR__ . '/site-header.php'; renderGroupSiteHeader(); ?>
  <div class="container">
  <h1>🏅 Intramural Standings</h1>
  
