@@ -395,7 +395,6 @@ usort(
         <button type="button" id="pwa-install-button" class="pwa-install-button" hidden>⬇ Install App</button>
         <p id="pwa-install-help" class="pwa-install-help" hidden></p>
     </div>
-    <div style="text-align:center;margin:-18px 0 26px;"><a href="meet-the-group.php" style="display:inline-block;background:var(--primary-color);color:#fff;padding:10px 16px;border-radius:6px;text-decoration:none;font-weight:bold;">👥 Meet the Group</a></div>
 
     <section class="announcement-preview" aria-labelledby="announcements-preview-title">
         <div class="announcement-preview-head">
