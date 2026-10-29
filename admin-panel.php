@@ -33,8 +33,8 @@ if (isset($_GET['logout'])) {
 </head>
 <body>
 <?php require_once __DIR__ . '/site-header.php'; renderGroupSiteHeader(); ?>
+    <header class="page-banner"><div class="page-banner-inner"><h1>Admin Panel</h1></div></header>
     <div class="panel">
-        <h1>Admin Panel</h1>
         <a class="button" href="admin-scores.php">Enter Single Score</a>
         <a class="button" href="admin-bulk-scores.php">Enter Event (All Squadrons)</a>
         <a class="button" href="admin-brackets.php">🏆 Manage Brackets</a>
