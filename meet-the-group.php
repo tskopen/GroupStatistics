@@ -38,9 +38,9 @@ function meetGroupEscape($value): string {
 <link rel="stylesheet" href="site-components.css">
 </head>
 <body>
-<?php require_once __DIR__ . '/site-header.php'; renderGroupSiteHeader(); ?><main class="container">
-<div class="topbar"><a href="index.php">← Group 1 Squadron Tracker</a><a href="announcements.php">Group Announcements</a></div>
-<header class="hero"><h1>Meet the Group</h1><p>Get to know the people and roles that support USAFA Group 1. Role information is maintained by site administrators and only published entries appear here.</p></header>
+<?php require_once __DIR__ . '/site-header.php'; renderGroupSiteHeader(); ?>
+<header class="page-banner"><div class="page-banner-inner"><h1>Meet the Group</h1><p>Get to know the people and roles that support USAFA Group 1. Role information is maintained by site administrators and only published entries appear here.</p></div></header>
+<main class="container">
 <?php if (!$sections): ?>
 <div class="empty">The directory is being updated. Please check back later.</div>
 <?php else: foreach ($sections as $section): ?>
