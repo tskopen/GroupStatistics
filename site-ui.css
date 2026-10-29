@@ -13,7 +13,7 @@
   --ui-shadow: 0 4px 18px rgba(15, 23, 42, .08);
 }
 html { color-scheme: light; scroll-behavior: smooth; }
-body { overflow-wrap: anywhere; }
+body { overflow-wrap: anywhere; background-color: var(--ui-page); color: var(--ui-text); }\na { color: var(--ui-primary); }\n:where(.top, .header, .site-header, header) { min-width: 0; }\n:where(.top a, .header a, .site-header a, header a) { overflow-wrap: anywhere; }
 img, video, canvas, svg { max-width: 100%; }
 button, input, select, textarea { font: inherit; }
 button, input[type="button"], input[type="submit"], input[type="reset"], a.button, .button {
