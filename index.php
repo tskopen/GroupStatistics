@@ -391,7 +391,9 @@ usort(
 <body>
 <div class="container">
     <?php require_once __DIR__ . '/site-header.php'; renderGroupSiteHeader(); ?>
+</div>
     <header class="page-banner"><div class="page-banner-inner"><h1>🏆 Group 1 Squadron Tracker</h1><p>Competition results, squadron standings, upcoming events, and Group 1 recognition.</p></div></header>
+    <div class="container">
     <div class="pwa-install-wrap">
         <button type="button" id="pwa-install-button" class="pwa-install-button" hidden>⬇ Install App</button>
         <p id="pwa-install-help" class="pwa-install-help" hidden></p>
