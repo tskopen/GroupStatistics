@@ -56,6 +56,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     .back-link a { color: var(--primary-color); }
 </style>
 <link rel="stylesheet" href="site-ui.css">
+<link rel="stylesheet" href="site-components.css">
 </head>
 <body>
 <?php require_once __DIR__ . '/site-header.php'; renderGroupSiteHeader(); ?>
