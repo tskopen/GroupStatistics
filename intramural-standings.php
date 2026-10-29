@@ -91,6 +91,7 @@ foreach ($squadrons as $squad) {
  .nav-link a { color: var(--primary-color); text-decoration: none; }
  .nav-link a:hover { text-decoration: underline; }
 </style>
+<link rel="stylesheet" href="site-ui.css">
 </head>
 <body>
  <div class="container">
