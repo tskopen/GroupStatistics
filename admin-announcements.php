@@ -166,6 +166,7 @@ label{display:block;font-weight:700;color:#334155;font-size:.9rem;margin:14px 0 
 @media(max-width:600px){.date-grid{grid-template-columns:minmax(0,1fr)}.date-grid input[type=datetime-local]{font-size:1rem;padding:11px 10px}}@media(max-width:520px){.wrap{padding:0 10px 30px}.stats{grid-template-columns:1fr 1fr}.stat:last-child{grid-column:1/-1}.list-toolbar{align-items:stretch;flex-direction:column}.row-title{align-items:start}.topbar h1{font-size:1.25rem}}
 </style>
 <link rel="stylesheet" href="site-ui.css">
+<link rel="stylesheet" href="site-components.css">
 </head>
 <body>
 <?php require_once __DIR__ . '/site-header.php'; renderGroupSiteHeader(); ?>
