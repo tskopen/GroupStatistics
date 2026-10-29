@@ -91,6 +91,7 @@ foreach ($bracket['participants'] as $p) {
             .header h1 { font-size: 1.5em; }
         }
     </style>
+<link rel="stylesheet" href="site-ui.css">
 </head>
 <body>
 <div class="container">
