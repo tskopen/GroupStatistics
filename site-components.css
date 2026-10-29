@@ -137,10 +137,8 @@
 /* Consistent page banner modeled on the Group Announcements banner. */
 .page-banner {
   box-sizing: border-box;
-  width: 100vw;
+  width: 100%;
   position: relative;
-  left: 50%;
-  transform: translateX(-50%);
   margin: 0 auto 28px;
   padding: 30px 20px;
   color: #fff;
