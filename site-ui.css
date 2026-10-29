@@ -9,6 +9,15 @@
   --ui-surface: var(--surface-color, #fff);
   --ui-border: var(--border-color, #d7dee8);
   --ui-muted: var(--muted-color, #5b6575);
+  --ui-success: var(--success-color, #17633b);
+  --ui-success-surface: var(--success-surface-color, #e8f7ee);
+  --ui-warning: var(--warning-color, #875600);
+  --ui-warning-surface: var(--warning-surface-color, #fff3d7);
+  --ui-danger: var(--danger-color, #a21d2a);
+  --ui-danger-surface: var(--danger-surface-color, #fff0f0);
+  --ui-info: var(--info-color, #174a7e);
+  --ui-info-surface: var(--info-surface-color, #eaf3ff);
+  --ui-focus: var(--focus-color, var(--accent-color, #667eea));
   --ui-radius: 12px;
   --ui-shadow: 0 4px 18px rgba(15, 23, 42, .08);
 }
@@ -56,4 +65,49 @@ button, input[type="button"], input[type="submit"], input[type="reset"] { cursor
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+}
+
+/* Shared component defaults; page-specific classes retain their own visual identity. */
+:where(.card, .panel, .section, .form-section, .event-card, .announcement-preview, .award) {
+  color: var(--ui-text);
+  border-color: var(--ui-border);
+  border-radius: var(--ui-radius);
+}
+:where(input, select, textarea) {
+  color: var(--ui-text);
+  background-color: var(--ui-surface);
+  border-color: var(--ui-border);
+}
+:where(button, input[type="button"], input[type="submit"], input[type="reset"], .button, .btn) {
+  border-radius: 8px;
+}
+:where(.alert.success, .success, .status.success, .status.published, [role="status"].success) {
+  color: var(--ui-success);
+  background-color: var(--ui-success-surface);
+}
+:where(.alert.warning, .warning, .status.warning) {
+  color: var(--ui-warning);
+  background-color: var(--ui-warning-surface);
+}
+:where(.alert.error, .error, .danger, .status.error, [role="alert"]) {
+  color: var(--ui-danger);
+}
+:where(.alert.info, .info, .status.info) {
+  color: var(--ui-info);
+  background-color: var(--ui-info-surface);
+}
+:where(.site-header) {
+  display: grid;
+  grid-template-columns: minmax(44px, 1fr) minmax(0, 3fr) minmax(44px, 1fr);
+  align-items: center;
+  gap: 12px;
+}
+:where(.site-header-title) { min-width: 0; text-align: center; overflow-wrap: anywhere; }
+:where(.site-header-nav) { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+:where(.site-header-nav a) { min-height: 40px; display: inline-flex; align-items: center; }
+:where(.site-header-mark, .site-header-squadron, .site-header-squadron-placeholder) { max-width: 100%; }
+@media (max-width: 600px) {
+  :where(.site-header) { grid-template-columns: 40px minmax(0, 1fr) 40px; gap: 8px; }
+  :where(.site-header-mark, .site-header-squadron, .site-header-squadron-placeholder) { width: 40px; height: 40px; }
+  :where(.site-header-nav) { width: 100%; justify-content: center; }
 }
