@@ -43,7 +43,7 @@
   margin: 0;
   color: var(--ui-primary);
   text-align: center;
-  font-size: clamp(1.35rem, 3vw, 2.5rem);
+  font-size: clamp(1.55rem, 4vw, 3.1rem);
   line-height: 1.15;
   overflow-wrap: anywhere;
 }
@@ -151,4 +151,10 @@
   text-decoration: none;
   white-space: normal;
   overflow-wrap: anywhere;
+}
+
+@media (max-width: 520px) {
+  .site-header > h1.site-header-title {
+    font-size: clamp(1.2rem, 5vw, 1.8rem);
+  }
 }
