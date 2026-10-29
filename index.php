@@ -386,6 +386,7 @@ usort(
     .footer a:hover { text-decoration: underline; }
 </style>
 <link rel="stylesheet" href="site-ui.css">
+<link rel="stylesheet" href="site-components.css">
 </head>
 <body>
 <div class="container">
