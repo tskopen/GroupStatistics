@@ -39,6 +39,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Admin Login - Squadron Tracker</title>
 <style>
 :root{--primary-color:<?php echo htmlspecialchars($theme['primary_color'] ?? '#002147', ENT_QUOTES, 'UTF-8'); ?>;--secondary-color:<?php echo htmlspecialchars($theme['secondary_color'] ?? '#003366', ENT_QUOTES, 'UTF-8'); ?>;--accent-color:<?php echo htmlspecialchars($theme['accent_color'] ?? '#667eea', ENT_QUOTES, 'UTF-8'); ?>;--background-color:<?php echo htmlspecialchars($theme['background_color'] ?? '#f4f4f4', ENT_QUOTES, 'UTF-8'); ?>;--text-color:<?php echo htmlspecialchars($theme['text_color'] ?? '#222222', ENT_QUOTES, 'UTF-8'); ?>}
@@ -54,8 +55,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     .back-link { display: block; text-align: center; margin-top: 15px; font-size: 0.85em; }
     .back-link a { color: var(--primary-color); }
 </style>
+<link rel="stylesheet" href="site-ui.css">
+<link rel="stylesheet" href="site-components.css">
 </head>
 <body>
+<?php require_once __DIR__ . '/site-header.php'; renderGroupSiteHeader(); ?>
     <div class="login-box">
         <h1>Admin Login</h1>
         <?php if ($error): ?>

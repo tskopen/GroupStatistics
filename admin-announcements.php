@@ -1,5 +1,7 @@
 <?php
 require __DIR__ . '/config.php';
+require_once __DIR__ . '/theme-loader.php';
+$theme = loadTheme();
 if (empty($_SESSION['admin'])) {
     header('Location: admin-login.php');
     exit;
@@ -149,6 +151,7 @@ $counts = $db->query("SELECT COUNT(*) AS total, SUM(CASE WHEN status='published'
 <!DOCTYPE html>
 <html lang="en">
 <head>
+<style>:root{--primary-color:<?php echo htmlspecialchars($theme['primary_color'] ?? '#002147', ENT_QUOTES, 'UTF-8'); ?>;--secondary-color:<?php echo htmlspecialchars($theme['secondary_color'] ?? '#003366', ENT_QUOTES, 'UTF-8'); ?>;--accent-color:<?php echo htmlspecialchars($theme['accent_color'] ?? '#667eea', ENT_QUOTES, 'UTF-8'); ?>;--background-color:<?php echo htmlspecialchars($theme['background_color'] ?? '#f4f4f4', ENT_QUOTES, 'UTF-8'); ?>;--text-color:<?php echo htmlspecialchars($theme['text_color'] ?? '#222222', ENT_QUOTES, 'UTF-8'); ?>;--surface-color:#fff;--border-color:#d7dee8;--muted-color:#5b6575}</style>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#002147">
@@ -165,8 +168,11 @@ label{display:block;font-weight:700;color:#334155;font-size:.9rem;margin:14px 0 
 @media(max-width:900px){.layout{grid-template-columns:1fr}.stats{gap:8px}.panel-body{padding:16px}}
 @media(max-width:600px){.date-grid{grid-template-columns:minmax(0,1fr)}.date-grid input[type=datetime-local]{font-size:1rem;padding:11px 10px}}@media(max-width:520px){.wrap{padding:0 10px 30px}.stats{grid-template-columns:1fr 1fr}.stat:last-child{grid-column:1/-1}.list-toolbar{align-items:stretch;flex-direction:column}.row-title{align-items:start}.topbar h1{font-size:1.25rem}}
 </style>
+<link rel="stylesheet" href="site-ui.css">
+<link rel="stylesheet" href="site-components.css">
 </head>
 <body>
+<?php require_once __DIR__ . '/site-header.php'; renderGroupSiteHeader(); ?>
 <header class="topbar"><div class="topbar-inner">
 <div><h1>📣 Manage Group Announcements</h1><p>Create event posts, keep details current, and remove outdated announcements.</p></div>
 <nav class="top-links"><a href="announcements.php">View public board ↗</a><a href="admin-panel.php">Admin panel</a><a href="index.php">Home</a></nav>
