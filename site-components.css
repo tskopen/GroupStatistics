@@ -38,15 +38,6 @@
   margin: 12px auto 28px;
   padding: 0 12px;
 }
-:where(.site-header-title) {
-  min-width: 0;
-  margin: 0;
-  color: var(--ui-primary);
-  text-align: center;
-  font-size: clamp(1.55rem, 4vw, 3.1rem);
-  line-height: 1.15;
-  overflow-wrap: anywhere;
-}
 :where(.site-header-mark, .site-header-squadron, .site-header-squadron-placeholder) {
   display: flex;
   width: 64px;
