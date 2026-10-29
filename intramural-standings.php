@@ -92,6 +92,7 @@ foreach ($squadrons as $squad) {
  .nav-link a:hover { text-decoration: underline; }
 </style>
 <link rel="stylesheet" href="site-ui.css">
+<link rel="stylesheet" href="site-components.css">
 </head>
 <body>
 <?php require_once __DIR__ . '/site-header.php'; renderGroupSiteHeader(); ?>
