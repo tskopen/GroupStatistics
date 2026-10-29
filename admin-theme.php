@@ -198,6 +198,7 @@ $selectedSquadron = ($theme['selected_squadron_id'] && isset($squadronMap[$theme
         .theme-contrast-audit strong { display: block; margin-bottom: 4px; }
 </style>
 <link rel="stylesheet" href="site-ui.css">
+<link rel="stylesheet" href="site-components.css">
 </head>
 <body>
 <?php require_once __DIR__ . '/site-header.php'; renderGroupSiteHeader(); ?>
