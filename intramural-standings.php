@@ -90,13 +90,22 @@ foreach ($squadrons as $squad) {
  .nav-link { display: block; text-align: center; margin-top: 20px; font-size: 0.9em; }
  .nav-link a { color: var(--primary-color); text-decoration: none; }
  .nav-link a:hover { text-decoration: underline; }
+
+:root{--navy:var(--primary-color);--blue:var(--secondary-color)}
+/* Match the Group Announcements banner exactly. */
+header{background:linear-gradient(120deg,var(--navy),var(--blue));color:#fff;padding:30px 20px}
+.header-inner,.container{max-width:1080px;margin:0 auto}
+.eyebrow{text-transform:uppercase;letter-spacing:.13em;font-size:.76rem;font-weight:700;opacity:.8}
+header h1{font-size:clamp(1.8rem,4vw,2.6rem);margin:7px 0;color:#fff;text-align:left}
+header p{margin:0;max-width:650px;color:#e4edf7}
+@media(max-width:600px){header{padding:24px 17px}.container{padding:14px 12px 35px}}
 </style>
 <link rel="stylesheet" href="site-ui.css">
 <link rel="stylesheet" href="site-components.css">
 </head>
 <body>
 <?php require_once __DIR__ . '/site-header.php'; renderGroupSiteHeader(); ?>
-<header class="page-banner"><div class="page-banner-inner">
+<header><div class="header-inner">
 <div class="eyebrow">USAFA · Group 1</div>
 <h1>🏅 Intramural Standings</h1>
 <p>Track intramural points, squadron records, and game results across Group 1 sports.</p>
