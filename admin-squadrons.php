@@ -1,13 +1,15 @@
 <?php
 session_start();
 require __DIR__ . '/config.php';
+require __DIR__ . '/theme-loader.php';
+$theme = loadTheme();
 
 if (empty($_SESSION['admin'])) { header('Location: admin-login.php'); exit; }
 
 $db=getDb(); $uploadsDir=IMAGES_DIR; $success=''; $error='';
 if ($_SERVER['REQUEST_METHOD']==='POST' && isset($_POST['group_icon_upload'])) {
     [$valid,$extOrError]=validateUploadedImage($_FILES['group_icon']??[]);
-    if (!$valid) $error=$extOrError;
+    if (!$valid || !$extOrError) $error=$valid ? 'Please choose an image to upload.' : $extOrError;
     else {
         if (!is_dir($uploadsDir)) mkdir($uploadsDir,0755,true);
         $filename='group-icon-'.safeImageFilename($extOrError);
