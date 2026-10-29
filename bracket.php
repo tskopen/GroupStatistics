@@ -91,11 +91,8 @@ foreach ($bracket['participants'] as $p) {
             .header h1 { font-size: 1.5em; }
         }
     </style>
-<link rel="stylesheet" href="site-ui.css">
-<link rel="stylesheet" href="site-components.css">
 </head>
 <body>
-<?php require_once __DIR__ . '/site-header.php'; renderGroupSiteHeader(); ?>
 <div class="container">
     <div class="header">
         <h1>🏆 <?php echo htmlspecialchars($bracket['name']); ?></h1>

@@ -385,16 +385,25 @@ usort(
     .footer a { color: var(--primary-color); text-decoration: none; margin: 0 15px; }
     .footer a:hover { text-decoration: underline; }
 </style>
-<link rel="stylesheet" href="site-ui.css">
-<link rel="stylesheet" href="site-components.css">
 </head>
 <body>
 <div class="container">
-    <?php require_once __DIR__ . '/site-header.php'; renderGroupSiteHeader(); ?>
+    <header class="site-header" aria-label="USAFA Group 1 Squadron Tracker">
+        <div class="site-header-mark" aria-label="Group 1 icon"><?php if ($groupIconFilename): ?><img src="<?php echo htmlspecialchars(iconUrl($groupIconFilename)); ?>" alt="Group 1 logo"><?php else: ?>G1<?php endif; ?></div>
+        <h1 class="site-header-title">USAFA Group 1 Squadron Tracker</h1>
+        <div class="site-header-squadron" aria-label="<?php echo htmlspecialchars($themeSquadron['name'] ?? 'Selected squadron logo', ENT_QUOTES, 'UTF-8'); ?>">
+            <?php if (!empty($themeSquadron['icon_filename'])): ?>
+                <img src="<?php echo htmlspecialchars(iconUrl($themeSquadron['icon_filename'])); ?>" alt="<?php echo htmlspecialchars($themeSquadron['name'] ?? 'Squadron logo', ENT_QUOTES, 'UTF-8'); ?> logo">
+            <?php else: ?>
+                <span class="site-header-squadron-placeholder" aria-hidden="true"></span>
+            <?php endif; ?>
+        </div>
+    </header>
     <div class="pwa-install-wrap">
         <button type="button" id="pwa-install-button" class="pwa-install-button" hidden>⬇ Install App</button>
         <p id="pwa-install-help" class="pwa-install-help" hidden></p>
     </div>
+    <div style="text-align:center;margin:-18px 0 26px;"><a href="meet-the-group.php" style="display:inline-block;background:var(--primary-color);color:#fff;padding:10px 16px;border-radius:6px;text-decoration:none;font-weight:bold;">👥 Meet the Group</a></div>
 
     <section class="announcement-preview" aria-labelledby="announcements-preview-title">
         <div class="announcement-preview-head">
