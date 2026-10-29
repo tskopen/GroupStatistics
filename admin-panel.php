@@ -31,6 +31,7 @@ if (isset($_GET['logout'])) {
 <link rel="stylesheet" href="site-ui.css">
 </head>
 <body>
+<?php require_once __DIR__ . '/site-header.php'; renderGroupSiteHeader(); ?>
     <div class="panel">
         <h1>Admin Panel</h1>
         <a class="button" href="admin-scores.php">Enter Single Score</a>
