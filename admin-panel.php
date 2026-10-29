@@ -29,6 +29,7 @@ if (isset($_GET['logout'])) {
     .logout a { color: #b00020; text-decoration: none; font-size: 0.9em; }
 </style>
 <link rel="stylesheet" href="site-ui.css">
+<link rel="stylesheet" href="site-components.css">
 </head>
 <body>
 <?php require_once __DIR__ . '/site-header.php'; renderGroupSiteHeader(); ?>
