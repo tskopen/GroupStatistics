@@ -1,3 +1,8 @@
+<?php
+require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/theme-loader.php';
+$theme = loadTheme();
+?>
 <!DOCTYPE html>
 <html>
 <head>
