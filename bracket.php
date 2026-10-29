@@ -96,11 +96,8 @@ foreach ($bracket['participants'] as $p) {
 </head>
 <body>
 <?php require_once __DIR__ . '/site-header.php'; renderGroupSiteHeader(); ?>
+<header class="page-banner"><div class="page-banner-inner"><h1>🏆 <?php echo htmlspecialchars($bracket['name']); ?></h1><p>Status: <?php echo $bracket['status'] === 'completed' ? '✓ Completed' : 'In Progress'; ?></p></div></header>
 <div class="container">
-    <div class="header">
-        <h1>🏆 <?php echo htmlspecialchars($bracket['name']); ?></h1>
-        <p>Status: <?php echo $bracket['status'] === 'completed' ? '✓ Completed' : 'In Progress'; ?></p>
-    </div>
     
     <div class="bracket-container">
         <div class="bracket-wrapper">
