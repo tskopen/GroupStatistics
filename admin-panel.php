@@ -17,11 +17,13 @@ if (isset($_GET['logout'])) {
 <meta charset="UTF-8">
 <title>Admin Panel</title>
 <style>
-    body { font-family: Arial; background: #f4f4f4; margin: 0; padding: 20px; }
-    .panel { max-width: 500px; margin: 60px auto; background: #fff; padding: 30px; border-radius: 6px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); text-align: center; }
-    h1 { color: #002147; }
-    a.button { display: block; margin: 12px 0; padding: 12px; background: #002147; color: #fff; text-decoration: none; border-radius: 4px; font-weight: bold; }
-    a.button:hover { background: #003366; }
+:root{--primary-color:<?php echo htmlspecialchars($theme['primary_color'] ?? '#002147', ENT_QUOTES, 'UTF-8'); ?>;--secondary-color:<?php echo htmlspecialchars($theme['secondary_color'] ?? '#003366', ENT_QUOTES, 'UTF-8'); ?>;--accent-color:<?php echo htmlspecialchars($theme['accent_color'] ?? '#667eea', ENT_QUOTES, 'UTF-8'); ?>;--background-color:<?php echo htmlspecialchars($theme['background_color'] ?? '#f4f4f4', ENT_QUOTES, 'UTF-8'); ?>;--text-color:<?php echo htmlspecialchars($theme['text_color'] ?? '#222222', ENT_QUOTES, 'UTF-8'); ?>}
+
+    body { font-family: Arial; background: var(--background-color); margin: 0; padding: 20px; }
+    .panel { max-width: 500px; margin: 60px auto; background: var(--background-color); padding: 30px; border-radius: 6px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); text-align: center; }
+    h1 { color: var(--primary-color); }
+    a.button { display: block; margin: 12px 0; padding: 12px; background: var(--primary-color); color: #fff; text-decoration: none; border-radius: 4px; font-weight: bold; }
+    a.button:hover { background: var(--secondary-color); }
     .logout { margin-top: 30px; }
     .logout a { color: #b00020; text-decoration: none; font-size: 0.9em; }
 </style>
