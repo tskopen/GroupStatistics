@@ -22,6 +22,7 @@
         .status.info { background: #d1ecf1; color: #0c5460; }
     </style>
 <link rel="stylesheet" href="site-ui.css">
+<link rel="stylesheet" href="site-components.css">
 </head>
 <body>
 <?php require_once __DIR__ . '/site-header.php'; renderGroupSiteHeader(); ?>
