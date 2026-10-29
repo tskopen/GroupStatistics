@@ -364,11 +364,8 @@ h1,h2,h3 { color:var(--primary); }
     .teams,.team-grid { grid-template-columns:1fr; }
 }
 </style>
-<link rel="stylesheet" href="site-ui.css">
-<link rel="stylesheet" href="site-components.css">
 </head>
 <body>
-<?php require_once __DIR__ . '/site-header.php'; renderGroupSiteHeader(); ?>
 <div class="container">
 
 <div class="card">

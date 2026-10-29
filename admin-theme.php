@@ -144,7 +144,6 @@ $selectedSquadron = ($theme['selected_squadron_id'] && isset($squadronMap[$theme
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Theme Settings - Squadron Tracker</title>
 <style>
     :root {
@@ -193,15 +192,9 @@ $selectedSquadron = ($theme['selected_squadron_id'] && isset($squadronMap[$theme
     .squadron-preset-swatches { display: flex; gap: 4px; margin-bottom: 8px; }
     .squadron-preset-swatches span { flex: 1; height: 20px; border-radius: 3px; }
     .squadron-preset-card button { width: 100%; }
-
-        .theme-contrast-audit { margin: 12px 0 0; padding: 12px; border: 1px solid var(--border-color, #d7dee8); border-radius: 8px; background: var(--background-color, #f4f4f4); color: var(--text-color, #222); line-height: 1.5; }
-        .theme-contrast-audit strong { display: block; margin-bottom: 4px; }
 </style>
-<link rel="stylesheet" href="site-ui.css">
-<link rel="stylesheet" href="site-components.css">
 </head>
 <body>
-<?php require_once __DIR__ . '/site-header.php'; renderGroupSiteHeader(); ?>
     <div class="container">
         <h1>Theme Settings</h1>
         <?php if ($success): ?>
@@ -367,7 +360,6 @@ $selectedSquadron = ($theme['selected_squadron_id'] && isset($squadronMap[$theme
                     <div class="swatch" id="swatch-background" style="background: <?php echo htmlspecialchars($theme['background_color']); ?>; color: #222; text-shadow: none;">Background</div>
                     <div class="swatch" id="swatch-text" style="background: <?php echo htmlspecialchars($theme['text_color']); ?>;">Text</div>
                 </div>
-                <p id="theme-contrast-audit" class="theme-contrast-audit" role="status" aria-live="polite">Contrast checks will appear here.</p>
             </div>
 
             <div class="card">
@@ -398,53 +390,6 @@ $selectedSquadron = ($theme['selected_squadron_id'] && isset($squadronMap[$theme
     <script>
         var squadronData = <?php echo json_encode($squadronMap, JSON_UNESCAPED_SLASHES); ?>;
         var iconBase = 'image.php?file=';
-        updatePreview();
-
-        function contrastRatio(hexA, hexB) {
-            function luminance(hex) {
-                var value = hex.replace('#', '');
-                if (value.length !== 6) return 0;
-                var channels = [0, 2, 4].map(function (offset) {
-                    var channel = parseInt(value.slice(offset, offset + 2), 16) / 255;
-                    return channel <= 0.04045 ? channel / 12.92 : Math.pow((channel + 0.055) / 1.055, 2.4);
-                });
-                return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
-            }
-            var a = luminance(hexA), b = luminance(hexB);
-            return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
-        }
-
-        function updateContrastAudit() {
-            var bg = document.getElementById('background_color').value;
-            var text = document.getElementById('text_color').value;
-            var primary = document.getElementById('primary_color').value;
-            var secondary = document.getElementById('secondary_color').value;
-            var accent = document.getElementById('accent_color').value;
-            var checks = [
-                { label: 'Body text on background', ratio: contrastRatio(text, bg), minimum: 4.5 },
-                { label: 'White text on primary color', ratio: contrastRatio('#ffffff', primary), minimum: 4.5 },
-                { label: 'White text on secondary color', ratio: contrastRatio('#ffffff', secondary), minimum: 4.5 },
-                { label: 'Accent against background (focus/indicators)', ratio: contrastRatio(accent, bg), minimum: 3 }
-            ];
-            var failures = checks.filter(function (check) { return check.ratio < check.minimum; });
-            var lines = checks.map(function (check) {
-                return (check.ratio >= check.minimum ? '✓ ' : '⚠ ') + check.label + ': ' + check.ratio.toFixed(2) + ':1 (target ' + check.minimum.toFixed(1) + ':1)';
-            });
-            var audit = document.getElementById('theme-contrast-audit');
-            audit.textContent = '';
-            var heading = document.createElement('strong');
-            heading.textContent = failures.length ? 'Contrast review needed' : 'Contrast checks passed';
-            audit.appendChild(heading);
-            var list = document.createElement('ul');
-            list.style.margin = '6px 0 0';
-            list.style.paddingLeft = '22px';
-            lines.forEach(function (line) {
-                var item = document.createElement('li');
-                item.textContent = line;
-                list.appendChild(item);
-            });
-            audit.appendChild(list);
-        }
 
         function updatePreview() {
             document.getElementById('swatch-primary').style.background = document.getElementById('primary_color').value;
@@ -452,7 +397,6 @@ $selectedSquadron = ($theme['selected_squadron_id'] && isset($squadronMap[$theme
             document.getElementById('swatch-accent').style.background = document.getElementById('accent_color').value;
             document.getElementById('swatch-background').style.background = document.getElementById('background_color').value;
             document.getElementById('swatch-text').style.background = document.getElementById('text_color').value;
-            updateContrastAudit();
         }
 
         function updateSquadronInfo() {

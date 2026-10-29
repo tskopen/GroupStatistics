@@ -91,11 +91,8 @@ header h1{font-size:clamp(1.8rem,4vw,2.6rem);margin:7px 0}header p{margin:0;max-
 details.past{margin-top:28px;background:color-mix(in srgb,var(--page),white 92%);border:1px solid var(--line);border-radius:12px;padding:16px}details.past summary{font-weight:700;color:var(--navy);cursor:pointer}
 @media(max-width:600px){header{padding:24px 17px}.container{padding:14px 12px 35px}.section-heading{align-items:start;flex-direction:column}.card-content{padding:16px}}
 </style>
-<link rel="stylesheet" href="site-ui.css">
-<link rel="stylesheet" href="site-components.css">
 </head>
 <body>
-<?php require_once __DIR__ . '/site-header.php'; renderGroupSiteHeader(); ?>
 <header><div class="header-inner">
 <div class="eyebrow">USAFA · Group 1</div>
 <h1>📣 Group Announcements</h1>
