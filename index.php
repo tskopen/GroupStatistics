@@ -375,6 +375,7 @@ usort(
         <p id="pwa-install-help" class="pwa-install-help" hidden></p>
     </div>
     <h1>⚔️ USAFA Group 1 Squadron Tracker</h1>
+    <div style="text-align:center;margin:-18px 0 26px;"><a href="meet-the-group.php" style="display:inline-block;background:#002147;color:#fff;padding:10px 16px;border-radius:6px;text-decoration:none;font-weight:bold;">👥 Meet the Group</a></div>
 
     <section class="announcement-preview" aria-labelledby="announcements-preview-title">
         <div class="announcement-preview-head">
