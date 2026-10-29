@@ -36,6 +36,8 @@ foreach ($squadrons as $squadron) {
 $themeSquadron = !empty($theme['selected_squadron_id'])
     ? ($squadronMap[(int)$theme['selected_squadron_id']] ?? null)
     : null;
+$groupIconSettings = readJson(DATA_DIR . '/group-icon.json');
+$groupIconFilename = $groupIconSettings['filename'] ?? null;
 
 // Fetch scores (all events)
 $stmt = $db->prepare("SELECT * FROM events ORDER BY timestamp DESC");
@@ -262,7 +264,8 @@ usort(
     .container { max-width: 1200px; margin: 0 auto; }
     .site-header { display:grid; grid-template-columns:minmax(64px,1fr) minmax(0,3fr) minmax(64px,1fr); align-items:center; gap:16px; margin:8px 0 30px; }
     .site-header-title { min-width:0; text-align:center; color:var(--primary-color); margin:0; font-size:clamp(1.55rem,4vw,3.1rem); line-height:1.15; overflow-wrap:anywhere; }
-    .site-header-mark { width:64px; height:64px; display:flex; align-items:center; justify-content:center; justify-self:start; border:2px dashed var(--border-color); border-radius:12px; color:var(--primary-color); background:var(--soft-primary-color); font-weight:800; font-size:1rem; letter-spacing:.04em; }
+    .site-header-mark { width:64px; height:64px; display:flex; align-items:center; justify-content:center; justify-self:start; border:2px dashed var(--border-color); border-radius:12px; color:var(--primary-color); background:var(--soft-primary-color); font-weight:800; font-size:1rem; letter-spacing:.04em; overflow:hidden; }
+    .site-header-mark img { width:100%; height:100%; object-fit:contain; padding:4px; }
     .site-header-squadron { justify-self:end; width:64px; height:64px; display:flex; align-items:center; justify-content:center; }
     .site-header-squadron img { display:block; width:100%; height:100%; object-fit:contain; border-radius:10px; }
     .site-header-squadron-placeholder { width:64px; height:64px; border:2px dashed var(--border-color); border-radius:10px; background:var(--soft-primary-color); }
@@ -390,7 +393,7 @@ usort(
         <p id="pwa-install-help" class="pwa-install-help" hidden></p>
     </div>
     <header class="site-header" aria-label="USAFA Group 1 Squadron Tracker">
-        <div class="site-header-mark" aria-label="Reserved space for the Group 1 icon">G1</div>
+        <div class="site-header-mark" aria-label="Group 1 icon"><?php if ($groupIconFilename): ?><img src="<?php echo htmlspecialchars(iconUrl($groupIconFilename)); ?>" alt="Group 1 logo"><?php else: ?>G1<?php endif; ?></div>
         <h1 class="site-header-title">USAFA Group 1 Squadron Tracker</h1>
         <div class="site-header-squadron" aria-label="<?php echo htmlspecialchars($themeSquadron['name'] ?? 'Selected squadron logo', ENT_QUOTES, 'UTF-8'); ?>">
             <?php if (!empty($themeSquadron['icon_filename'])): ?>
