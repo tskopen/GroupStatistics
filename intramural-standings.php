@@ -68,7 +68,6 @@ foreach ($squadrons as $squad) {
  }
  body { font-family: Arial, sans-serif; background: var(--background-color); margin: 0; padding: 0; color: var(--text-color); }
  .container { max-width: 1200px; margin: 0 auto; padding: 24px 18px 50px; }
- h1 { color: var(--primary-color); text-align: center; margin-bottom: 30px; }
  h2 { color: var(--primary-color); border-bottom: 2px solid var(--primary-color); padding-bottom: 8px; margin-top: 30px; }
  h3 { color: var(--primary-color); margin-top: 20px; }
  
