@@ -197,6 +197,7 @@ $selectedSquadron = ($theme['selected_squadron_id'] && isset($squadronMap[$theme
 <link rel="stylesheet" href="site-ui.css">
 </head>
 <body>
+<?php require_once __DIR__ . '/site-header.php'; renderGroupSiteHeader(); ?>
     <div class="container">
         <h1>Theme Settings</h1>
         <?php if ($success): ?>
