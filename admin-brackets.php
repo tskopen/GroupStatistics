@@ -367,6 +367,7 @@ h1,h2,h3 { color:var(--primary); }
 <link rel="stylesheet" href="site-ui.css">
 </head>
 <body>
+<?php require_once __DIR__ . '/site-header.php'; renderGroupSiteHeader(); ?>
 <div class="container">
 
 <div class="card">
