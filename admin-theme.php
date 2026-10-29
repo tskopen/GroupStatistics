@@ -144,6 +144,7 @@ $selectedSquadron = ($theme['selected_squadron_id'] && isset($squadronMap[$theme
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Theme Settings - Squadron Tracker</title>
 <style>
     :root {
@@ -193,6 +194,7 @@ $selectedSquadron = ($theme['selected_squadron_id'] && isset($squadronMap[$theme
     .squadron-preset-swatches span { flex: 1; height: 20px; border-radius: 3px; }
     .squadron-preset-card button { width: 100%; }
 </style>
+<link rel="stylesheet" href="site-ui.css">
 </head>
 <body>
     <div class="container">
