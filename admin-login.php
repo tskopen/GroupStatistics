@@ -1,6 +1,8 @@
 <?php
 session_start();
 require __DIR__ . '/config.php';
+require __DIR__ . '/theme-loader.php';
+$theme = loadTheme();
 
 $error = '';
 
@@ -39,16 +41,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <meta charset="UTF-8">
 <title>Admin Login - Squadron Tracker</title>
 <style>
-    body { font-family: Arial, sans-serif; background: #f4f4f4; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
-    .login-box { background: #fff; padding: 30px; border-radius: 6px; box-shadow: 0 1px 4px rgba(0,0,0,0.2); width: 300px; }
-    h1 { font-size: 1.3em; color: #002147; text-align: center; }
+:root{--primary-color:<?php echo htmlspecialchars($theme['primary_color'] ?? '#002147', ENT_QUOTES, 'UTF-8'); ?>;--secondary-color:<?php echo htmlspecialchars($theme['secondary_color'] ?? '#003366', ENT_QUOTES, 'UTF-8'); ?>;--accent-color:<?php echo htmlspecialchars($theme['accent_color'] ?? '#667eea', ENT_QUOTES, 'UTF-8'); ?>;--background-color:<?php echo htmlspecialchars($theme['background_color'] ?? '#f4f4f4', ENT_QUOTES, 'UTF-8'); ?>;--text-color:<?php echo htmlspecialchars($theme['text_color'] ?? '#222222', ENT_QUOTES, 'UTF-8'); ?>}
+
+    body { font-family: Arial, sans-serif; background: var(--background-color); display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+    .login-box { background: var(--background-color); padding: 30px; border-radius: 6px; box-shadow: 0 1px 4px rgba(0,0,0,0.2); width: 300px; }
+    h1 { font-size: 1.3em; color: var(--primary-color); text-align: center; }
     input[type="text"], input[type="password"] { width: 100%; padding: 8px; margin: 10px 0; box-sizing: border-box; }
     label { font-size: 0.9em; color: #333; }
-    button { width: 100%; padding: 8px; background: #002147; color: #fff; border: none; border-radius: 4px; cursor: pointer; }
-    button:hover { background: #003366; }
+    button { width: 100%; padding: 8px; background: var(--primary-color); color: #fff; border: none; border-radius: 4px; cursor: pointer; }
+    button:hover { background: var(--secondary-color); }
     .error { color: #b00020; font-size: 0.9em; text-align: center; }
     .back-link { display: block; text-align: center; margin-top: 15px; font-size: 0.85em; }
-    .back-link a { color: #002147; }
+    .back-link a { color: var(--primary-color); }
 </style>
 </head>
 <body>
