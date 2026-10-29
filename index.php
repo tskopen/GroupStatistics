@@ -260,9 +260,9 @@ usort(
         --soft-primary-color: color-mix(in srgb, var(--primary-color), white 92%);
     }
     * { box-sizing: border-box; }
-    body { font-family: Arial, sans-serif; background: var(--background-color); margin: 0; padding: 20px; color: var(--text-color); }
-    .container { max-width: 1200px; margin: 0 auto; }
-    @media (max-width:520px) { body { padding:12px; } }
+    body { font-family: Arial, sans-serif; background: var(--background-color); margin: 0; padding: 0; color: var(--text-color); }
+    .container { width: calc(100% - 40px); max-width: 1200px; margin: 0 auto; }
+    @media (max-width:520px) { body { padding:0; } .container { width:calc(100% - 24px); } }
     h2 { color: var(--primary-color); border-bottom: 2px solid var(--primary-color); padding-bottom: 8px; margin-top: 30px; }
     
     .rankings-table { width: 100%; border-collapse: collapse; background: var(--surface-color); box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 30px; }
@@ -381,8 +381,8 @@ usort(
 <link rel="stylesheet" href="site-components.css">
 </head>
 <body>
+<?php require_once __DIR__ . '/site-header.php'; renderGroupSiteHeader(); ?>
 <div class="container">
-    <?php require_once __DIR__ . '/site-header.php'; renderGroupSiteHeader(); ?>
     <div class="pwa-install-wrap">
         <button type="button" id="pwa-install-button" class="pwa-install-button" hidden>⬇ Install App</button>
         <p id="pwa-install-help" class="pwa-install-help" hidden></p>
