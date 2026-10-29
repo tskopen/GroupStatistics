@@ -23,7 +23,7 @@ if ($awards) {
 <link rel="stylesheet" href="site-components.css">
 </head><body>
 <?php require_once __DIR__ . '/site-header.php'; renderGroupSiteHeader(); ?>
-<header class="page-banner"><div class="page-banner-inner"><h1>🏅 Challenge Awards</h1><p>Recognizing teamwork, participation, creativity, and accomplishments across Group 1.</p></div></header>
+<header class="hero"><div class="hero-inner"><h1>🏅 Challenge Awards</h1><p>Recognizing teamwork, participation, creativity, and accomplishments across Group 1.</p><nav class="links"><a href="index.php">← GroupStatistics home</a><a href="announcements.php">Group announcements</a></nav></div></header>
 <main class="wrap">
 <?php if (!$awards): ?><div class="empty"><strong>No awards have been published yet.</strong><br>Check back for challenge recognition and squadron accomplishments.</div><?php endif; ?>
 <?php foreach ($awards as $award): $id=(int)$award['id']; $recipients=$recipientsByAward[$id]??[]; $photos=$photosByAward[$id]??[]; ?>

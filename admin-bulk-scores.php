@@ -1,8 +1,6 @@
 <?php
 session_start();
 require __DIR__ . '/config.php';
-require_once __DIR__ . '/theme-loader.php';
-$uiThemeForHeader = loadTheme();
 if (empty($_SESSION['admin'])) {
     header('Location: admin-login.php');
     exit;
@@ -142,17 +140,11 @@ if ($_POST) {
     .nav { text-align: center; margin-top: 20px; }
     .nav a { color: #002147; text-decoration: none; }
 </style>
-
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<link rel="stylesheet" href="site-ui.css">
-<link rel="stylesheet" href="site-components.css">
 </head>
 <body>
-<?php require_once __DIR__ . '/site-header.php'; renderGroupSiteHeader(); ?>
-<header class="page-banner"><div class="page-banner-inner"><h1>Enter Event Scores</h1><p>Record an event's results across all squadrons.</p></div></header>
 <div class="container">
     <div class="form-box">
-
+        <h1>Enter Event Scores</h1>
         <?php if ($success): ?>
         <div class="success">✓ <?php echo htmlspecialchars($success); ?></div>
         <?php endif; ?>

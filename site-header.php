@@ -40,11 +40,6 @@ if (!function_exists('renderGroupSiteHeader')) {
                 <a href="meet-the-group.php">Meet the Group</a>
                 <a href="announcements.php">Announcements</a>
                 <a href="intramural-standings.php">Standings</a>
-                <?php if (!empty($_SESSION['admin'])): ?>
-                    <a href="admin-panel.php">Admin Panel</a>
-                <?php else: ?>
-                    <a href="admin-login.php">Admin Login</a>
-                <?php endif; ?>
             </nav>
         </div>
         <?php

@@ -96,8 +96,8 @@ foreach ($squadrons as $squad) {
 </head>
 <body>
 <?php require_once __DIR__ . '/site-header.php'; renderGroupSiteHeader(); ?>
- <header class="page-banner"><div class="page-banner-inner"><h1>🏅 Intramural Standings</h1></div></header>
  <div class="container">
+ <h1>🏅 Intramural Standings</h1>
  
  <h2>Overall Intramural Points</h2>
  <table class="standings-table">

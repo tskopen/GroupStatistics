@@ -369,10 +369,16 @@ h1,h2,h3 { color:var(--primary); }
 </head>
 <body>
 <?php require_once __DIR__ . '/site-header.php'; renderGroupSiteHeader(); ?>
-<header class="page-banner"><div class="page-banner-inner"><h1>Bracket Manager</h1><p>Create independent matchups or multi-round elimination brackets. Teams can be posted before scores are entered.</p></div></header>
 <div class="container">
 
 <div class="card">
+    <div class="header">
+        <div>
+            <h1 style="margin:0;">Bracket Manager</h1>
+            <div class="subtitle">Create either independent single-round matchups or a multi-round elimination bracket. Teams can be posted before scores are entered.</div>
+        </div>
+        <a class="btn secondary" href="index.php">View Public Tracker</a>
+    </div>
     <?php if ($error): ?><div class="notice error"><?php echo h($error); ?></div><?php endif; ?>
     <?php if ($message): ?><div class="notice success"><?php echo h($message); ?></div><?php endif; ?>
 </div>

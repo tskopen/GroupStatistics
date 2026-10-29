@@ -1,8 +1,6 @@
 <?php
 session_start();
 require __DIR__ . '/config.php';
-require_once __DIR__ . '/theme-loader.php';
-$uiThemeForHeader = loadTheme();
 require __DIR__ . '/notifications-helper.php';
 
 if (empty($_SESSION['admin'])) {
@@ -189,16 +187,10 @@ $subscriberPreview = array_map(function ($sub) use ($squadrons) {
     .delivery-table td.failed { color: #721c24; font-weight: bold; }
     #test-connection-result { margin-top: 10px; font-size: 0.85em; }
 </style>
-
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<link rel="stylesheet" href="site-ui.css">
-<link rel="stylesheet" href="site-components.css">
 </head>
 <body>
-<?php require_once __DIR__ . '/site-header.php'; renderGroupSiteHeader(); ?>
-<header class="page-banner"><div class="page-banner-inner"><h1>Send Notifications</h1><p>Test push notification delivery and review subscription status.</p></div></header>
     <div class="panel">
-
+        <h1>Send Notifications</h1>
         <p class="info"><?php echo $subscriberCount; ?> device(s) subscribed • Push notifications <?php echo $subscriberCount > 0 ? '✓ Ready' : '⚠ No subscribers yet'; ?></p>
 
         <div id="permission-banner" class="status-banner warn" style="display:none;"></div>

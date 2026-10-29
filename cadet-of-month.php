@@ -23,7 +23,8 @@ h1{color:var(--primary-color);text-align:center;margin:8px 0 4px}.subtitle{text-
 </style><link rel="stylesheet" href="site-ui.css">
 <link rel="stylesheet" href="site-components.css">
 </head><body>
-<?php require_once __DIR__ . '/site-header.php'; renderGroupSiteHeader(); ?><header class="page-banner"><div class="page-banner-inner"><h1>⭐ Cadet of the Month</h1><p>USAFA Group 1 recognition · <?php echo htmlspecialchars($monthLabel); ?></p></div></header><div class="container">
+<?php require_once __DIR__ . '/site-header.php'; renderGroupSiteHeader(); ?><div class="container">
+<h1>⭐ Cadet of the Month</h1><p class="subtitle">USAFA Group 1 recognition · <?php echo htmlspecialchars($monthLabel); ?></p>
 <div class="month-nav"><a href="?month=<?php echo htmlspecialchars($prevMonth); ?>">← <?php echo htmlspecialchars(date('M Y',strtotime($prevMonth.'-01'))); ?></a><span class="month-label"><?php echo htmlspecialchars($monthLabel); ?></span><?php if($month!==date('Y-m')):?><a href="?month=<?php echo htmlspecialchars($nextMonth); ?>"><?php echo htmlspecialchars(date('M Y',strtotime($nextMonth.'-01'))); ?> →</a><?php endif;?></div>
 <div class="squadron-grid">
 <?php foreach($squadrons as $squadron): $slots=$bySquadron[(int)$squadron['id']]??[]; ?><section class="squadron-card"><div class="squadron-header"><?php if(!empty($squadron['icon_filename'])):?><img src="<?php echo htmlspecialchars(iconUrl($squadron['icon_filename'])); ?>" alt=""><?php endif;?><h2><?php echo htmlspecialchars($squadron['name']); ?></h2></div><div class="award-list">
