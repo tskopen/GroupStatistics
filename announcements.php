@@ -92,6 +92,7 @@ details.past{margin-top:28px;background:color-mix(in srgb,var(--page),white 92%)
 @media(max-width:600px){header{padding:24px 17px}.container{padding:14px 12px 35px}.section-heading{align-items:start;flex-direction:column}.card-content{padding:16px}}
 </style>
 <link rel="stylesheet" href="site-ui.css">
+<link rel="stylesheet" href="site-components.css">
 </head>
 <body>
 <?php require_once __DIR__ . '/site-header.php'; renderGroupSiteHeader(); ?>
