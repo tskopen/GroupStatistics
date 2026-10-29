@@ -96,11 +96,10 @@ details.past{margin-top:28px;background:color-mix(in srgb,var(--page),white 92%)
 </head>
 <body>
 <?php require_once __DIR__ . '/site-header.php'; renderGroupSiteHeader(); ?>
-<header><div class="header-inner">
+<header class="page-banner"><div class="page-banner-inner">
 <div class="eyebrow">USAFA · Group 1</div>
 <h1>📣 Group Announcements</h1>
 <p>One place for upcoming group events, important dates, locations, and event details. All event times are Mountain Time (America/Denver).</p>
-<div class="top-links"><a href="index.php">← Squadron Tracker</a><a href="admin-login.php">Admin Login</a></div>
 </div></header>
 <main class="container">
 <?php if (!$announcements): ?>
