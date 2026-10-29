@@ -60,8 +60,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 </head>
 <body>
 <?php require_once __DIR__ . '/site-header.php'; renderGroupSiteHeader(); ?>
+    <header class="page-banner"><div class="page-banner-inner"><h1>Admin Login</h1></div></header>
     <div class="login-box">
-        <h1>Admin Login</h1>
         <?php if ($error): ?>
             <p class="error"><?php echo htmlspecialchars($error); ?></p>
         <?php endif; ?>
