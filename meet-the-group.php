@@ -36,7 +36,8 @@ function meetGroupEscape($value): string {
 </style>
 <link rel="stylesheet" href="site-ui.css">
 </head>
-<body><main class="container">
+<body>
+<?php require_once __DIR__ . '/site-header.php'; renderGroupSiteHeader(); ?><main class="container">
 <div class="topbar"><a href="index.php">← Group 1 Squadron Tracker</a><a href="announcements.php">Group Announcements</a></div>
 <header class="hero"><h1>Meet the Group</h1><p>Get to know the people and roles that support USAFA Group 1. Role information is maintained by site administrators and only published entries appear here.</p></header>
 <?php if (!$sections): ?>
