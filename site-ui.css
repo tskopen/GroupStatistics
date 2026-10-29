@@ -104,10 +104,61 @@ button, input[type="button"], input[type="submit"], input[type="reset"] { cursor
 }
 :where(.site-header-title) { min-width: 0; text-align: center; overflow-wrap: anywhere; }
 :where(.site-header-nav) { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-:where(.site-header-nav a) { min-height: 40px; display: inline-flex; align-items: center; }
+:where(.site-header-nav a) {
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 12px;
+  border: 1px solid var(--ui-border);
+  border-radius: 8px;
+  color: var(--ui-primary);
+  background: var(--ui-surface);
+  text-decoration: none;
+  font-weight: 700;
+}
+:where(.site-header-nav a:hover) { background: var(--ui-page); text-decoration: underline; }
 :where(.site-header-mark, .site-header-squadron, .site-header-squadron-placeholder) { max-width: 100%; }
 @media (max-width: 600px) {
   :where(.site-header) { grid-template-columns: 40px minmax(0, 1fr) 40px; gap: 8px; }
   :where(.site-header-mark, .site-header-squadron, .site-header-squadron-placeholder) { width: 40px; height: 40px; }
   :where(.site-header-nav) { width: 100%; justify-content: center; }
 }
+
+/* Shared form and component styles. Keep these low-specificity so page-specific
+   layouts can opt out without fighting a large selector cascade. */
+:where(.btn, .button, .primary-button, .button-primary, .btn-primary) {
+  background: var(--ui-primary);
+  color: #fff;
+  border: 1px solid var(--ui-primary);
+  font-weight: 700;
+  text-decoration: none;
+}
+:where(.btn-secondary, .button-secondary, .secondary-button) {
+  background: var(--ui-surface);
+  color: var(--ui-primary);
+  border: 1px solid var(--ui-border);
+}
+:where(.btn-danger, .button-danger, .danger-button) {
+  background: var(--ui-danger-surface);
+  color: var(--ui-danger);
+  border: 1px solid currentColor;
+}
+:where(.alert, .notice, .flash-message) {
+  padding: 12px 14px;
+  border: 1px solid var(--ui-border);
+  border-radius: 8px;
+}
+:where(label) { max-width: 100%; }
+:where(input, select, textarea, button) { accent-color: var(--ui-primary); }
+:where(input, select, textarea):disabled,
+:where(button, .button, .btn):disabled {
+  opacity: .7;
+  cursor: not-allowed;
+}
+:where(.table-responsive, .table-wrap, .table-container, .standings-table-wrap, .bracket-container, .bracket-wrapper) {
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+:where(.bracket-container, .bracket-wrapper) { overscroll-behavior-x: contain; }
