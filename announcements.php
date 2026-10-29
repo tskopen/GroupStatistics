@@ -78,7 +78,7 @@ function renderAnnouncementCard(array $announcement, bool $showDate = true): voi
 *{box-sizing:border-box}body{margin:0;background:var(--page);color:var(--ink);font-family:Arial,Helvetica,sans-serif;line-height:1.55}
 header{background:linear-gradient(120deg,var(--navy),var(--blue));color:#fff;padding:30px 20px}
 .header-inner,.container{max-width:1080px;margin:0 auto}.eyebrow{text-transform:uppercase;letter-spacing:.13em;font-size:.76rem;font-weight:700;opacity:.8}
-header h1{font-size:clamp(1.8rem,4vw,2.6rem);margin:7px 0}header p{margin:0;max-width:650px;color:#e4edf7}
+.header-inner > h1{font-size:clamp(1.8rem,4vw,2.6rem);margin:7px 0}header p{margin:0;max-width:650px;color:#e4edf7}
 .top-links{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px}.top-links a{color:#fff;text-decoration:none;border:1px solid #ffffff70;padding:8px 12px;border-radius:8px;font-weight:700}
 .container{padding:24px 18px 50px}.section-heading{display:flex;align-items:end;justify-content:space-between;gap:12px;margin:28px 0 14px}
 .section-heading h2{margin:0;color:var(--navy);font-size:1.35rem}.section-heading p{margin:0;color:var(--muted);font-size:.9rem}
