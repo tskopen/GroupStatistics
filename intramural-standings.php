@@ -58,6 +58,8 @@ foreach ($squadrons as $squad) {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Intramural Standings - Squadron Tracker</title>
 <style>
+:root{--primary-color:<?php echo htmlspecialchars($theme['primary_color'] ?? '#002147', ENT_QUOTES, 'UTF-8'); ?>;--secondary-color:<?php echo htmlspecialchars($theme['secondary_color'] ?? '#003366', ENT_QUOTES, 'UTF-8'); ?>;--accent-color:<?php echo htmlspecialchars($theme['accent_color'] ?? '#667eea', ENT_QUOTES, 'UTF-8'); ?>;--background-color:<?php echo htmlspecialchars($theme['background_color'] ?? '#f4f4f4', ENT_QUOTES, 'UTF-8'); ?>;--text-color:<?php echo htmlspecialchars($theme['text_color'] ?? '#222222', ENT_QUOTES, 'UTF-8'); ?>}
+
  :root {
  --primary-color: <?php echo htmlspecialchars($theme['primary_color']); ?>;
  --secondary-color: <?php echo htmlspecialchars($theme['secondary_color']); ?>;
@@ -70,7 +72,7 @@ foreach ($squadrons as $squad) {
  h2 { color: var(--primary-color); border-bottom: 2px solid var(--primary-color); padding-bottom: 8px; margin-top: 30px; }
  h3 { color: var(--primary-color); margin-top: 20px; }
  
- .standings-table { width: 100%; border-collapse: collapse; background: #fff; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 30px; }
+ .standings-table { width: 100%; border-collapse: collapse; background: var(--background-color); box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 30px; }
  .standings-table th { background: var(--primary-color); color: #fff; padding: 12px; text-align: left; font-size: 0.9em; }
  .standings-table td { padding: 12px; border-bottom: 1px solid #ddd; }
  .standings-table tr:hover { background: #f9f9f9; }
@@ -81,7 +83,7 @@ foreach ($squadrons as $squad) {
  .game-history h4 { margin: 0; color: var(--primary-color); }
  .game-list { display: none; margin-top: 10px; }
  .game-list.active { display: block; }
- .game-item { background: #fff; padding: 10px; margin-bottom: 8px; border-radius: 3px; font-size: 0.9em; }
+ .game-item { background: var(--background-color); padding: 10px; margin-bottom: 8px; border-radius: 3px; font-size: 0.9em; }
  .matchup { display: flex; justify-content: space-between; align-items: center; }
  .date { color: #999; font-size: 0.8em; margin-top: 5px; }
  
