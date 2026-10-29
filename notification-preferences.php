@@ -21,6 +21,7 @@
         .status.error { background: #f8d7da; color: #721c24; }
         .status.info { background: #d1ecf1; color: #0c5460; }
     </style>
+<link rel="stylesheet" href="site-ui.css">
 </head>
 <body>
     <div class="container">
