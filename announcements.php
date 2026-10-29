@@ -94,6 +94,7 @@ details.past{margin-top:28px;background:color-mix(in srgb,var(--page),white 92%)
 <link rel="stylesheet" href="site-ui.css">
 </head>
 <body>
+<?php require_once __DIR__ . '/site-header.php'; renderGroupSiteHeader(); ?>
 <header><div class="header-inner">
 <div class="eyebrow">USAFA · Group 1</div>
 <h1>📣 Group Announcements</h1>
