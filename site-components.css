@@ -133,3 +133,22 @@
   -webkit-overflow-scrolling: touch;
 }
 :where(.bracket-container, .bracket-wrapper) { overscroll-behavior-x: contain; }
+
+/* Canonical typography for the shared site title; prevent page-level h1 rules from overriding it. */
+.site-header > h1.site-header-title {
+  min-width: 0;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  color: var(--ui-primary);
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: clamp(1.35rem, 3vw, 2.5rem);
+  font-weight: 700;
+  line-height: 1.15;
+  text-align: center;
+  letter-spacing: normal;
+  text-transform: none;
+  text-decoration: none;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
