@@ -133,3 +133,42 @@
   -webkit-overflow-scrolling: touch;
 }
 :where(.bracket-container, .bracket-wrapper) { overscroll-behavior-x: contain; }
+
+/* Consistent page banner modeled on the Group Announcements banner. */
+:where(.page-banner) {
+  box-sizing: border-box;
+  width: 100%;
+  margin: 0 auto 28px;
+  padding: 30px 20px;
+  color: #fff;
+  background: linear-gradient(120deg, var(--ui-primary, #002147), var(--ui-secondary, #003366));
+}
+:where(.page-banner-inner) {
+  width: min(100%, 1120px);
+  margin: 0 auto;
+}
+:where(.page-banner .eyebrow) {
+  margin: 0 0 8px;
+  color: rgba(255,255,255,.84);
+  font-size: .78rem;
+  font-weight: 800;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+:where(.page-banner h1) {
+  margin: 0;
+  color: #fff;
+  font-size: clamp(1.7rem, 4vw, 2.5rem);
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+:where(.page-banner p) {
+  max-width: 850px;
+  margin: 10px 0 0;
+  color: rgba(255,255,255,.94);
+  line-height: 1.55;
+}
+:where(.page-banner .top-links, .page-banner nav, .page-banner .links) { display: none !important; }
+@media (max-width: 600px) {
+  :where(.page-banner) { padding: 24px 16px; margin-bottom: 20px; }
+}
