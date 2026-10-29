@@ -66,8 +66,8 @@ foreach ($squadrons as $squad) {
  --background-color: <?php echo htmlspecialchars($theme['background_color']); ?>;
  --text-color: <?php echo htmlspecialchars($theme['text_color']); ?>;
  }
- body { font-family: Arial, sans-serif; background: var(--background-color); margin: 0; padding: 20px; color: var(--text-color); }
- .container { max-width: 1200px; margin: 0 auto; }
+ body { font-family: Arial, sans-serif; background: var(--background-color); margin: 0; padding: 0; color: var(--text-color); }
+ .container { max-width: 1200px; margin: 0 auto; padding: 24px 18px 50px; }
  h1 { color: var(--primary-color); text-align: center; margin-bottom: 30px; }
  h2 { color: var(--primary-color); border-bottom: 2px solid var(--primary-color); padding-bottom: 8px; margin-top: 30px; }
  h3 { color: var(--primary-color); margin-top: 20px; }
@@ -96,9 +96,12 @@ foreach ($squadrons as $squad) {
 </head>
 <body>
 <?php require_once __DIR__ . '/site-header.php'; renderGroupSiteHeader(); ?>
- <div class="container">
- <h1>🏅 Intramural Standings</h1>
- 
+<header class="page-banner"><div class="page-banner-inner">
+<div class="eyebrow">USAFA · Group 1</div>
+<h1>🏅 Intramural Standings</h1>
+<p>Track intramural points, squadron records, and game results across Group 1 sports.</p>
+</div></header>
+<main class="container">
  <h2>Overall Intramural Points</h2>
  <table class="standings-table">
  <tr>
@@ -208,7 +211,7 @@ foreach ($squadrons as $squad) {
  <div class="nav-link">
  <a href="index.php">&larr; Back to Home</a>
  </div>
- </div>
+ </main>
  
  <script>
  function toggleHistory(element) {
