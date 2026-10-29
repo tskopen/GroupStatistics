@@ -19,12 +19,11 @@ if (!function_exists('renderGroupSiteHeader')) {
                 $themeSquadron = null;
             }
         }
-        $primary = htmlspecialchars($theme['primary_color'] ?? '#002147', ENT_QUOTES, 'UTF-8');
         $groupIconUrl = $groupIconFilename && function_exists('iconUrl') ? iconUrl($groupIconFilename) : null;
         $squadronIconUrl = !empty($themeSquadron['icon_filename']) && function_exists('iconUrl')
             ? iconUrl($themeSquadron['icon_filename']) : null;
         ?>
-        <header class="site-header" aria-label="USAFA Group 1 Squadron Tracker">
+        <div class="site-header" role="banner" aria-label="USAFA Group 1 Squadron Tracker">
             <div class="site-header-mark" aria-label="Group 1 icon">
                 <?php if ($groupIconUrl): ?>
                     <img src="<?php echo htmlspecialchars($groupIconUrl, ENT_QUOTES, 'UTF-8'); ?>" alt="Group 1 logo">
@@ -42,7 +41,7 @@ if (!function_exists('renderGroupSiteHeader')) {
                 <a href="announcements.php">Announcements</a>
                 <a href="intramural-standings.php">Standings</a>
             </nav>
-        </header>
+        </div>
         <?php
     }
 }
