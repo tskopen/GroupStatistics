@@ -453,6 +453,66 @@ function opaGetPublishedLeaderboard(PDO $db, ?int $publicationId = null): array 
     return $stmt->fetchAll(PDO::FETCH_ASSOC);
 }
 
+/**
+ * Compare official OPA standings for any two published periods across all
+ * Group 1 squadrons. Positive rank movement means places gained from A to B.
+ */
+function opaGetPublicationLeaderboardComparison(PDO $db, int $publicationAId, int $publicationBId): array {
+    $publicationStmt = $db->prepare('SELECT id,published_at,published_by,description
+        FROM scoring_publications WHERE id=?');
+    $publicationStmt->execute([$publicationAId]);
+    $publicationA = $publicationStmt->fetch(PDO::FETCH_ASSOC);
+    $publicationStmt->execute([$publicationBId]);
+    $publicationB = $publicationStmt->fetch(PDO::FETCH_ASSOC);
+    if (!$publicationA || !$publicationB) {
+        throw new InvalidArgumentException('Choose two valid published scoring periods.');
+    }
+
+    $numberStmt = $db->prepare('SELECT COUNT(*) FROM scoring_publications WHERE id<=?');
+    foreach (['a' => $publicationA, 'b' => $publicationB] as $key => $publication) {
+        $numberStmt->execute([(int)$publication['id']]);
+        $number = (int)$numberStmt->fetchColumn();
+        $publication[$key . '_number'] = $number;
+        $publication['label'] = 'P' . $number;
+        if ($key === 'a') $publicationA = $publication;
+        else $publicationB = $publication;
+    }
+
+    $rowsStmt = $db->prepare('SELECT a.squadron_id,s.name,
+            a.opa AS opa_a,a.overall_rank AS rank_a,
+            b.opa AS opa_b,b.overall_rank AS rank_b
+        FROM scoring_publication_squadrons a
+        JOIN scoring_publication_squadrons b
+            ON b.squadron_id=a.squadron_id AND b.publication_id=?
+        JOIN squadrons s ON s.id=a.squadron_id
+        WHERE a.publication_id=?
+        ORDER BY b.overall_rank,s.id');
+    $rowsStmt->execute([$publicationBId, $publicationAId]);
+    $rows = [];
+    foreach ($rowsStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $opaA = (float)$row['opa_a'];
+        $opaB = (float)$row['opa_b'];
+        $rankA = (int)$row['rank_a'];
+        $rankB = (int)$row['rank_b'];
+        $rows[] = [
+            'squadron_id' => (int)$row['squadron_id'],
+            'name' => $row['name'],
+            'opa_a' => $opaA,
+            'rank_a' => $rankA,
+            'opa_b' => $opaB,
+            'rank_b' => $rankB,
+            'opa_change' => $opaB - $opaA,
+            'rank_movement' => $rankA - $rankB,
+        ];
+    }
+
+    return [
+        'publication_a' => $publicationA,
+        'publication_b' => $publicationB,
+        'squadrons' => $rows,
+    ];
+}
+
 function opaGetSquadronBreakdown(PDO $db, int $squadronId): ?array {
     $stmt = $db->prepare('SELECT id,published_at FROM scoring_publications ORDER BY id DESC LIMIT 2');
     $stmt->execute();

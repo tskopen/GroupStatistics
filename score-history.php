@@ -12,6 +12,20 @@ $requestedId = isset($_GET['publication_id']) ? (int)$_GET['publication_id'] : 0
 $selected = null;
 foreach ($publications as $publication) if ((int)$publication['id'] === $requestedId) $selected = $publication;
 if (!$selected && $publications) $selected = $publications[0];
+
+// The comparison defaults to the full available span (oldest to newest), but
+// either endpoint can be changed independently to compare any two periods.
+$compareAId = isset($_GET['compare_a']) ? (int)$_GET['compare_a'] : 0;
+$compareBId = isset($_GET['compare_b']) ? (int)$_GET['compare_b'] : 0;
+$publicationIds = array_map(static fn($publication) => (int)$publication['id'], $publications);
+if ($publications) {
+    if (!in_array($compareAId, $publicationIds, true)) $compareAId = (int)$publications[count($publications) - 1]['id'];
+    if (!in_array($compareBId, $publicationIds, true)) $compareBId = (int)$publications[0]['id'];
+}
+$publicationComparison = null;
+if ($publications) {
+    $publicationComparison = opaGetPublicationLeaderboardComparison($db, $compareAId, $compareBId);
+}
 $leaderboard = [];
 $categoryRows = [];
 if ($selected) {
@@ -155,6 +169,46 @@ body {
     gap: 8px;
     margin-top: 13px;
 }
+.publication-compare-form {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) auto;
+    align-items: end;
+    gap: 12px;
+    margin: 14px 0 16px;
+}
+.publication-compare-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    color: var(--navy);
+    font-size: .88rem;
+    font-weight: 700;
+}
+.publication-compare-field select {
+    width: 100%;
+    min-width: 0;
+    padding: 10px 11px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--surface);
+    color: var(--ink);
+    font: inherit;
+}
+.publication-compare-button {
+    min-height: 40px;
+    border: 0;
+    border-radius: 8px;
+    padding: 9px 15px;
+    background: var(--navy);
+    color: #fff;
+    font-weight: 700;
+    cursor: pointer;
+}
+.publication-compare-caption {
+    color: var(--muted);
+    font-size: .9rem;
+    margin: 0 0 14px;
+}
 .publication-description {
     margin: 8px 0 0;
     color: var(--ink);
@@ -235,6 +289,8 @@ body {
     .publication-option { flex: 1 1 145px; justify-content: space-between; }
     .publication-option-date { text-align: right; }
     .publication-meta-item { max-width: 100%; }
+    .publication-compare-form { grid-template-columns: 1fr; }
+    .publication-compare-button { width: 100%; }
 }
 @media (prefers-reduced-motion: reduce) {
     html { scroll-behavior: auto; }
@@ -280,6 +336,77 @@ body {
                 <?php endforeach; ?>
             </nav>
         </section>
+
+        <?php if ($publicationComparison): ?>
+        <section class="history-section" aria-labelledby="publication-comparison-title">
+            <div class="section-heading">
+                <h2 id="publication-comparison-title">Compare Any Two Publications</h2>
+                <p>Review cumulative changes across Group 1 over any selected time span.</p>
+            </div>
+            <div class="history-card">
+                <form method="get" action="score-history.php" class="publication-compare-form">
+                    <input type="hidden" name="publication_id" value="<?php echo (int)$selected['id']; ?>">
+                    <label class="publication-compare-field" for="compare-publication-a">Compare from (A)
+                        <select id="compare-publication-a" name="compare_a">
+                            <?php foreach (array_reverse($publications) as $publication): ?>
+                            <option value="<?php echo (int)$publication['id']; ?>" <?php echo (int)$publication['id']===$compareAId?'selected':''; ?>>
+                                <?php echo historyH($publicationLabels[(int)$publication['id']]); ?> · <?php echo historyH((new DateTimeImmutable($publication['published_at']))->format('M j, Y')); ?>
+                            </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </label>
+                    <label class="publication-compare-field" for="compare-publication-b">Compare to (B)
+                        <select id="compare-publication-b" name="compare_b">
+                            <?php foreach (array_reverse($publications) as $publication): ?>
+                            <option value="<?php echo (int)$publication['id']; ?>" <?php echo (int)$publication['id']===$compareBId?'selected':''; ?>>
+                                <?php echo historyH($publicationLabels[(int)$publication['id']]); ?> · <?php echo historyH((new DateTimeImmutable($publication['published_at']))->format('M j, Y')); ?>
+                            </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </label>
+                    <button class="publication-compare-button" type="submit">Compare Periods</button>
+                </form>
+                <p class="publication-compare-caption">
+                    Comparing <strong><?php echo historyH($publicationComparison['publication_a']['label']); ?></strong>
+                    (<?php echo historyH((new DateTimeImmutable($publicationComparison['publication_a']['published_at']))->format('M j, Y')); ?>)
+                    to <strong><?php echo historyH($publicationComparison['publication_b']['label']); ?></strong>
+                    (<?php echo historyH((new DateTimeImmutable($publicationComparison['publication_b']['published_at']))->format('M j, Y')); ?>).
+                    OPA change is B minus A. Positive rank movement means places gained.
+                </p>
+                <div class="history-table-wrap">
+                    <table class="history-table">
+                        <thead><tr>
+                            <th>Squadron</th><th><?php echo historyH($publicationComparison['publication_a']['label']); ?> OPA</th>
+                            <th><?php echo historyH($publicationComparison['publication_a']['label']); ?> Rank</th>
+                            <th><?php echo historyH($publicationComparison['publication_b']['label']); ?> OPA</th>
+                            <th><?php echo historyH($publicationComparison['publication_b']['label']); ?> Rank</th>
+                            <th>OPA Change</th><th>Rank Movement</th>
+                        </tr></thead>
+                        <tbody>
+                        <?php foreach ($publicationComparison['squadrons'] as $comparisonRow): ?>
+                        <?php
+                            $opaDelta = (float)$comparisonRow['opa_change'];
+                            $rankDelta = (int)$comparisonRow['rank_movement'];
+                            $deltaClass = $opaDelta > 0.0000001 ? 'history-change-up' : ($opaDelta < -0.0000001 ? 'history-change-down' : 'history-change-same');
+                            $rankClass = $rankDelta > 0 ? 'history-change-up' : ($rankDelta < 0 ? 'history-change-down' : 'history-change-same');
+                        ?>
+                        <tr>
+                            <td><strong><?php echo historyH($comparisonRow['name']); ?></strong></td>
+                            <td><?php echo number_format((float)$comparisonRow['opa_a'], 2); ?>%</td>
+                            <td>#<?php echo $rankDelta === null ? '—' : (int)$comparisonRow['rank_a']; ?></td>
+                            <td><?php echo number_format((float)$comparisonRow['opa_b'], 2); ?>%</td>
+                            <td>#<?php echo (int)$comparisonRow['rank_b']; ?></td>
+                            <td class="<?php echo $deltaClass; ?>"><?php echo ($opaDelta > 0 ? '+' : '') . number_format($opaDelta, 2); ?> pp</td>
+                            <td class="<?php echo $rankClass; ?>"><?php echo $rankDelta > 0 ? '+' . $rankDelta . ' places gained' : ($rankDelta < 0 ? $rankDelta . ' places lost' : 'No change'); ?></td>
+                        </tr>
+                        <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+                <p class="history-muted" style="margin:12px 0 0">For category-by-category movement for an individual squadron, use the Details comparison on the main leaderboard and select the same two publications.</p>
+            </div>
+        </section>
+        <?php endif; ?>
 
         <section class="history-section" aria-labelledby="overall-standings-title">
             <div class="section-heading">

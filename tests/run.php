@@ -78,7 +78,20 @@ check($comparison13 !== null && (int)$comparison13['publication_a']['publication
 check(abs($comparison13['overall']['change']['opa'] + 13.0) < 0.000001 && (int)$comparison13['overall']['change']['rank_movement'] === -9, 'P1 versus P3 movement is calculated against P1 rather than P2');
 $comparisonReverse = opaGetSquadronPublicationComparison($db, 1, $thirdPublication['publication_id'], $firstPublication['publication_id']);
 check($comparisonReverse !== null && abs($comparisonReverse['overall']['change']['opa'] - 13.0) < 0.000001, 'publication comparison direction reverses when the A and B selectors are swapped');
-$recentOpaHistory = opaGetRecentOpaHistoryBySquadron($db, 2);
+$allSquadronComparison = opaGetPublicationLeaderboardComparison($db, $firstPublication['publication_id'], $thirdPublication['publication_id']);
+$squadronOneOverallComparison = null;
+foreach ($allSquadronComparison['squadrons'] as $comparisonRow) {
+    if ((int)$comparisonRow['squadron_id'] === 1) $squadronOneOverallComparison = $comparisonRow;
+}
+check($allSquadronComparison['publication_a']['label'] === 'P1'
+    && $allSquadronComparison['publication_b']['label'] === 'P3'
+    && count($allSquadronComparison['squadrons']) === 10,
+    'publication history comparison returns every squadron for non-adjacent P1 versus P3 selections');
+check($squadronOneOverallComparison !== null
+    && abs((float)$squadronOneOverallComparison['opa_change'] + 13.0) < 0.000001
+    && (int)$squadronOneOverallComparison['rank_movement'] === -9,
+    'all-squadron comparison calculates cumulative OPA and rank movement directly between selected publications');
+$recentOpaHistory = opaGetRecentOpaHistoryBySquadron($db, 2);$recentOpaHistory = opaGetRecentOpaHistoryBySquadron($db, 2);
 $squadronOneHistory = $recentOpaHistory[1] ?? [];
 check(count($squadronOneHistory) === 2
     && $squadronOneHistory[0]['label'] === 'P2'
