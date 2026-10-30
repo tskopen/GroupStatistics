@@ -14,6 +14,7 @@ $username = (string)($_SESSION['username'] ?? 'admin');
 $success = '';
 $error = '';
 $validation = ['errors' => [], 'warnings' => []];
+$publicationDescription = trim((string)($_POST['publication_description'] ?? ''));
 
 function opaRedirectToDraft(int $draftId, array $params = []): void {
     $query = array_merge(['draft_id' => $draftId], $params);
@@ -173,7 +174,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         if ($action === 'publish') {
-            $result = opaPublishDraft($db, $draftId, $username);
+            $result = opaPublishDraft($db, $draftId, $username, $publicationDescription);
             unset($_SESSION['opa_import_preview']);
             header('Location: score-history.php?publication_id=' . $result['publication_id'] . '&published=1');
             exit;
@@ -209,6 +210,7 @@ if (!$draft) {
 }
 opaEnsureDraftRows($db, $draftId);
 $categories = opaGetCategories($db);
+$categoryStatuses = opaGetDraftCategoryStatuses($db, $draftId);
 $allCategories = opaGetCategories($db, false);
 $squadrons = $db->query('SELECT id,name,icon_filename FROM squadrons WHERE id BETWEEN 1 AND 10 ORDER BY id')->fetchAll(PDO::FETCH_ASSOC);
 $draftRows = opaGetDraftRows($db, $draftId);
@@ -268,7 +270,7 @@ function opaH($value): string {
 @media(max-width:900px){.score-columns{grid-template-columns:1fr}}
 .score-note{font-size:.88rem;color:var(--muted-color,#667085);line-height:1.5}
 .score-tag{display:inline-block;border-radius:999px;padding:3px 8px;background:#edf1f6;color:#39485a;font-size:.75rem;font-weight:700}
-.score-tag.import{background:#e5f2ff;color:#14518b}.score-tag.modified{background:#fff1d6;color:#7b5000}
+.score-tag.import{background:#e5f2ff;color:#14518b}.score-tag.modified{background:#fff1d6;color:#7b5000}.score-tag.unchanged{background:#e9f4ec;color:#195b2b}.score-tag.updated{background:#fff1d6;color:#7b5000}.score-tag.new{background:#fcebed;color:#8f172b}
 .score-list{margin:8px 0;padding-left:20px}.score-list li{margin:4px 0}
 .score-history-link{font-weight:700;color:var(--score-primary)}
 .score-inline{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
@@ -280,7 +282,7 @@ function opaH($value): string {
 <?php require_once __DIR__ . '/site-header.php'; renderGroupSiteHeader(); ?>
 <main class="score-admin">
     <h1>Score Management</h1>
-    <p class="score-intro">Manage category rankings and percentage scores in one editable draft. Only publishing updates the public OPA leaderboard.</p>
+    <p class="score-intro">Manage category rankings and percentage scores in one editable draft. New drafts inherit the latest publication automatically, so you only need to update categories that changed. Only publishing updates the public OPA leaderboard.</p>
 
     <?php if ($success): ?><div class="score-message"><?php echo opaH($success); ?></div><?php endif; ?>
     <?php if ($error): ?><div class="score-message error"><?php echo nl2br(opaH($error)); ?></div><?php endif; ?>
@@ -353,12 +355,15 @@ function opaH($value): string {
         <input type="hidden" name="draft_id" value="<?php echo $draftId; ?>">
         <section class="score-card">
             <div class="score-section-head">
-                <div><h2>Manual Score Entry</h2><p class="score-note">Both fields are editable independently. Rank produces category points (1st = 10, 10th = 1); percentage score is used for OPA.</p></div>
+                <div><h2>Manual Score Entry</h2><p class="score-note">Both fields are editable independently. Rank produces category points (1st = 10, 10th = 1); percentage score is used for OPA. Categories marked “No change” are carried forward from the latest publication automatically.</p></div>
                 <button class="score-btn" type="submit">Save Draft</button>
             </div>
-            <?php foreach ($categories as $category): $categoryId = (int)$category['id']; ?>
+            <?php foreach ($categories as $category): $categoryId = (int)$category['id']; $categoryStatus = $categoryStatuses[$categoryId] ?? 'initial'; ?>
             <details class="score-category" open>
-                <summary><?php echo opaH($category['display_name']); ?> <span class="score-tag"><?php echo $category['ranking_direction'] === 'manual' ? 'Direction not configured' : ($category['ranking_direction'] === 'higher' ? 'Higher is better' : 'Lower is better'); ?></span></summary>
+                <summary><?php echo opaH($category['display_name']); ?>
+                    <span class="score-tag"><?php echo $category['ranking_direction'] === 'manual' ? 'Direction not configured' : ($category['ranking_direction'] === 'higher' ? 'Higher is better' : 'Lower is better'); ?></span>
+                    <span class="score-tag <?php echo opaH($categoryStatus); ?>"><?php echo $categoryStatus === 'unchanged' ? 'No change · prior values retained' : ($categoryStatus === 'updated' ? 'Updated in this draft' : ($categoryStatus === 'new' ? 'New category · values required' : 'Initial entry required')); ?></span>
+                </summary>
                 <div class="score-category-content">
                     <div class="score-inline" style="margin-bottom:10px"><button class="score-btn secondary score-recalculate" type="button" data-category-id="<?php echo $categoryId; ?>">Recalculate ranks from percentage scores</button><span class="score-note">Requires all ten scores and a configured higher/lower ranking direction. Ties need manual resolution.</span></div>
                     <div class="score-table-wrap">
@@ -421,8 +426,13 @@ function opaH($value): string {
             <?php if ($validation['warnings']): ?>
                 <div class="score-message warning"><strong>Review warnings</strong><ul class="score-list"><?php foreach ($validation['warnings'] as $item): ?><li><?php echo opaH($item); ?></li><?php endforeach; ?></ul></div>
             <?php endif; ?>
-            <p class="score-note">Publication creates an immutable snapshot, records changes against the prior publication, and updates public results. Draft values remain private until then.</p>
+            <p class="score-note">Publication creates an immutable snapshot, records changes against the prior publication, and updates public results. Draft values remain private until then. Unchanged categories retain their previous published results.</p>
             <form method="post" action="admin-score-management.php" onsubmit="return confirm('Publish this scoring dataset as official Group 1 results? This creates a permanent publication snapshot and updates the public OPA leaderboard.');">
+                <div class="score-field">
+                    <label for="publication-description">Publication Description (optional)</label>
+                    <textarea id="publication-description" name="publication_description" maxlength="240" rows="3" placeholder="e.g., Updated AMI results following the latest competition."><?php echo opaH($publicationDescription); ?></textarea>
+                    <span class="score-note">A short note displayed with this publication in history and squadron details (240 characters max).</span>
+                </div>
                 <input type="hidden" name="action" value="publish">
                 <input type="hidden" name="draft_id" value="<?php echo $draftId; ?>">
                 <button class="score-btn" type="submit" <?php echo $validation['errors']?'disabled':''; ?>>Publish Official Scores</button>

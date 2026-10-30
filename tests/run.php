@@ -88,6 +88,53 @@ check(count($squadronOneHistory) === 2
 
 
 
+$sparseDraftId = opaCreateDraft($db, 'test-admin', 'Single-category update');
+$sparseRows = opaGetDraftRows($db, $sparseDraftId);
+$latestRows = $db->prepare('SELECT category_key,squadron_id,category_rank,category_score FROM scoring_publication_scores WHERE publication_id=?');
+$latestRows->execute([$thirdPublication['publication_id']]);
+$latestByCategory = [];
+foreach ($latestRows->fetchAll(PDO::FETCH_ASSOC) as $row) $latestByCategory[$row['category_key']][(int)$row['squadron_id']] = $row;
+$amiCategoryForSparse = null;
+foreach ($categoryRows as $category) if ($category['category_key'] === 'ami') $amiCategoryForSparse = $category;
+$allInherited = true;
+foreach ($categoryRows as $category) {
+    for ($sid = 1; $sid <= 10; $sid++) {
+        $expected = $latestByCategory[$category['category_key']][$sid] ?? null;
+        $actual = $sparseRows[(int)$category['id']][$sid] ?? [];
+        if (!$expected || (int)$actual['category_rank'] !== (int)$expected['category_rank']
+            || abs((float)$actual['category_score'] - (float)$expected['category_score']) > 0.0000001) $allInherited = false;
+    }
+}
+check($allInherited, 'new drafts automatically inherit the latest published ranks and percentages for every category');
+for ($sid = 1; $sid <= 10; $sid++) {
+    $draftUpdate->execute([$sid, 75 + $sid, date('c'), $sparseDraftId, (int)$amiCategoryForSparse['id'], $sid]);
+}
+$sparseStatuses = opaGetDraftCategoryStatuses($db, $sparseDraftId);
+check(($sparseStatuses[(int)$amiCategoryForSparse['id']] ?? '') === 'updated'
+    && ($sparseStatuses[(int)$categoryRows[1]['id']] ?? '') === 'unchanged',
+    'draft status distinguishes the one updated category from categories carried forward unchanged');
+$sparseDescription = 'AMI results updated after the latest competition.';
+$sparsePublication = opaPublishDraft($db, $sparseDraftId, 'test-admin', $sparseDescription);
+$carryForwardStmt = $db->prepare('SELECT category_rank,category_score FROM scoring_publication_scores WHERE publication_id=? AND category_key=? AND squadron_id=?');
+$carryForwardWorks = true;
+foreach (['sami', 'pft'] as $unchangedKey) {
+    for ($sid = 1; $sid <= 10; $sid++) {
+        $carryForwardStmt->execute([$thirdPublication['publication_id'], $unchangedKey, $sid]);
+        $before = $carryForwardStmt->fetch(PDO::FETCH_ASSOC);
+        $carryForwardStmt->execute([$sparsePublication['publication_id'], $unchangedKey, $sid]);
+        $after = $carryForwardStmt->fetch(PDO::FETCH_ASSOC);
+        if (!$before || !$after || (int)$before['category_rank'] !== (int)$after['category_rank']
+            || abs((float)$before['category_score'] - (float)$after['category_score']) > 0.0000001) $carryForwardWorks = false;
+    }
+}
+check($carryForwardWorks, 'publishing one updated category preserves every unchanged category from the previous publication');
+$descriptionStmt = $db->prepare('SELECT description FROM scoring_publications WHERE id=?');
+$descriptionStmt->execute([$sparsePublication['publication_id']]);
+check($descriptionStmt->fetchColumn() === $sparseDescription, 'publication description is stored with the immutable snapshot');
+$sparseComparison = opaGetSquadronPublicationComparison($db, 1, $thirdPublication['publication_id'], $sparsePublication['publication_id']);
+check($sparseComparison !== null && $sparseComparison['publication_b']['description'] === $sparseDescription,
+    'publication descriptions are included in squadron comparison data');
+
 $amiCategory = null;
 foreach ($categoryRows as $category) if ($category['category_key'] === 'ami') $amiCategory = $category;
 $importRows = [['row_number' => 1, 'cells' => [0 => 'Squadron', 1 => 'Source Rank', 2 => 'Percentage Score']]];

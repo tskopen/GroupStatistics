@@ -155,6 +155,14 @@ body {
     gap: 8px;
     margin-top: 13px;
 }
+.publication-description {
+    margin: 8px 0 0;
+    color: var(--ink);
+    font-size: .96rem;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
 .publication-meta-item {
     display: inline-flex;
     align-items: center;
@@ -280,6 +288,9 @@ body {
             </div>
             <div class="history-card">
                 <h2><?php echo historyH($publicationLabels[(int)$selected['id']] ?? ('Publication #' . (int)$selected['id'])); ?></h2>
+                <?php if (!empty($selected['description'])): ?>
+                <p class="publication-description"><?php echo historyH($selected['description']); ?></p>
+                <?php endif; ?>
                 <div class="publication-meta">
                     <span class="publication-meta-item">Published <?php echo historyH((new DateTimeImmutable($selected['published_at']))->format('M j, Y · g:i A')); ?></span>
                     <span class="publication-meta-item">By <?php echo historyH($selected['published_by']); ?></span>

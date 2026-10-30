@@ -851,6 +851,7 @@ if ('serviceWorker' in navigator) {
             '<div class="breakdown-opa">' + numberValue(publication.opa) + '%</div>' +
             '<div>Overall rank: <strong>#' + escapeHtml(publication.overall_rank) + '</strong></div>' +
             '<span class="breakdown-meta">Published ' + escapeHtml(publicationDate(publication)) + '</span>' +
+            (publication.description ? '<span class="breakdown-meta breakdown-description">' + escapeHtml(publication.description) + '</span>' : '') +
             '<span class="breakdown-meta">Entry method: ' + escapeHtml(publication.data_entry_method || '—') + '</span>' +
             (publication.source_filename ? '<span class="breakdown-meta">Workbook: ' + escapeHtml(publication.source_filename) + '</span>' : '') +
             '</div>';

@@ -32,9 +32,46 @@ function opaEnsureDraftRows(PDO $db, int $draftId): void {
     $insert = $db->prepare("INSERT OR IGNORE INTO scoring_draft_scores
         (draft_id,category_id,squadron_id,entry_source,updated_at) VALUES(?,?,?,'manual',?)");
     $squadrons = $db->query('SELECT id FROM squadrons WHERE id BETWEEN 1 AND 10 ORDER BY id')->fetchAll(PDO::FETCH_COLUMN);
-    foreach (opaGetCategories($db) as $category) {
+    $categories = opaGetCategories($db);
+    foreach ($categories as $category) {
         foreach ($squadrons as $squadronId) {
             $insert->execute([$draftId, (int)$category['id'], (int)$squadronId, $now]);
+        }
+    }
+
+    // A new or partially completed draft inherits the latest published baseline.
+    // Existing non-null draft values always win, so only missing fields are carried forward.
+    $latestPublicationId = opaGetLatestPublicationId($db);
+    if ($latestPublicationId === null) return;
+    $snapshotStmt = $db->prepare("SELECT category_key,squadron_id,category_rank,category_score,source_rank,source_measurement
+        FROM scoring_publication_scores WHERE publication_id=?");
+    $snapshotStmt->execute([$latestPublicationId]);
+    $snapshot = [];
+    foreach ($snapshotStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $snapshot[$row['category_key']][(int)$row['squadron_id']] = $row;
+    }
+
+    $inherit = $db->prepare("UPDATE scoring_draft_scores
+        SET category_rank=COALESCE(category_rank,?),
+            category_score=COALESCE(category_score,?),
+            source_rank=COALESCE(source_rank,?),
+            source_measurement=COALESCE(source_measurement,?)
+        WHERE draft_id=? AND category_id=? AND squadron_id=?
+          AND (category_rank IS NULL OR category_score IS NULL)");
+    foreach ($categories as $category) {
+        $categoryId = (int)$category['id'];
+        foreach ($squadrons as $squadronId) {
+            $previous = $snapshot[$category['category_key']][(int)$squadronId] ?? null;
+            if (!$previous) continue;
+            $inherit->execute([
+                $previous['category_rank'],
+                $previous['category_score'],
+                $previous['source_rank'],
+                $previous['source_measurement'],
+                $draftId,
+                $categoryId,
+                (int)$squadronId,
+            ]);
         }
     }
 }
@@ -190,7 +227,57 @@ function opaValidateDraft(PDO $db, int $draftId): array {
     return ['errors' => array_values(array_unique($errors)), 'warnings' => array_values(array_unique($warnings))];
 }
 
-function opaPublishDraft(PDO $db, int $draftId, string $username): array {
+/**
+ * Describe whether each active draft category differs from the latest publication.
+ * Categories with no prior snapshot need an initial complete entry.
+ */
+function opaGetDraftCategoryStatuses(PDO $db, int $draftId): array {
+    $categories = opaGetCategories($db);
+    $draftRows = opaGetDraftRows($db, $draftId);
+    $latestPublicationId = opaGetLatestPublicationId($db);
+    if ($latestPublicationId === null) {
+        $statuses = [];
+        foreach ($categories as $category) $statuses[(int)$category['id']] = 'initial';
+        return $statuses;
+    }
+
+    $previousStmt = $db->prepare('SELECT category_key,squadron_id,category_rank,category_score
+        FROM scoring_publication_scores WHERE publication_id=?');
+    $previousStmt->execute([$latestPublicationId]);
+    $previousRows = [];
+    foreach ($previousStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $previousRows[$row['category_key']][(int)$row['squadron_id']] = $row;
+    }
+
+    $statuses = [];
+    foreach ($categories as $category) {
+        $categoryId = (int)$category['id'];
+        $status = 'unchanged';
+        for ($squadronId = 1; $squadronId <= 10; $squadronId++) {
+            $previous = $previousRows[$category['category_key']][$squadronId] ?? null;
+            if ($previous === null) {
+                $status = 'new';
+                break;
+            }
+            $current = $draftRows[$categoryId][$squadronId] ?? [];
+            $currentRank = ($current['category_rank'] ?? null) !== null ? (int)$current['category_rank'] : null;
+            $currentScore = ($current['category_score'] ?? null) !== null ? (float)$current['category_score'] : null;
+            if ($currentRank !== (int)$previous['category_rank']
+                || $currentScore === null
+                || abs($currentScore - (float)$previous['category_score']) > 0.0000001) {
+                $status = 'updated';
+                break;
+            }
+        }
+        $statuses[$categoryId] = $status;
+    }
+    return $statuses;
+}
+
+function opaPublishDraft(PDO $db, int $draftId, string $username, string $description = ''): array {
+    $description = trim($description);
+    $descriptionLength = function_exists('mb_strlen') ? mb_strlen($description, 'UTF-8') : strlen($description);
+    if ($descriptionLength > 240) throw new RuntimeException('Publication descriptions must be 240 characters or fewer.');
     $draft = opaGetDraft($db, $draftId);
     if (!$draft) throw new RuntimeException('The selected draft is no longer available.');
     $validation = opaValidateDraft($db, $draftId);
@@ -245,9 +332,9 @@ function opaPublishDraft(PDO $db, int $draftId, string $username): array {
     $db->beginTransaction();
     try {
         $insertPub = $db->prepare("INSERT INTO scoring_publications
-            (source_draft_id,published_at,published_by,data_entry_method,source_filename,records_processed,categories_json)
-            VALUES(?,?,?,?,?,?,?)");
-        $insertPub->execute([$draftId, $now, $username, $method, $filename ?: null, count($squadrons) * count($categories), json_encode($categoryNames)]);
+            (source_draft_id,published_at,published_by,description,data_entry_method,source_filename,records_processed,categories_json)
+            VALUES(?,?,?,?,?,?,?,?)");
+        $insertPub->execute([$draftId, $now, $username, $description, $method, $filename ?: null, count($squadrons) * count($categories), json_encode($categoryNames)]);
         $publicationId = (int)$db->lastInsertId();
 
         $previousSquadronStmt = $previousId ? $db->prepare('SELECT opa,overall_rank FROM scoring_publication_squadrons WHERE publication_id=? AND squadron_id=?') : null;
@@ -405,7 +492,7 @@ function opaGetSquadronBreakdown(PDO $db, int $squadronId): ?array {
  * score, points, and OPA changes are Publication B minus Publication A.
  */
 function opaGetSquadronPublicationComparison(PDO $db, int $squadronId, ?int $publicationAId = null, ?int $publicationBId = null): ?array {
-    $publicationRows = $db->query('SELECT id,published_at,published_by,data_entry_method,source_filename,records_processed,categories_json
+    $publicationRows = $db->query('SELECT id,published_at,published_by,description,data_entry_method,source_filename,records_processed,categories_json
         FROM scoring_publications ORDER BY id ASC')->fetchAll(PDO::FETCH_ASSOC);
     if (!$publicationRows) return null;
 
