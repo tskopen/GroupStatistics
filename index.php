@@ -445,9 +445,18 @@ usort(
         background: var(--secondary-color);
         color: #fff;
     }
+    .homepage-hotbar-help {
+        flex: 1 1 100%;
+        color: var(--muted-color);
+        text-align: center;
+        font-size: .82rem;
+    }
+    .homepage-hotbar-button[hidden], .homepage-hotbar-help[hidden] { display: none !important; }
+    .homepage-hotbar button.homepage-hotbar-button { font: inherit; cursor: pointer; }
     @media (max-width: 620px) {
         .homepage-hotbar { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); }
         .homepage-hotbar-button { padding: 10px 8px; font-size: .9rem; }
+        .homepage-hotbar-help { grid-column: 1 / -1; }
     }
     .footer { text-align: center; margin-top: 40px; }
     .footer a { color: var(--primary-color); text-decoration: none; margin: 0 15px; }
@@ -457,14 +466,21 @@ usort(
 <link rel="stylesheet" href="site-components.css">
 </head>
 <body>
-<?php require_once __DIR__ . '/site-header.php'; renderGroupSiteHeader(); ?>
+<?php require_once __DIR__ . '/site-header.php'; renderGroupSiteHeader(false); ?>
 <div class="container">
-    <nav class="homepage-hotbar" aria-label="Quick links">
-        <a class="homepage-hotbar-button homepage-hotbar-featured" href="cadet-of-month.php">⭐ View Cadet of the Month</a>
+    <nav class="homepage-hotbar" aria-label="All page links">
+        <a class="homepage-hotbar-button" href="index.php">Home</a>
+        <a class="homepage-hotbar-button" href="meet-the-group.php">Meet the Group</a>
         <a class="homepage-hotbar-button" href="announcements.php">📣 Group Announcements</a>
+        <a class="homepage-hotbar-button" href="intramural-standings.php">Standings</a>
+        <a class="homepage-hotbar-button homepage-hotbar-featured" href="cadet-of-month.php">⭐ View Cadet of the Month</a>
         <a class="homepage-hotbar-button" href="awards.php">🏅 Challenge Award</a>
         <a class="homepage-hotbar-button" href="notification-preferences.php">🔔 Notifications</a>
+        <a class="homepage-hotbar-button" href="admin-login.php">Admin Login</a>
+        <button type="button" id="pwa-install-button" class="homepage-hotbar-button" hidden>⬇ Install App</button>
+        <span id="pwa-install-help" class="homepage-hotbar-help" role="status" hidden></span>
     </nav>
+    <script src="pwa-install.js" defer></script>
     <section class="announcement-preview" aria-labelledby="announcements-preview-title">
         <div class="announcement-preview-head">
             <h2 id="announcements-preview-title">📣 Next Group Event</h2>
@@ -735,7 +751,6 @@ usort(
     <?php endif; ?>
     
     <div class="footer">
-        <a href="admin-login.php">Admin Login</a>
         <?php if (!empty($theme['active_preset'])): ?>
             <p style="color: #999; font-size: 0.75em; margin-top: 10px;">Theme: <?php echo htmlspecialchars($theme['active_preset']); ?></p>
         <?php endif; ?>
