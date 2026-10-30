@@ -835,7 +835,7 @@ if ('serviceWorker' in navigator) {
     } else {
         guideUrl = 'https://developer.chrome.com/blog/how_chrome_helps_users_install_the_apps_they_value';
         installButton.textContent = '⬇ Install App';
-        installHelp.textContent = 'If installation is not offered automatically, open the browser menu and look for Install app or Install page as app.';
+        installHelp.textContent = '';
     }
 
     function isStandalone() {
@@ -853,9 +853,9 @@ if ('serviceWorker' in navigator) {
         return;
     }
 
-    // Show a useful fallback immediately; a native prompt replaces the guide action when available.
+    // Show the install action immediately; only show help text when one is available.
     installButton.hidden = false;
-    installHelp.hidden = false;
+    installHelp.hidden = !installHelp.textContent;
 
     window.addEventListener('beforeinstallprompt', function (event) {
         event.preventDefault();
