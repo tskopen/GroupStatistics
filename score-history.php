@@ -316,27 +316,6 @@ body {
             Official OPA scoring has not been published. Once a publication is released, its standings and category results will appear here.
         </div>
     <?php else: ?>
-        <section class="history-section" aria-labelledby="publication-selector-title">
-            <div class="section-heading">
-                <h2 id="publication-selector-title">Select Publication</h2>
-                <p>Choose a snapshot to review its results.</p>
-            </div>
-            <nav class="publication-selector" aria-label="Select publication">
-                <?php foreach ($publications as $publication): ?>
-                <?php
-                    $publicationId = (int)$publication['id'];
-                    $publicationDate = new DateTimeImmutable($publication['published_at']);
-                ?>
-                <a class="publication-option <?php echo $publicationId === (int)$selected['id'] ? 'active' : ''; ?>"
-                   href="score-history.php?publication_id=<?php echo $publicationId; ?>"
-                   <?php echo $publicationId === (int)$selected['id'] ? 'aria-current="page"' : ''; ?>>
-                    <span class="publication-option-label"><?php echo historyH($publicationLabels[$publicationId] ?? ('#' . $publicationId)); ?></span>
-                    <span class="publication-option-date"><?php echo historyH($publicationDate->format('M j, Y')); ?></span>
-                </a>
-                <?php endforeach; ?>
-            </nav>
-        </section>
-
         <?php if ($publicationComparison): ?>
         <section class="history-section" aria-labelledby="publication-comparison-title">
             <div class="section-heading">
