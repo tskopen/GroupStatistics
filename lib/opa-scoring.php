@@ -465,8 +465,13 @@ function opaParseSquadronIdentifier($value): ?int {
 
 function opaParseNumericValue($value): ?float {
     if ($value === null || trim((string)$value) === '') return null;
-    $text = str_replace([',', '
-
+    $text = str_replace([',', chr(36)], '', trim((string)$value));
+    $text = ltrim($text, '#');
+    $text = preg_replace('/\\s+/', '', $text) ?? $text;
+    $text = preg_replace('/(st|nd|rd|th)$/i', '', $text) ?? $text;
+    if (!is_numeric(rtrim($text, '%'))) return null;
+    return (float)rtrim($text, '%');
+}
 function opaMatchCategory(string $label, array $categories): ?array {
     $needle = opaNormalizeHeader($label);
     if ($needle === '') return null;
