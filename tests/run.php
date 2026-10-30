@@ -91,7 +91,7 @@ check($squadronOneOverallComparison !== null
     && abs((float)$squadronOneOverallComparison['opa_change'] + 13.0) < 0.000001
     && (int)$squadronOneOverallComparison['rank_movement'] === -9,
     'all-squadron comparison calculates cumulative OPA and rank movement directly between selected publications');
-$recentOpaHistory = opaGetRecentOpaHistoryBySquadron($db, 2);$recentOpaHistory = opaGetRecentOpaHistoryBySquadron($db, 2);
+$recentOpaHistory = opaGetRecentOpaHistoryBySquadron($db, 2);
 $squadronOneHistory = $recentOpaHistory[1] ?? [];
 check(count($squadronOneHistory) === 2
     && $squadronOneHistory[0]['label'] === 'P2'
