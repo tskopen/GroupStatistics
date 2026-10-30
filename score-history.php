@@ -484,7 +484,6 @@ body {
         </section>
         <?php endif; ?>
     <?php endif; ?>
-    <a class="history-footer-link" href="index.php">← Return to leaderboard</a>
 </main>
 </body>
 </html>

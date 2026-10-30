@@ -404,60 +404,6 @@ usort(
     .events-toggle-wrap { text-align: center; margin: -10px 0 30px; }
     .events-toggle-button { padding: 10px 18px; border: 0; border-radius: 6px; background: var(--primary-color); color: #fff; font-weight: bold; cursor: pointer; }
     .events-toggle-button:hover, .events-toggle-button:focus-visible { background: var(--secondary-color); }
-    .homepage-hotbar {
-        display: flex;
-        flex-wrap: wrap;
-        justify-content: center;
-        gap: 10px;
-        margin: 18px 0 22px;
-        padding: 12px;
-        border: 1px solid var(--border-color);
-        border-radius: 10px;
-        background: var(--surface-color);
-        box-shadow: 0 2px 8px rgba(0,0,0,.07);
-    }
-    .homepage-hotbar-button {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        min-height: 42px;
-        padding: 10px 16px;
-        border: 1px solid var(--primary-color);
-        border-radius: 7px;
-        background: var(--surface-color);
-        color: var(--primary-color);
-        font-weight: 700;
-        text-decoration: none;
-        text-align: center;
-        transition: background .15s ease, color .15s ease, transform .15s ease;
-    }
-    .homepage-hotbar-button:hover, .homepage-hotbar-button:focus-visible {
-        background: var(--soft-primary-color);
-        text-decoration: none;
-        transform: translateY(-1px);
-    }
-    .homepage-hotbar-button.homepage-hotbar-featured {
-        background: var(--primary-color);
-        color: #fff;
-    }
-    .homepage-hotbar-button.homepage-hotbar-featured:hover,
-    .homepage-hotbar-button.homepage-hotbar-featured:focus-visible {
-        background: var(--secondary-color);
-        color: #fff;
-    }
-    .homepage-hotbar-help {
-        flex: 1 1 100%;
-        color: var(--muted-color);
-        text-align: center;
-        font-size: .82rem;
-    }
-    .homepage-hotbar-button[hidden], .homepage-hotbar-help[hidden] { display: none !important; }
-    .homepage-hotbar button.homepage-hotbar-button { font: inherit; cursor: pointer; }
-    @media (max-width: 620px) {
-        .homepage-hotbar { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); }
-        .homepage-hotbar-button { padding: 10px 8px; font-size: .9rem; }
-        .homepage-hotbar-help { grid-column: 1 / -1; }
-    }
     .footer { text-align: center; margin-top: 40px; }
     .footer a { color: var(--primary-color); text-decoration: none; margin: 0 15px; }
     .footer a:hover { text-decoration: underline; }
@@ -466,25 +412,11 @@ usort(
 <link rel="stylesheet" href="site-components.css">
 </head>
 <body>
-<?php require_once __DIR__ . '/site-header.php'; renderGroupSiteHeader(false); ?>
+<?php require_once __DIR__ . '/site-header.php'; renderGroupSiteHeader(); ?>
 <div class="container">
-    <nav class="homepage-hotbar" aria-label="All page links">
-        <a class="homepage-hotbar-button" href="index.php">Home</a>
-        <a class="homepage-hotbar-button" href="meet-the-group.php">Meet the Group</a>
-        <a class="homepage-hotbar-button" href="announcements.php">📣 Group Announcements</a>
-        <a class="homepage-hotbar-button" href="intramural-standings.php">Standings</a>
-        <a class="homepage-hotbar-button homepage-hotbar-featured" href="cadet-of-month.php">⭐ View Cadet of the Month</a>
-        <a class="homepage-hotbar-button" href="awards.php">🏅 Challenge Award</a>
-        <a class="homepage-hotbar-button" href="notification-preferences.php">🔔 Notifications</a>
-        <a class="homepage-hotbar-button" href="admin-login.php">Admin Login</a>
-        <button type="button" id="pwa-install-button" class="homepage-hotbar-button" hidden>⬇ Install App</button>
-        <span id="pwa-install-help" class="homepage-hotbar-help" role="status" hidden></span>
-    </nav>
-    <script src="pwa-install.js" defer></script>
     <section class="announcement-preview" aria-labelledby="announcements-preview-title">
         <div class="announcement-preview-head">
             <h2 id="announcements-preview-title">📣 Next Group Event</h2>
-            <a class="announcement-preview-link" href="announcements.php">View all announcements →</a>
         </div>
         <?php if ($homepageAnnouncements): ?>
         <div class="announcement-preview-list">
@@ -536,7 +468,6 @@ usort(
         <?php $rank++; endforeach; ?>
         <?php if (!$ranked): ?><tr><td colspan="5" style="text-align:center;padding:22px;color:#667085;">Official OPA scores have not been published yet.</td></tr><?php endif; ?>
     </table>
-    <p style="text-align:right;margin-top:-18px;"><a href="score-history.php" style="color:var(--primary-color);font-weight:bold;">View publication history →</a></p>
 
     <!-- Score breakdown modal -->
     <div id="breakdown-modal" class="breakdown-modal-overlay" style="display:none;">
@@ -558,9 +489,6 @@ usort(
     
     <?php if ($hasIntramurals): ?>
     <h2>🏅 Intramural Standings</h2>
-    <p style="text-align: center; margin-bottom: 20px;">
-        <a href="intramural-standings.php" style="color: var(--primary-color); text-decoration: none; font-weight: bold;">View Full Intramural Standings →</a>
-    </p>
     <?php endif; ?>
 
     <?php if ($bracketsByTournament || $samisByEvent || $pftByEvent || $otherByEvent || $regularEvents): ?>
@@ -1011,8 +939,7 @@ if ('serviceWorker' in navigator) {
         } else {
             html += '<p>No category-level records were stored for these publications.</p>';
         }
-        html += '</div></div>' +
-            '<p style="margin-top:16px"><a href="score-history.php">View full publication history →</a></p>';
+        html += '</div></div>';
 
         modalBody.innerHTML = html;
 

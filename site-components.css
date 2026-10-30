@@ -58,43 +58,59 @@
   padding: 4px;
   object-fit: contain;
 }
+/* Canonical page hotbar: the same full navigation appears on every public page. */
 :where(.site-header-nav) {
   grid-column: 1 / -1;
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
+  align-items: stretch;
   justify-content: center;
-  gap: 8px;
-}
-:where(.site-header-nav a) {
-  min-height: 40px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 8px 12px;
+  gap: 10px;
+  margin: 6px 0 0;
+  padding: 12px;
   border: 1px solid var(--ui-border);
-  border-radius: 8px;
+  border-radius: 10px;
+  background: var(--ui-surface);
+  box-shadow: 0 2px 8px rgba(0,0,0,.07);
+}
+:where(.site-header-nav a, .site-header-install-button) {
+  min-height: 42px;
+  display: inline-flex;
+  flex: 1 1 132px;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 14px;
+  border: 1px solid var(--ui-primary);
+  border-radius: 7px;
   color: var(--ui-primary);
   background: var(--ui-surface);
   text-decoration: none;
+  text-align: center;
+  font: inherit;
   font-weight: 700;
+  line-height: 1.25;
+  cursor: pointer;
+  transition: background .15s ease, color .15s ease, transform .15s ease;
 }
-:where(.site-header-nav a:hover) { background: var(--ui-page); text-decoration: underline; }
-:where(.site-header-install-button) {
-  min-height: 40px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 8px 12px;
-  border: 1px solid var(--ui-primary);
-  border-radius: 8px;
+:where(.site-header-nav a:hover, .site-header-nav a:focus-visible, .site-header-install-button:hover, .site-header-install-button:focus-visible) {
+  background: var(--ui-page);
+  text-decoration: none;
+  transform: translateY(-1px);
+}
+:where(.site-header-nav a[aria-current="page"]) {
   color: #fff;
   background: var(--ui-primary);
-  font-weight: 700;
-  cursor: pointer;
+}
+:where(.site-header-nav a[aria-current="page"]:hover, .site-header-nav a[aria-current="page"]:focus-visible) {
+  color: #fff;
+  background: var(--ui-secondary);
+}
+:where(.site-header-install-button) {
+  color: #fff;
+  background: var(--ui-primary);
 }
 :where(.site-header-install-button:hover, .site-header-install-button:focus-visible) {
+  color: #fff;
   background: var(--ui-secondary);
   border-color: var(--ui-secondary);
 }
@@ -110,7 +126,20 @@
 @media (max-width: 600px) {
   :where(.site-header) { grid-template-columns: 40px minmax(0, 1fr) 40px; gap: 8px; padding: 0 6px; }
   :where(.site-header-mark, .site-header-squadron, .site-header-squadron-placeholder) { width: 40px; height: 40px; }
-  :where(.site-header-nav) { width: 100%; justify-content: center; }
+  :where(.site-header-nav) {
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    padding: 10px;
+  }
+  :where(.site-header-nav a, .site-header-install-button) {
+    min-width: 0;
+    min-height: 42px;
+    padding: 9px 7px;
+    font-size: .9rem;
+  }
+  :where(.site-header-install-help) { grid-column: 1 / -1; }
 }
 
 /* Shared form and component styles. Keep these low-specificity so page-specific

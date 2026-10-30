@@ -6,8 +6,8 @@
 if (!function_exists('renderGroupSiteHeader')) {
     function renderGroupSiteHeader(?bool $showNavigation = null): void {
         // Default to the public navigation on visitor pages and hide it on every admin route.
+        $currentPage = basename($_SERVER['SCRIPT_NAME'] ?? '');
         if ($showNavigation === null) {
-            $currentPage = basename($_SERVER['SCRIPT_NAME'] ?? '');
             $showNavigation = strpos($currentPage, 'admin-') !== 0;
         }
         $theme = function_exists('loadTheme') ? loadTheme() : [];
@@ -41,11 +41,16 @@ if (!function_exists('renderGroupSiteHeader')) {
                 <?php else: ?><span class="site-header-squadron-placeholder" aria-hidden="true"></span><?php endif; ?>
             </div>
             <?php if ($showNavigation): ?>
-            <nav class="site-header-nav" aria-label="Main navigation">
-                <a href="index.php">Home</a>
-                <a href="meet-the-group.php">Meet the Group</a>
-                <a href="announcements.php">Announcements</a>
-                <a href="intramural-standings.php">Standings</a>
+            <nav class="site-header-nav" aria-label="Primary page navigation">
+                <a href="index.php"<?php echo $currentPage === 'index.php' ? ' aria-current="page"' : ''; ?>>Home</a>
+                <a href="meet-the-group.php"<?php echo $currentPage === 'meet-the-group.php' ? ' aria-current="page"' : ''; ?>>Meet the Group</a>
+                <a href="announcements.php"<?php echo $currentPage === 'announcements.php' ? ' aria-current="page"' : ''; ?>>📣 Group Announcements</a>
+                <a href="intramural-standings.php"<?php echo $currentPage === 'intramural-standings.php' ? ' aria-current="page"' : ''; ?>>Standings</a>
+                <a href="cadet-of-month.php"<?php echo $currentPage === 'cadet-of-month.php' ? ' aria-current="page"' : ''; ?>>⭐ Cadet of the Month</a>
+                <a href="awards.php"<?php echo $currentPage === 'awards.php' ? ' aria-current="page"' : ''; ?>>🏅 Challenge Awards</a>
+                <a href="score-history.php"<?php echo $currentPage === 'score-history.php' ? ' aria-current="page"' : ''; ?>>OPA History</a>
+                <a href="notification-preferences.php"<?php echo $currentPage === 'notification-preferences.php' ? ' aria-current="page"' : ''; ?>>🔔 Notifications</a>
+                <a href="admin-login.php"<?php echo $currentPage === 'admin-login.php' ? ' aria-current="page"' : ''; ?>>Admin Login</a>
                 <button type="button" id="pwa-install-button" class="site-header-install-button" hidden>⬇ Install App</button>
                 <span id="pwa-install-help" class="site-header-install-help" role="status" hidden></span>
             </nav>

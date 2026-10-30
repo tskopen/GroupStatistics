@@ -86,9 +86,6 @@ foreach ($squadrons as $squad) {
  .matchup { display: flex; justify-content: space-between; align-items: center; }
  .date { color: #999; font-size: 0.8em; margin-top: 5px; }
  
- .nav-link { display: block; text-align: center; margin-top: 20px; font-size: 0.9em; }
- .nav-link a { color: var(--primary-color); text-decoration: none; }
- .nav-link a:hover { text-decoration: underline; }
 
 :root{--navy:var(--primary-color);--blue:var(--secondary-color)}
 /* Match the Group Announcements banner exactly. */
@@ -216,9 +213,6 @@ header p{margin:0;max-width:650px;color:#e4edf7}
  <?php endif; ?>
  <?php endforeach; ?>
  
- <div class="nav-link">
- <a href="index.php">&larr; Back to Home</a>
- </div>
  </main>
  
  <script>
