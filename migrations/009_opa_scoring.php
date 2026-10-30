@@ -31,6 +31,8 @@ return static function (PDO $db): void {
         squadron_id INTEGER NOT NULL,
         category_rank INTEGER CHECK (category_rank IS NULL OR category_rank BETWEEN 1 AND 10),
         category_score REAL CHECK (category_score IS NULL OR (category_score >= 0 AND category_score <= 100)),
+        rank_source TEXT NOT NULL DEFAULT 'manual' CHECK (rank_source IN ('manual', 'import', 'modified')),
+        score_source TEXT NOT NULL DEFAULT 'manual' CHECK (score_source IN ('manual', 'import', 'modified')),
         source_rank INTEGER,
         source_measurement TEXT,
         entry_source TEXT NOT NULL DEFAULT 'manual'

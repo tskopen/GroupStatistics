@@ -92,7 +92,7 @@ function opaRecalculateDraftRanks(PDO $db, int $draftId, int $categoryId): void 
             throw new RuntimeException($category['display_name'] . ': tied percentage scores require manual rank resolution; automatic unique rankings were not applied.');
         }
     }
-    $update = $db->prepare("UPDATE scoring_draft_scores SET category_rank=?,entry_source=CASE WHEN entry_source IN ('import','modified') THEN 'modified' ELSE 'manual' END,updated_at=? WHERE draft_id=? AND category_id=? AND squadron_id=?");
+    $update = $db->prepare("UPDATE scoring_draft_scores SET category_rank=?,rank_source=CASE WHEN rank_source IN ('import','modified') THEN 'modified' ELSE 'manual' END,entry_source=CASE WHEN entry_source IN ('import','modified') THEN 'modified' ELSE 'manual' END,updated_at=? WHERE draft_id=? AND category_id=? AND squadron_id=?");
     foreach ($rows as $index => $row) $update->execute([$index + 1, opaNow(), $draftId, $categoryId, (int)$row['squadron_id']]);
 }
 
@@ -224,16 +224,18 @@ function opaPublishDraft(PDO $db, int $draftId, string $username): array {
         $rankBySquadron[$row['squadron_id']] = $rank;
     }
 
-    $methodRows = $db->prepare("SELECT entry_source, COUNT(*) AS total FROM scoring_draft_scores
-        WHERE draft_id = ? AND category_id IN (SELECT id FROM scoring_categories WHERE is_active=1)
-        GROUP BY entry_source");
+    $methodRows = $db->prepare("SELECT category_rank,category_score,rank_source,score_source FROM scoring_draft_scores
+        WHERE draft_id = ? AND category_id IN (SELECT id FROM scoring_categories WHERE is_active=1)");
     $methodRows->execute([$draftId]);
-    $methods = [];
-    foreach ($methodRows->fetchAll(PDO::FETCH_ASSOC) as $row) if ((int)$row['total'] > 0) $methods[$row['entry_source']] = (int)$row['total'];
+    $hasManualValues = false;
+    foreach ($methodRows->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        if ($row['category_rank'] !== null && in_array($row['rank_source'], ['manual', 'modified'], true)) $hasManualValues = true;
+        if ($row['category_score'] !== null && in_array($row['score_source'], ['manual', 'modified'], true)) $hasManualValues = true;
+    }
     $importCountStmt = $db->prepare('SELECT COUNT(*) FROM scoring_imports WHERE draft_id=?');
     $importCountStmt->execute([$draftId]);
     $hasImports = (int)$importCountStmt->fetchColumn() > 0;
-    $method = $hasImports && (isset($methods['manual']) || isset($methods['modified'])) ? 'mixed' : ($hasImports ? 'excel' : 'manual');
+    $method = $hasImports && $hasManualValues ? 'mixed' : ($hasImports ? 'excel' : 'manual');
     $filenameStmt = $db->prepare('SELECT file_name FROM scoring_imports WHERE draft_id=? ORDER BY id DESC LIMIT 1');
     $filenameStmt->execute([$draftId]);
     $filename = $filenameStmt->fetchColumn();
@@ -658,7 +660,9 @@ function opaApplyImportPreview(PDO $db, int $draftId, array $preview, string $fi
         $now = opaNow();
         $update = $db->prepare("UPDATE scoring_draft_scores SET
             category_rank=COALESCE(?,category_rank),
+            rank_source=CASE WHEN ? IS NULL THEN rank_source ELSE 'import' END,
             category_score=COALESCE(?,category_score),
+            score_source=CASE WHEN ? IS NULL THEN score_source ELSE 'import' END,
             source_rank=COALESCE(?,source_rank),
             source_measurement=COALESCE(?,source_measurement),
             entry_source='import', validation_note=?, updated_at=?
@@ -673,8 +677,10 @@ function opaApplyImportPreview(PDO $db, int $draftId, array $preview, string $fi
             $categoryNames[] = $category['display_name'];
             foreach ($squadronRecords as $squadronId => $record) {
                 $update->execute([
-                    $record['category_rank'], $record['category_score'], $record['source_rank'],
-                    $record['source_measurement'], '', $now, $draftId, (int)$categoryId, (int)$squadronId,
+                    $record['category_rank'], $record['category_rank'],
+                    $record['category_score'], $record['category_score'],
+                    $record['source_rank'], $record['source_measurement'],
+                    '', $now, $draftId, (int)$categoryId, (int)$squadronId,
                 ]);
                 $recordCount++;
             }

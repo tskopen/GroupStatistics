@@ -55,15 +55,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($errors) throw new RuntimeException(implode("\n", array_values(array_unique($errors))));
             $db->beginTransaction();
             try {
-                $lookup = $db->prepare('SELECT category_rank,category_score,entry_source FROM scoring_draft_scores WHERE draft_id=? AND category_id=? AND squadron_id=?');
-                $update = $db->prepare('UPDATE scoring_draft_scores SET category_rank=?,category_score=?,entry_source=?,updated_at=? WHERE draft_id=? AND category_id=? AND squadron_id=?');
+                $lookup = $db->prepare('SELECT category_rank,category_score,rank_source,score_source,entry_source FROM scoring_draft_scores WHERE draft_id=? AND category_id=? AND squadron_id=?');
+                $update = $db->prepare('UPDATE scoring_draft_scores SET category_rank=?,category_score=?,rank_source=?,score_source=?,entry_source=?,updated_at=? WHERE draft_id=? AND category_id=? AND squadron_id=?');
                 foreach ($updates as [$categoryId, $sid, $rank, $score]) {
                     $lookup->execute([$draftId, $categoryId, $sid]);
                     $old = $lookup->fetch(PDO::FETCH_ASSOC) ?: [];
-                    $changed = ($old['category_rank'] === null ? null : (int)$old['category_rank']) !== $rank
-                        || ($old['category_score'] === null ? null : (float)$old['category_score']) !== $score;
-                    $source = $changed ? (($old['entry_source'] ?? '') === 'import' || ($old['entry_source'] ?? '') === 'modified' ? 'modified' : 'manual') : ($old['entry_source'] ?? 'manual');
-                    $update->execute([$rank, $score, $source, opaNow(), $draftId, $categoryId, $sid]);
+                    $rankChanged = ($old['category_rank'] === null ? null : (int)$old['category_rank']) !== $rank;
+                    $scoreChanged = ($old['category_score'] === null ? null : (float)$old['category_score']) !== $score;
+                    $oldRankSource = $old['rank_source'] ?? ($old['entry_source'] ?? 'manual');
+                    $oldScoreSource = $old['score_source'] ?? ($old['entry_source'] ?? 'manual');
+                    $rankSource = $rankChanged ? (in_array($oldRankSource, ['import', 'modified'], true) ? 'modified' : 'manual') : $oldRankSource;
+                    $scoreSource = $scoreChanged ? (in_array($oldScoreSource, ['import', 'modified'], true) ? 'modified' : 'manual') : $oldScoreSource;
+                    if ($rankSource === 'modified' || $scoreSource === 'modified') $source = 'modified';
+                    elseif ($rankSource === 'import' || $scoreSource === 'import') $source = 'import';
+                    else $source = 'manual';
+                    $update->execute([$rank, $score, $rankSource, $scoreSource, $source, opaNow(), $draftId, $categoryId, $sid]);
                 }
                 if ($action === 'recalculate_ranks') {
                     opaRecalculateDraftRanks($db, $draftId, (int)($_POST['recalculate_category_id'] ?? 0));
@@ -130,7 +136,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $scoreChanges = $record['category_score'] !== null && isset($existing['category_score']) && $existing['category_score'] !== null && abs((float)$existing['category_score'] - (float)$record['category_score']) > 0.0000001;
                     if ($rankChanges) $replacements++;
                     if ($scoreChanges) $replacements++;
-                    if (($rankChanges || $scoreChanges) && in_array($existing['entry_source'] ?? 'manual', ['manual', 'modified'], true)) $manualOverrideCount++;
+                    $rankManualOverride = $rankChanges && in_array($existing['rank_source'] ?? 'manual', ['manual', 'modified'], true);
+                    $scoreManualOverride = $scoreChanges && in_array($existing['score_source'] ?? 'manual', ['manual', 'modified'], true);
+                    if ($rankManualOverride || $scoreManualOverride) $manualOverrideCount++;
                     $importRecordCount++;
                 }
             }
@@ -355,9 +363,9 @@ function opaH($value): string {
                     <div class="score-inline" style="margin-bottom:10px"><button class="score-btn secondary score-recalculate" type="button" data-category-id="<?php echo $categoryId; ?>">Recalculate ranks from percentage scores</button><span class="score-note">Requires all ten scores and a configured higher/lower ranking direction. Ties need manual resolution.</span></div>
                     <div class="score-table-wrap">
                         <table class="score-table">
-                            <thead><tr><th>Squadron</th><th>Group 1 Rank</th><th>Category Score</th><th>Category Points</th><th>Entry Source</th></tr></thead>
+                            <thead><tr><th>Squadron</th><th>Group 1 Rank</th><th>Rank Source</th><th>Category Score</th><th>Score Source</th><th>Category Points</th></tr></thead>
                             <tbody>
-                            <?php foreach ($squadrons as $squadron): $sid=(int)$squadron['id']; $record=$draftRows[$categoryId][$sid]??[]; $source=$record['entry_source']??'manual'; ?>
+                            <?php foreach ($squadrons as $squadron): $sid=(int)$squadron['id']; $record=$draftRows[$categoryId][$sid]??[]; $source=$record['entry_source']??'manual'; $rankSource=$record['rank_source']??$source; $scoreSource=$record['score_source']??$source; ?>
                                 <tr>
                                     <td>
                                         <?php if (!empty($squadron['icon_filename'])): ?><img class="score-icon" src="<?php echo opaH(iconUrl($squadron['icon_filename'])); ?>" alt=""><?php endif; ?>
@@ -365,9 +373,10 @@ function opaH($value): string {
                                         <?php if (($record['source_rank']??null)!==null): ?><div class="score-source">Source ranking: <?php echo (int)$record['source_rank']; ?></div><?php endif; ?>
                                     </td>
                                     <td><input class="score-input category-rank-input" data-category-id="<?php echo $categoryId; ?>" data-squadron-id="<?php echo $sid; ?>" name="scores[<?php echo $categoryId; ?>][<?php echo $sid; ?>][rank]" type="number" min="1" max="10" step="1" value="<?php echo ($record['category_rank']??null)!==null ? (int)$record['category_rank'] : ''; ?>" placeholder="1–10" aria-label="Squadron <?php echo $sid; ?> <?php echo opaH($category['display_name']); ?> rank"></td>
+                                    <td><span class="score-tag <?php echo $rankSource==='import'?'import':($rankSource==='modified'?'modified':''); ?>"><?php echo $rankSource==='import'?'Excel import':($rankSource==='modified'?'Modified after import':'Manual'); ?></span></td>
                                     <td><input class="score-input category-score-input" data-category-id="<?php echo $categoryId; ?>" data-squadron-id="<?php echo $sid; ?>" name="scores[<?php echo $categoryId; ?>][<?php echo $sid; ?>][score]" type="number" min="0" max="100" step="0.01" value="<?php echo ($record['category_score']??null)!==null ? opaH($record['category_score']) : ''; ?>" placeholder="0–100%" aria-label="Squadron <?php echo $sid; ?> <?php echo opaH($category['display_name']); ?> percentage"></td>
+                                    <td><span class="score-tag <?php echo $scoreSource==='import'?'import':($scoreSource==='modified'?'modified':''); ?>"><?php echo $scoreSource==='import'?'Excel import':($scoreSource==='modified'?'Modified after import':'Manual'); ?></span></td>
                                     <td class="score-points" data-points-for="<?php echo $categoryId . '-' . $sid; ?>"><?php $points=opaCategoryPoints(isset($record['category_rank'])?(int)$record['category_rank']:null); echo $points===null?'—':$points; ?></td>
-                                    <td><span class="score-tag <?php echo $source==='import'?'import':($source==='modified'?'modified':''); ?>"><?php echo $source==='import'?'Excel import':($source==='modified'?'Modified after import':'Manual'); ?></span></td>
                                 </tr>
                             <?php endforeach; ?>
                             </tbody>

@@ -84,6 +84,16 @@ opaRecalculateDraftRanks($db, $rankDraftId, (int)$amiCategory['id']);
 $rankCheck = $db->prepare('SELECT category_rank FROM scoring_draft_scores WHERE draft_id=? AND category_id=? AND squadron_id=10');
 $rankCheck->execute([$rankDraftId, (int)$amiCategory['id']]);
 check((int)$rankCheck->fetchColumn() === 1, 'admin recalculation ranks percentage scores using the configured category direction');
+$provenanceDraftId = opaCreateDraft($db, 'test-admin', 'Field provenance test');
+$provenancePreview = ['records' => [(int)$amiCategory['id'] => [1 => [
+    'category_rank' => 1, 'category_score' => null, 'source_rank' => 14, 'source_measurement' => null,
+]]]];
+opaApplyImportPreview($db, $provenanceDraftId, $provenancePreview, 'provenance.xlsx', hash('sha256', 'field-provenance-test'), 'test-admin');
+$provenanceStmt = $db->prepare('SELECT rank_source,score_source FROM scoring_draft_scores WHERE draft_id=? AND category_id=? AND squadron_id=1');
+$provenanceStmt->execute([$provenanceDraftId, (int)$amiCategory['id']]);
+$provenance = $provenanceStmt->fetch(PDO::FETCH_ASSOC);
+check($provenance['rank_source'] === 'import' && $provenance['score_source'] === 'manual', 'rank and percentage provenance are tracked independently when only one field is imported');
+
 
 
 check((bool)$db->query("SELECT 1 FROM sqlite_master WHERE type='table' AND name='squadrons'")->fetchColumn(),'core schema migration creates squadrons');
