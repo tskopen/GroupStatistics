@@ -279,6 +279,10 @@ usort(
     .movement-down { color: #b00020; font-weight: bold; }
     .movement-same { color: #999; font-weight: bold; }
     .movement-new { color: #003366; font-weight: bold; background: #e3f2fd; padding: 2px 6px; border-radius: 3px; font-size: 0.85em; }
+    .opa-history { margin-top: 4px; color: var(--muted-color); font-size: .72rem; font-weight: 500; line-height: 1.35; white-space: normal; }
+    .movement-cell { min-width: 132px; line-height: 1.25; }
+    .movement-opa { display: block; white-space: nowrap; }
+    .movement-rank-meta { display: block; margin-top: 4px; color: var(--muted-color); font-size: .72rem; font-weight: 500; }
 
     .details-btn { padding: 6px 12px; background: var(--primary-color); color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 0.85em; }
     .details-btn:hover { background: var(--secondary-color); }
@@ -312,6 +316,11 @@ usort(
     .breakdown-negative { color: #a51f35; font-weight: 800; }
     .breakdown-neutral { color: var(--muted-color,#667085); font-weight: 700; }
     .breakdown-explanation { color: var(--muted-color,#667085); font-size: .84em; line-height: 1.5; margin: 8px 0; }
+    .breakdown-quick-table-wrap { overflow-x: auto; border: 1px solid var(--border-color,#d8dee8); border-radius: 7px; }
+    .breakdown-quick-table { width: 100%; min-width: 520px; border-collapse: collapse; font-size: .86em; }
+    .breakdown-quick-table th, .breakdown-quick-table td { padding: 9px 11px; text-align: left; border-bottom: 1px solid var(--border-color,#e5e7eb); }
+    .breakdown-quick-table thead th { background: var(--soft-primary-color,#f4f7fb); color: var(--primary-color); white-space: nowrap; }
+    .breakdown-quick-table tbody tr:last-child th, .breakdown-quick-table tbody tr:last-child td { border-bottom: 0; }
     @media(max-width:720px) {
         .breakdown-modal { padding: 20px 14px; max-height: 94vh; }
         .breakdown-summary-grid { grid-template-columns: 1fr; }
@@ -445,7 +454,7 @@ usort(
             <th>Rank</th>
             <th>Squadron</th>
             <th>Overall OPA</th>
-            <th>Change</th>
+            <th>OPA Change</th>
             <th>Details</th>
         </tr>
         <?php $rank = 1; foreach ($ranked as $entry): $s = $entry['squadron']; ?>
@@ -459,7 +468,10 @@ usort(
                 <?php endif; ?>
                 <?php echo htmlspecialchars($s['name']); ?>
             </td>
-            <td><strong><?php echo number_format((float)$entry['total'], 2); ?>%</strong></td>
+            <td class="opa-value-cell">
+                <strong><?php echo number_format((float)$entry['total'], 2); ?>%</strong>
+                <div class="opa-history" data-opa-history="<?php echo htmlspecialchars((string) $s['id']); ?>" aria-label="Recent OPA history"></div>
+            </td>
             <td class="movement-cell" data-squadron-id="<?php echo htmlspecialchars((string) $s['id']); ?>">—</td>
             <td>
                 <button type="button" class="details-btn" data-squadron-id="<?php echo htmlspecialchars((string) $s['id']); ?>" data-squadron-name="<?php echo htmlspecialchars($s['name']); ?>">Details</button>
@@ -715,29 +727,46 @@ if ('serviceWorker' in navigator) {
 // the "Change" column for every squadron row.
 (function () {
     function renderMovement(cell, entry) {
-        if (!entry) {
+        if (!entry || entry.opa_change === null || entry.opa_change === undefined) {
+            cell.textContent = entry ? 'First publication' : '—';
+            cell.className = 'movement-cell movement-same';
+            return;
+        }
+
+        var opaChange = Number(entry.opa_change);
+        if (!Number.isFinite(opaChange)) {
             cell.textContent = '—';
             cell.className = 'movement-cell movement-same';
             return;
         }
 
-        var movement = entry.movement || 'same';
-
-        if (movement === 'new') {
-            cell.textContent = 'NEW';
-            cell.className = 'movement-cell movement-new';
-        } else if (movement.indexOf('up') === 0) {
-            var upAmount = movement.split(' ')[1] || '';
-            cell.textContent = '↑ +' + upAmount;
-            cell.className = 'movement-cell movement-up';
-        } else if (movement.indexOf('down') === 0) {
-            var downAmount = movement.split(' ')[1] || '';
-            cell.textContent = '↓ -' + downAmount;
-            cell.className = 'movement-cell movement-down';
-        } else {
-            cell.textContent = '—';
-            cell.className = 'movement-cell movement-same';
+        var opaClass = opaChange > 0 ? 'movement-up' : (opaChange < 0 ? 'movement-down' : 'movement-same');
+        var opaPrefix = opaChange > 0 ? '↑ +' : (opaChange < 0 ? '↓ ' : '');
+        var rankChange = entry.rank_change === null || entry.rank_change === undefined ? null : Number(entry.rank_change);
+        var rankText = 'No rank change';
+        if (rankChange !== null && Number.isFinite(rankChange)) {
+            rankText = rankChange > 0
+                ? '↑ ' + rankChange + (rankChange === 1 ? ' place gained' : ' places gained')
+                : (rankChange < 0
+                    ? '↓ ' + Math.abs(rankChange) + (rankChange === -1 ? ' place lost' : ' places lost')
+                    : 'No rank change');
         }
+
+        cell.className = 'movement-cell';
+        cell.innerHTML = '<span class="movement-opa ' + opaClass + '">' +
+            opaPrefix + opaChange.toFixed(2) + ' pp</span>' +
+            '<small class="movement-rank-meta">' + rankText + '</small>';
+    }
+
+    function renderOpaHistory(element, history) {
+        if (!element) return;
+        if (!Array.isArray(history) || !history.length) {
+            element.textContent = '';
+            return;
+        }
+        element.textContent = history.map(function (publication) {
+            return publication.label + ' ' + Number(publication.opa).toFixed(1) + '%';
+        }).join(' → ');
     }
 
     fetch('api-leaderboard-movement.php')
@@ -752,7 +781,10 @@ if ('serviceWorker' in navigator) {
             });
             document.querySelectorAll('.movement-cell').forEach(function (cell) {
                 var sid = cell.getAttribute('data-squadron-id');
-                renderMovement(cell, bySquadronId[sid]);
+                var entry = bySquadronId[sid];
+                renderMovement(cell, entry);
+                var historyCell = document.querySelector('.opa-history[data-opa-history="' + sid + '"]');
+                renderOpaHistory(historyCell, entry ? entry.history : []);
             });
         })
         .catch(function (err) {
@@ -864,6 +896,27 @@ if ('serviceWorker' in navigator) {
             '</div></article>';
     }
 
+    function renderQuickCategoryChanges(categories, publicationA, publicationB) {
+        if (!categories || !categories.length) return '';
+        var rows = categories.map(function (category) {
+            var change = category.change || {};
+            var rankDelta = change.rank_movement;
+            return '<tr>' +
+                '<th scope="row">' + escapeHtml(category.name) + '</th>' +
+                '<td class="' + movementClass(rankDelta) + '">' + escapeHtml(rankMovement(rankDelta)) + '</td>' +
+                '<td class="' + movementClass(change.score) + '">' + escapeHtml(signedValue(change.score, 2, ' pp')) + '</td>' +
+                '<td class="' + movementClass(change.points) + '">' + escapeHtml(signedValue(change.points, 0, ' pts')) + '</td>' +
+                '</tr>';
+        }).join('');
+        return '<div class="breakdown-section breakdown-quick-change">' +
+            '<h4>Quick Changes by Category</h4>' +
+            '<p class="breakdown-explanation">Direct comparison: ' + escapeHtml(publicationA.label) +
+            ' → ' + escapeHtml(publicationB.label) + '. Positive rank movement means places gained.</p>' +
+            '<div class="breakdown-quick-table-wrap"><table class="breakdown-quick-table">' +
+            '<thead><tr><th>Category</th><th>Rank movement</th><th>Score change</th><th>Points change</th></tr></thead>' +
+            '<tbody>' + rows + '</tbody></table></div></div>';
+    }
+
     function renderBreakdown(data) {
         var publications = data.publications || [];
         var a = data.publication_a;
@@ -896,6 +949,8 @@ if ('serviceWorker' in navigator) {
             '<div>OPA change</div>' +
             '<div style="margin-top:8px">Overall rank: <strong class="' + movementClass(overallChange.rank_movement) + '">' + escapeHtml(rankMovement(overallChange.rank_movement)) + '</strong></div>' +
             '</div></div>';
+
+        html += renderQuickCategoryChanges(data.categories || [], a, b);
 
         html += '<div class="breakdown-section"><h4>OPA Category Breakdown</h4>' +
             '<p class="breakdown-explanation">' + escapeHtml(data.category_count) + ' category entries are included in the selected publication comparison. Category points are calculated as 11 minus Group 1 rank (1st = 10 points, 10th = 1 point); OPA itself averages percentage scores, not category points.</p>' +

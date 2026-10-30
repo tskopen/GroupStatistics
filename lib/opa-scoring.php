@@ -320,6 +320,39 @@ function opaGetLatestPublicationId(PDO $db): ?int {
     return $value === false ? null : (int)$value;
 }
 
+/**
+ * Return a short, publication-ordered OPA history for every Group 1 squadron.
+ * The returned trail is oldest-to-newest and labels use the full P1, P2, ... sequence.
+ */
+function opaGetRecentOpaHistoryBySquadron(PDO $db, int $limit = 4): array {
+    $limit = max(1, min(12, $limit));
+    $stmt = $db->query('SELECT p.id AS publication_id,p.published_at,ps.squadron_id,ps.opa,ps.overall_rank
+        FROM scoring_publications p
+        JOIN scoring_publication_squadrons ps ON ps.publication_id = p.id
+        ORDER BY p.id ASC, ps.squadron_id ASC');
+    $history = [];
+    $publicationNumber = 0;
+    $lastPublicationId = null;
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $publicationId = (int)$row['publication_id'];
+        if ($publicationId !== $lastPublicationId) {
+            $publicationNumber++;
+            $lastPublicationId = $publicationId;
+        }
+        $squadronId = (int)$row['squadron_id'];
+        if (!isset($history[$squadronId])) $history[$squadronId] = [];
+        $history[$squadronId][] = [
+            'publication_id' => $publicationId,
+            'label' => 'P' . $publicationNumber,
+            'published_at' => $row['published_at'],
+            'opa' => (float)$row['opa'],
+            'rank' => (int)$row['overall_rank'],
+        ];
+        if (count($history[$squadronId]) > $limit) array_shift($history[$squadronId]);
+    }
+    return $history;
+}
+
 function opaGetPublishedLeaderboard(PDO $db, ?int $publicationId = null): array {
     if ($publicationId === null) $publicationId = opaGetLatestPublicationId($db);
     if ($publicationId === null) return [];

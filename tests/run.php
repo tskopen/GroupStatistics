@@ -78,6 +78,14 @@ check($comparison13 !== null && (int)$comparison13['publication_a']['publication
 check(abs($comparison13['overall']['change']['opa'] + 13.0) < 0.000001 && (int)$comparison13['overall']['change']['rank_movement'] === -9, 'P1 versus P3 movement is calculated against P1 rather than P2');
 $comparisonReverse = opaGetSquadronPublicationComparison($db, 1, $thirdPublication['publication_id'], $firstPublication['publication_id']);
 check($comparisonReverse !== null && abs($comparisonReverse['overall']['change']['opa'] - 13.0) < 0.000001, 'publication comparison direction reverses when the A and B selectors are swapped');
+$recentOpaHistory = opaGetRecentOpaHistoryBySquadron($db, 2);
+$squadronOneHistory = $recentOpaHistory[1] ?? [];
+check(count($squadronOneHistory) === 2
+    && $squadronOneHistory[0]['label'] === 'P2'
+    && $squadronOneHistory[1]['label'] === 'P3'
+    && abs((float)$squadronOneHistory[1]['opa'] - 86.0) < 0.000001,
+    'main-board OPA history keeps the latest publications in chronological order with stable P labels');
+
 
 
 $amiCategory = null;
