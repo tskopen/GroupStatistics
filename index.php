@@ -285,14 +285,41 @@ usort(
 
     /* Score breakdown modal */
     .breakdown-modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 20px; }
-    .breakdown-modal { background: var(--surface-color); border-radius: 8px; max-width: 500px; width: 100%; max-height: 80vh; overflow-y: auto; padding: 25px; position: relative; box-shadow: 0 4px 20px rgba(0,0,0,0.3); }
-    .breakdown-modal-close { position: absolute; top: 12px; right: 15px; background: none; border: none; font-size: 1.5em; cursor: pointer; color: #666; }
+    .breakdown-modal { background: var(--surface-color); border-radius: 10px; max-width: 1080px; width: 100%; max-height: 90vh; overflow-y: auto; padding: 26px; position: relative; box-shadow: 0 4px 20px rgba(0,0,0,0.3); }
+    .breakdown-modal-close { position: absolute; top: 12px; right: 15px; background: none; border: none; font-size: 1.5em; cursor: pointer; color: #666; z-index: 2; }
     .breakdown-modal-close:hover { color: #000; }
-    .breakdown-section { margin-top: 15px; }
-    .breakdown-section h4 { margin-bottom: 8px; color: var(--primary-color); }
-    .breakdown-item { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #eee; font-size: 0.9em; }
-    .breakdown-item-points { font-weight: bold; color: #28a745; }
+    .breakdown-section { margin-top: 18px; }
+    .breakdown-section h4 { margin: 0 0 10px; color: var(--primary-color); }
     .breakdown-total { margin-top: 10px; font-weight: bold; text-align: right; }
+    .breakdown-comparison-controls { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; margin: 16px 0; padding: 14px; border: 1px solid var(--border-color,#d8dee8); border-radius: 8px; }
+    .breakdown-control { display: flex; flex-direction: column; gap: 6px; font-size: .88em; font-weight: 700; }
+    .breakdown-control select { min-width: 0; width: 100%; padding: 9px 10px; border: 1px solid var(--border-color,#cbd5e1); border-radius: 6px; background: var(--surface-color,#fff); color: var(--text-color,#222); }
+    .breakdown-summary-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 12px; }
+    .breakdown-publication-card { border: 1px solid var(--border-color,#d8dee8); border-radius: 8px; padding: 14px; min-width: 0; }
+    .breakdown-publication-card h5 { color: var(--primary-color); margin: 0 0 8px; }
+    .breakdown-publication-card .breakdown-opa { font-size: 1.55em; font-weight: 800; margin: 4px 0; }
+    .breakdown-publication-card .breakdown-meta { display: block; color: var(--muted-color,#667085); font-size: .82em; margin-top: 5px; overflow-wrap: anywhere; }
+    .breakdown-change-card { background: var(--soft-primary-color,#f4f7fb); }
+    .breakdown-category-list { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; }
+    .breakdown-category-card { border: 1px solid var(--border-color,#d8dee8); border-radius: 8px; padding: 14px; min-width: 0; }
+    .breakdown-category-card h5 { margin: 0 0 10px; color: var(--primary-color); font-size: 1rem; }
+    .breakdown-category-columns { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 10px; }
+    .breakdown-category-period { font-size: .78em; font-weight: 800; color: var(--primary-color); margin-bottom: 7px; }
+    .breakdown-category-value { margin: 4px 0; font-size: .86em; overflow-wrap: anywhere; }
+    .breakdown-category-source { color: var(--muted-color,#667085); font-size: .76em; margin-top: 8px; line-height: 1.45; overflow-wrap: anywhere; }
+    .breakdown-category-change { background: var(--soft-primary-color,#f7f9fc); border-radius: 6px; padding: 8px; }
+    .breakdown-positive { color: #18713b; font-weight: 800; }
+    .breakdown-negative { color: #a51f35; font-weight: 800; }
+    .breakdown-neutral { color: var(--muted-color,#667085); font-weight: 700; }
+    .breakdown-explanation { color: var(--muted-color,#667085); font-size: .84em; line-height: 1.5; margin: 8px 0; }
+    @media(max-width:720px) {
+        .breakdown-modal { padding: 20px 14px; max-height: 94vh; }
+        .breakdown-summary-grid { grid-template-columns: 1fr; }
+        .breakdown-category-list { grid-template-columns: 1fr; }
+        .breakdown-category-columns { grid-template-columns: repeat(2,minmax(0,1fr)); }
+        .breakdown-category-change { grid-column: 1 / -1; }
+        .breakdown-comparison-controls { grid-template-columns: 1fr; }
+    }
     
     /* Event Cards Grid */
     .events-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 20px; margin-bottom: 30px; }
@@ -732,24 +759,23 @@ if ('serviceWorker' in navigator) {
             console.error('Failed to load leaderboard movement:', err);
         });
 
-    // Score breakdown modal.
+    // OPA breakdown: compare any two immutable publications rather than only
+    // showing the latest publication against its immediate predecessor.
     var modal = document.getElementById('breakdown-modal');
     var modalBody = document.getElementById('breakdown-modal-body');
     var modalTitle = document.getElementById('breakdown-modal-title');
     var modalClose = document.getElementById('breakdown-modal-close');
+    var activeSquadronId = null;
+    var activeSquadronName = '';
 
     function closeModal() {
         modal.style.display = 'none';
     }
 
-    if (modalClose) {
-        modalClose.addEventListener('click', closeModal);
-    }
+    if (modalClose) modalClose.addEventListener('click', closeModal);
     if (modal) {
-        modal.addEventListener('click', function (e) {
-            if (e.target === modal) {
-                closeModal();
-            }
+        modal.addEventListener('click', function (event) {
+            if (event.target === modal) closeModal();
         });
     }
 
@@ -759,64 +785,175 @@ if ('serviceWorker' in navigator) {
         });
     }
 
-    document.querySelectorAll('.details-btn').forEach(function (btn) {
-        btn.addEventListener('click', function () {
-            var sid = btn.getAttribute('data-squadron-id');
-            var name = btn.getAttribute('data-squadron-name');
-            modalTitle.textContent = name + ' — OPA Score Breakdown';
-            modalBody.textContent = 'Loading…';
-            modal.style.display = 'flex';
+    function numberValue(value, digits) {
+        if (value === null || value === undefined || value === '') return '—';
+        var number = Number(value);
+        return Number.isFinite(number) ? number.toFixed(digits === undefined ? 2 : digits) : '—';
+    }
 
-            fetch('api-score-breakdown.php?squadron_id=' + encodeURIComponent(sid))
-                .then(function (res) { return res.json(); })
-                .then(function (data) {
-                    if (data.error) {
-                        modalBody.textContent = data.error;
-                        return;
-                    }
-                    var html = '<div class="breakdown-section"><h4>Overall Performance Average</h4>' +
-                        '<div class="breakdown-total">' + Number(data.current.opa).toFixed(2) + '% · Overall Rank #' +
-                        escapeHtml(data.current.overall_rank) + '</div>';
-                    if (data.previous) {
-                        var opaChange = Number(data.current.opa_change || 0);
-                        var rankChange = Number(data.current.rank_change || 0);
-                        html += '<div class="breakdown-item"><span>Previous OPA: ' + Number(data.previous.opa).toFixed(2) +
-                            '%</span><strong>' + (opaChange > 0 ? '+' : '') + opaChange.toFixed(2) + ' percentage points</strong></div>';
-                        html += '<div class="breakdown-item"><span>Previous overall rank: #' + escapeHtml(data.previous.overall_rank) +
-                            '</span><strong>' + (rankChange > 0 ? '+' : '') + rankChange + ' positions</strong></div>';
-                    }
-                    html += '<p class="score-note">Published ' + escapeHtml(data.publication.published_at) + '</p></div>';
-                    html += '<div class="breakdown-section"><h4>Category Performance</h4>';
-                    (data.categories || []).forEach(function (item) {
-                        var rankMovement = item.rank_change == null ? 'New' :
-                            (Number(item.rank_change) > 0 ? '+' : '') + Number(item.rank_change) + ' positions';
-                        var scoreMovement = item.score_change == null ? 'New' :
-                            (Number(item.score_change) > 0 ? '+' : '') + Number(item.score_change).toFixed(2) + ' percentage points';
-                        var pointMovement = item.previous_points == null ? 'New' :
-                            'Points: ' + item.previous_points + ' → ' + item.points + ' (' + (item.points_change > 0 ? '+' : '') + item.points_change + ')';
-                        html += '<div class="breakdown-item"><span><strong>' + escapeHtml(item.name) + '</strong><br>' +
-                            'Rank #' + escapeHtml(item.rank) + ' · ' + escapeHtml(item.score.toFixed(2)) + '%</span>' +
-                            '<span class="breakdown-item-points">' + escapeHtml(item.points) + ' pts<br><small>' +
-                            escapeHtml(rankMovement) + '<br>' + escapeHtml(scoreMovement) + '<br>' + escapeHtml(pointMovement) + '</small></span></div>';
-                    });
-                    html += '</div>';
-                    if (data.history && data.history.length > 1) {
-                        html += '<div class="breakdown-section"><h4>Historical OPA</h4>';
-                        data.history.slice(1).forEach(function (item) {
-                            html += '<div class="breakdown-item"><span>' + escapeHtml(item.published_at) +
-                                ' · Rank #' + escapeHtml(item.overall_rank) + '</span><strong>' +
-                                Number(item.opa).toFixed(2) + '%</strong></div>';
-                        });
-                        html += '<p><a href="score-history.php">View all publication history →</a></p></div>';
-                    }
-                    modalBody.innerHTML = html;
-                })
-                .catch(function (err) {
-                    modalBody.textContent = 'Failed to load OPA breakdown.';
-                    console.error('Failed to load score breakdown:', err);
+    function signedValue(value, digits, suffix) {
+        if (value === null || value === undefined || value === '') return '—';
+        var number = Number(value);
+        if (!Number.isFinite(number)) return '—';
+        var prefix = number > 0 ? '+' : '';
+        return prefix + number.toFixed(digits === undefined ? 2 : digits) + (suffix || '');
+    }
+
+    function movementClass(value) {
+        if (value === null || value === undefined || Number(value) === 0) return 'breakdown-neutral';
+        return Number(value) > 0 ? 'breakdown-positive' : 'breakdown-negative';
+    }
+
+    function rankMovement(value) {
+        if (value === null || value === undefined) return 'Not comparable';
+        var number = Number(value);
+        if (number > 0) return '+' + number + (number === 1 ? ' place gained' : ' places gained');
+        if (number < 0) return number + (number === -1 ? ' place lost' : ' places lost');
+        return 'No change';
+    }
+
+    function publicationDate(publication) {
+        var raw = String(publication.published_at || '');
+        var parsed = new Date(raw.replace(' ', 'T'));
+        return Number.isNaN(parsed.getTime()) ? raw : parsed.toLocaleDateString(undefined, {
+            year: 'numeric', month: 'short', day: 'numeric'
+        });
+    }
+
+    function publicationOptionLabel(publication) {
+        return publication.label + ' · ' + publicationDate(publication) + ' · #' + publication.id;
+    }
+
+    function renderPublicationCard(title, publication) {
+        return '<div class="breakdown-publication-card">' +
+            '<h5>' + escapeHtml(title + ' · ' + publication.label) + '</h5>' +
+            '<div class="breakdown-opa">' + numberValue(publication.opa) + '%</div>' +
+            '<div>Overall rank: <strong>#' + escapeHtml(publication.overall_rank) + '</strong></div>' +
+            '<span class="breakdown-meta">Published ' + escapeHtml(publicationDate(publication)) + '</span>' +
+            '<span class="breakdown-meta">Entry method: ' + escapeHtml(publication.data_entry_method || '—') + '</span>' +
+            (publication.source_filename ? '<span class="breakdown-meta">Workbook: ' + escapeHtml(publication.source_filename) + '</span>' : '') +
+            '</div>';
+    }
+
+    function renderCategoryCard(category, publicationA, publicationB) {
+        var a = category.a;
+        var b = category.b;
+        var change = category.change || {};
+        function periodValues(value) {
+            if (!value) return '<div class="breakdown-category-value">No category data</div>';
+            var html = '<div class="breakdown-category-value">Group 1 rank: <strong>#' + escapeHtml(value.rank) + '</strong></div>' +
+                '<div class="breakdown-category-value">Percentage score: <strong>' + numberValue(value.score) + '%</strong></div>' +
+                '<div class="breakdown-category-value">Category points: <strong>' + numberValue(value.points, 0) + '</strong></div>';
+            var source = [];
+            if (value.source_rank !== null && value.source_rank !== undefined) source.push('Original source rank: #' + value.source_rank);
+            if (value.source_measurement !== null && value.source_measurement !== '') source.push('Raw measurement: ' + value.source_measurement);
+            if (source.length) html += '<div class="breakdown-category-source">' + source.map(escapeHtml).join('<br>') + '</div>';
+            return html;
+        }
+        var rankDelta = change.rank_movement;
+        var changeHtml = '<div class="breakdown-category-value">Rank movement: <strong class="' + movementClass(rankDelta) + '">' + escapeHtml(rankMovement(rankDelta)) + '</strong></div>' +
+            '<div class="breakdown-category-value">Score change: <strong class="' + movementClass(change.score) + '">' + escapeHtml(signedValue(change.score, 2, ' pp')) + '</strong></div>' +
+            '<div class="breakdown-category-value">Points change: <strong class="' + movementClass(change.points) + '">' + escapeHtml(signedValue(change.points, 0, ' pts')) + '</strong></div>';
+        if (!a || !b) changeHtml = '<div class="breakdown-category-value">This category is present in only one selected publication.</div>';
+        return '<article class="breakdown-category-card">' +
+            '<h5>' + escapeHtml(category.name) + '</h5>' +
+            '<div class="breakdown-category-columns">' +
+            '<div><div class="breakdown-category-period">' + escapeHtml(publicationA.label) + '</div>' + periodValues(a) + '</div>' +
+            '<div><div class="breakdown-category-period">' + escapeHtml(publicationB.label) + '</div>' + periodValues(b) + '</div>' +
+            '<div class="breakdown-category-change"><div class="breakdown-category-period">Change (B − A)</div>' + changeHtml + '</div>' +
+            '</div></article>';
+    }
+
+    function renderBreakdown(data) {
+        var publications = data.publications || [];
+        var a = data.publication_a;
+        var b = data.publication_b;
+        var overallChange = data.overall_change || {};
+        var optionsA = publications.map(function (publication) {
+            return '<option value="' + escapeHtml(publication.id) + '"' +
+                (Number(publication.id) === Number(a.id) ? ' selected' : '') + '>' +
+                escapeHtml(publicationOptionLabel(publication)) + '</option>';
+        }).join('');
+        var optionsB = publications.map(function (publication) {
+            return '<option value="' + escapeHtml(publication.id) + '"' +
+                (Number(publication.id) === Number(b.id) ? ' selected' : '') + '>' +
+                escapeHtml(publicationOptionLabel(publication)) + '</option>';
+        }).join('');
+
+        var html = '<div class="breakdown-comparison-controls">' +
+            '<label class="breakdown-control">Compare from (A)' +
+            '<select id="breakdown-publication-a">' + optionsA + '</select></label>' +
+            '<label class="breakdown-control">Compare to (B)' +
+            '<select id="breakdown-publication-b">' + optionsB + '</select></label>' +
+            '</div>' +
+            '<p class="breakdown-explanation">OPA is the arithmetic average of the category percentage scores shown below. Changes are calculated directly between the two selected publications, not against an automatically chosen previous period. Positive rank movement means the squadron improved its position. Score and OPA changes are shown in percentage points.</p>' +
+            '<div class="breakdown-summary-grid">' +
+            renderPublicationCard('Publication A', a) +
+            renderPublicationCard('Publication B', b) +
+            '<div class="breakdown-publication-card breakdown-change-card">' +
+            '<h5>Change (B − A)</h5>' +
+            '<div class="breakdown-opa ' + movementClass(overallChange.opa) + '">' + escapeHtml(signedValue(overallChange.opa, 2, ' pp')) + '</div>' +
+            '<div>OPA change</div>' +
+            '<div style="margin-top:8px">Overall rank: <strong class="' + movementClass(overallChange.rank_movement) + '">' + escapeHtml(rankMovement(overallChange.rank_movement)) + '</strong></div>' +
+            '</div></div>';
+
+        html += '<div class="breakdown-section"><h4>OPA Category Breakdown</h4>' +
+            '<p class="breakdown-explanation">' + escapeHtml(data.category_count) + ' category entries are included in the selected publication comparison. Category points are calculated as 11 minus Group 1 rank (1st = 10 points, 10th = 1 point); OPA itself averages percentage scores, not category points.</p>' +
+            '<div class="breakdown-category-list">';
+        if (data.categories && data.categories.length) {
+            data.categories.forEach(function (category) {
+                html += renderCategoryCard(category, a, b);
+            });
+        } else {
+            html += '<p>No category-level records were stored for these publications.</p>';
+        }
+        html += '</div></div>' +
+            '<p style="margin-top:16px"><a href="score-history.php">View full publication history →</a></p>';
+
+        modalBody.innerHTML = html;
+
+        function updateComparison() {
+            var selectA = document.getElementById('breakdown-publication-a');
+            var selectB = document.getElementById('breakdown-publication-b');
+            if (selectA && selectB) loadBreakdown(selectA.value, selectB.value);
+        }
+        var selectA = document.getElementById('breakdown-publication-a');
+        var selectB = document.getElementById('breakdown-publication-b');
+        if (selectA) selectA.addEventListener('change', updateComparison);
+        if (selectB) selectB.addEventListener('change', updateComparison);
+    }
+
+    function loadBreakdown(publicationAId, publicationBId) {
+        if (activeSquadronId === null) return;
+        modalBody.textContent = 'Loading selected publication comparison…';
+        var url = 'api-score-breakdown.php?squadron_id=' + encodeURIComponent(activeSquadronId);
+        if (publicationAId) url += '&publication_a=' + encodeURIComponent(publicationAId);
+        if (publicationBId) url += '&publication_b=' + encodeURIComponent(publicationBId);
+        fetch(url)
+            .then(function (response) {
+                return response.json().then(function (data) {
+                    if (!response.ok || data.error) throw new Error(data.error || 'Failed to load publication comparison.');
+                    return data;
                 });
+            })
+            .then(renderBreakdown)
+            .catch(function (error) {
+                modalBody.textContent = error.message || 'Failed to load OPA breakdown.';
+                console.error('Failed to load OPA publication comparison:', error);
+            });
+    }
+
+    document.querySelectorAll('.details-btn').forEach(function (button) {
+        button.addEventListener('click', function () {
+            activeSquadronId = button.getAttribute('data-squadron-id');
+            activeSquadronName = button.getAttribute('data-squadron-name') || ('Squadron ' + activeSquadronId);
+            modalTitle.textContent = activeSquadronName + ' — OPA Score Breakdown';
+            modalBody.textContent = 'Loading published OPA data…';
+            modal.style.display = 'flex';
+            loadBreakdown(null, null);
         });
     });
+
 </script>
 <script>
 // Offer native installation when supported, otherwise link to device-specific instructions.

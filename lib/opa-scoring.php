@@ -366,6 +366,104 @@ function opaGetSquadronBreakdown(PDO $db, int $squadronId): ?array {
     ];
 }
 
+/**
+ * Compare any two immutable publication snapshots for one squadron.
+ * Change convention: positive rank movement means the squadron improved;
+ * score, points, and OPA changes are Publication B minus Publication A.
+ */
+function opaGetSquadronPublicationComparison(PDO $db, int $squadronId, ?int $publicationAId = null, ?int $publicationBId = null): ?array {
+    $publicationRows = $db->query('SELECT id,published_at,published_by,data_entry_method,source_filename,records_processed,categories_json
+        FROM scoring_publications ORDER BY id ASC')->fetchAll(PDO::FETCH_ASSOC);
+    if (!$publicationRows) return null;
+
+    $publications = [];
+    $byId = [];
+    foreach ($publicationRows as $index => $publication) {
+        $publication['publication_number'] = $index + 1;
+        $publication['label'] = 'P' . ($index + 1);
+        $publications[] = $publication;
+        $byId[(int)$publication['id']] = $publication;
+    }
+
+    $latest = $publications[count($publications) - 1];
+    $defaultA = count($publications) > 1 ? $publications[count($publications) - 2] : $latest;
+    $publicationAId = $publicationAId ?? (int)$defaultA['id'];
+    $publicationBId = $publicationBId ?? (int)$latest['id'];
+    if (!isset($byId[$publicationAId]) || !isset($byId[$publicationBId])) {
+        throw new InvalidArgumentException('Choose two valid published scoring periods.');
+    }
+    $publicationA = $byId[$publicationAId];
+    $publicationB = $byId[$publicationBId];
+
+    $overallStmt = $db->prepare('SELECT opa,overall_rank FROM scoring_publication_squadrons WHERE publication_id=? AND squadron_id=?');
+    $overallStmt->execute([$publicationAId, $squadronId]);
+    $overallA = $overallStmt->fetch(PDO::FETCH_ASSOC);
+    $overallStmt->execute([$publicationBId, $squadronId]);
+    $overallB = $overallStmt->fetch(PDO::FETCH_ASSOC);
+    if (!$overallA || !$overallB) return null;
+
+    $categoryStmt = $db->prepare('SELECT category_key,category_name,category_rank,category_score,category_points,source_rank,source_measurement
+        FROM scoring_publication_scores WHERE publication_id=? AND squadron_id=? ORDER BY category_name');
+    $categoryStmt->execute([$publicationAId, $squadronId]);
+    $categoryA = [];
+    foreach ($categoryStmt->fetchAll(PDO::FETCH_ASSOC) as $row) $categoryA[$row['category_key']] = $row;
+    $categoryStmt->execute([$publicationBId, $squadronId]);
+    $categoryB = [];
+    foreach ($categoryStmt->fetchAll(PDO::FETCH_ASSOC) as $row) $categoryB[$row['category_key']] = $row;
+
+    $categoryKeys = array_values(array_unique(array_merge(array_keys($categoryA), array_keys($categoryB))));
+    $categories = [];
+    foreach ($categoryKeys as $key) {
+        $a = $categoryA[$key] ?? null;
+        $b = $categoryB[$key] ?? null;
+        $name = $b['category_name'] ?? ($a['category_name'] ?? $key);
+        $toValue = static function (?array $row): ?array {
+            if ($row === null) return null;
+            return [
+                'rank' => (int)$row['category_rank'],
+                'score' => (float)$row['category_score'],
+                'points' => (float)$row['category_points'],
+                'source_rank' => $row['source_rank'] !== null ? (int)$row['source_rank'] : null,
+                'source_measurement' => $row['source_measurement'],
+            ];
+        };
+        $valueA = $toValue($a);
+        $valueB = $toValue($b);
+        $categories[] = [
+            'key' => $key,
+            'name' => $name,
+            'a' => $valueA,
+            'b' => $valueB,
+            'change' => [
+                'rank_movement' => ($valueA !== null && $valueB !== null) ? $valueA['rank'] - $valueB['rank'] : null,
+                'score' => ($valueA !== null && $valueB !== null) ? $valueB['score'] - $valueA['score'] : null,
+                'points' => ($valueA !== null && $valueB !== null) ? $valueB['points'] - $valueA['points'] : null,
+            ],
+        ];
+    }
+    usort($categories, static fn(array $a, array $b): int => strcasecmp($a['name'], $b['name']));
+
+    $opaA = (float)$overallA['opa'];
+    $opaB = (float)$overallB['opa'];
+    $rankA = (int)$overallA['overall_rank'];
+    $rankB = (int)$overallB['overall_rank'];
+    return [
+        'publications' => $publications,
+        'publication_a' => $publicationA,
+        'publication_b' => $publicationB,
+        'overall' => [
+            'a' => ['opa' => $opaA, 'rank' => $rankA],
+            'b' => ['opa' => $opaB, 'rank' => $rankB],
+            'change' => [
+                'opa' => $opaB - $opaA,
+                'rank_movement' => $rankA - $rankB,
+            ],
+        ],
+        'categories' => $categories,
+        'category_count' => count($categories),
+    ];
+}
+
 /** Read an .xlsx workbook using PHP's ZipArchive and SimpleXML extensions. */
 function opaReadXlsxWorkbook(string $filePath): array {
     if (!class_exists('ZipArchive') || !function_exists('simplexml_load_string')) {
