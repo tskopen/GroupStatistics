@@ -513,6 +513,74 @@ function opaGetPublicationLeaderboardComparison(PDO $db, int $publicationAId, in
     ];
 }
 
+/**
+ * Compare every published category across all Group 1 squadrons for any two
+ * selected periods. All deltas are B minus A; positive rank movement means
+ * places gained.
+ */
+function opaGetPublicationCategoryComparison(PDO $db, int $publicationAId, int $publicationBId): array {
+    $publicationCheck = $db->prepare('SELECT COUNT(*) FROM scoring_publications WHERE id IN (?,?)');
+    $publicationCheck->execute([$publicationAId, $publicationBId]);
+    $expectedCount = $publicationAId === $publicationBId ? 1 : 2;
+    if ((int)$publicationCheck->fetchColumn() !== $expectedCount) {
+        throw new InvalidArgumentException('Choose two valid published scoring periods.');
+    }
+
+    $byCategory = [];
+    $rowsStmt = $db->prepare('SELECT category_key,category_name,squadron_id,category_rank,category_score,category_points,source_rank,source_measurement
+        FROM scoring_publication_scores WHERE publication_id=? ORDER BY category_name,squadron_id');
+    foreach (['a' => $publicationAId, 'b' => $publicationBId] as $period => $publicationId) {
+        $rowsStmt->execute([$publicationId]);
+        foreach ($rowsStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $key = (string)$row['category_key'];
+            if (!isset($byCategory[$key])) {
+                $byCategory[$key] = ['key' => $key, 'name_a' => null, 'name_b' => null, 'a' => [], 'b' => []];
+            }
+            $byCategory[$key]['name_' . $period] = (string)$row['category_name'];
+            $byCategory[$key][$period][(int)$row['squadron_id']] = $row;
+        }
+    }
+
+    $squadrons = $db->query('SELECT id,name FROM squadrons WHERE id BETWEEN 1 AND 10 ORDER BY id')->fetchAll(PDO::FETCH_ASSOC);
+    $categories = [];
+    foreach ($byCategory as $category) {
+        $name = $category['name_b'] ?? $category['name_a'] ?? $category['key'];
+        $comparisonRows = [];
+        foreach ($squadrons as $squadron) {
+            $squadronId = (int)$squadron['id'];
+            $rowA = $category['a'][$squadronId] ?? null;
+            $rowB = $category['b'][$squadronId] ?? null;
+            $toValue = static function (?array $row): ?array {
+                if ($row === null) return null;
+                return [
+                    'rank' => (int)$row['category_rank'],
+                    'score' => (float)$row['category_score'],
+                    'points' => (float)$row['category_points'],
+                    'source_rank' => $row['source_rank'] !== null ? (int)$row['source_rank'] : null,
+                    'source_measurement' => $row['source_measurement'],
+                ];
+            };
+            $valueA = $toValue($rowA);
+            $valueB = $toValue($rowB);
+            $comparisonRows[] = [
+                'squadron_id' => $squadronId,
+                'name' => $squadron['name'],
+                'a' => $valueA,
+                'b' => $valueB,
+                'change' => [
+                    'rank_movement' => ($valueA !== null && $valueB !== null) ? $valueA['rank'] - $valueB['rank'] : null,
+                    'score' => ($valueA !== null && $valueB !== null) ? $valueB['score'] - $valueA['score'] : null,
+                    'points' => ($valueA !== null && $valueB !== null) ? $valueB['points'] - $valueA['points'] : null,
+                ],
+            ];
+        }
+        $categories[] = ['key' => $category['key'], 'name' => $name, 'squadrons' => $comparisonRows];
+    }
+
+    usort($categories, static fn(array $a, array $b): int => strcasecmp($a['name'], $b['name']));
+    return $categories;
+}
+
 function opaGetSquadronBreakdown(PDO $db, int $squadronId): ?array {
     $stmt = $db->prepare('SELECT id,published_at FROM scoring_publications ORDER BY id DESC LIMIT 2');
     $stmt->execute();

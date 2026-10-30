@@ -8,13 +8,8 @@ $publicationLabels = [];
 foreach (array_reverse($publications) as $index => $publication) {
     $publicationLabels[(int)$publication['id']] = 'P' . ($index + 1);
 }
-$requestedId = isset($_GET['publication_id']) ? (int)$_GET['publication_id'] : 0;
-$selected = null;
-foreach ($publications as $publication) if ((int)$publication['id'] === $requestedId) $selected = $publication;
-if (!$selected && $publications) $selected = $publications[0];
-
-// The comparison defaults to the full available span (oldest to newest), but
-// either endpoint can be changed independently to compare any two periods.
+// The entire history view is driven by these two publication endpoints.
+// Defaults to the oldest and newest available snapshots.
 $compareAId = isset($_GET['compare_a']) ? (int)$_GET['compare_a'] : 0;
 $compareBId = isset($_GET['compare_b']) ? (int)$_GET['compare_b'] : 0;
 $publicationIds = array_map(static fn($publication) => (int)$publication['id'], $publications);
@@ -23,17 +18,10 @@ if ($publications) {
     if (!in_array($compareBId, $publicationIds, true)) $compareBId = (int)$publications[0]['id'];
 }
 $publicationComparison = null;
+$categoryComparisons = [];
 if ($publications) {
     $publicationComparison = opaGetPublicationLeaderboardComparison($db, $compareAId, $compareBId);
-}
-$leaderboard = [];
-$categoryRows = [];
-if ($selected) {
-    $leaderboard = opaGetPublishedLeaderboard($db, (int)$selected['id']);
-    $stmt = $db->prepare('SELECT category_name,category_key,squadron_id,category_rank,category_score,category_points,source_rank,previous_rank,rank_change,previous_score,score_change
-        FROM scoring_publication_scores WHERE publication_id=? ORDER BY category_name,category_rank,squadron_id');
-    $stmt->execute([(int)$selected['id']]);
-    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) $categoryRows[$row['category_name']][] = $row;
+    $categoryComparisons = opaGetPublicationCategoryComparison($db, $compareAId, $compareBId);
 }
 function historyH($value): string {
     return htmlspecialchars((string)$value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
@@ -209,6 +197,29 @@ body {
     font-size: .9rem;
     margin: 0 0 14px;
 }
+.publication-period-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    margin-top: 18px;
+}
+.publication-period-card {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    padding: 13px 14px;
+    border: 1px solid var(--line);
+    border-radius: 9px;
+    background: color-mix(in srgb, var(--page), white 86%);
+    font-size: .87rem;
+    overflow-wrap: anywhere;
+}
+.publication-period-card strong { color: var(--navy); }
+.publication-period-card p { margin: 3px 0 0; color: var(--ink); white-space: pre-wrap; }
+.category-comparison-card { margin-bottom: 16px; }
+.category-comparison-card .history-table { min-width: 1120px; }
+.history-subheading { margin: 0 0 12px; color: var(--muted); font-size: .9rem; }
+
 .publication-description {
     margin: 8px 0 0;
     color: var(--ink);
@@ -291,6 +302,7 @@ body {
     .publication-meta-item { max-width: 100%; }
     .publication-compare-form { grid-template-columns: 1fr; }
     .publication-compare-button { width: 100%; }
+    .publication-period-grid { grid-template-columns: 1fr; }
 }
 @media (prefers-reduced-motion: reduce) {
     html { scroll-behavior: auto; }
@@ -324,7 +336,7 @@ body {
             </div>
             <div class="history-card">
                 <form method="get" action="score-history.php" class="publication-compare-form">
-                    <input type="hidden" name="publication_id" value="<?php echo (int)$selected['id']; ?>">
+
                     <label class="publication-compare-field" for="compare-publication-a">Compare from (A)
                         <select id="compare-publication-a" name="compare_a">
                             <?php foreach (array_reverse($publications) as $publication): ?>
@@ -382,86 +394,86 @@ body {
                         </tbody>
                     </table>
                 </div>
-                <p class="history-muted" style="margin:12px 0 0">For category-by-category movement for an individual squadron, use the Details comparison on the main leaderboard and select the same two publications.</p>
+                <div class="publication-period-grid">
+                    <?php foreach (['a' => $publicationComparison['publication_a'], 'b' => $publicationComparison['publication_b']] as $periodKey => $period): ?>
+                    <article class="publication-period-card">
+                        <strong><?php echo historyH($period['label']); ?> · <?php echo $periodKey === 'a' ? 'Starting period' : 'Ending period'; ?></strong>
+                        <span><?php echo historyH((new DateTimeImmutable($period['published_at']))->format('M j, Y · g:i A')); ?></span>
+                        <span>Published by <?php echo historyH($period['published_by']); ?></span>
+                        <?php if (!empty($period['description'])): ?>
+                        <p><?php echo historyH($period['description']); ?></p>
+                        <?php endif; ?>
+                    </article>
+                    <?php endforeach; ?>
+                </div>
             </div>
         </section>
         <?php endif; ?>
 
-        <section class="history-section" aria-labelledby="overall-standings-title">
-            <div class="section-heading">
-                <h2 id="overall-standings-title">Overall OPA Standings</h2>
-                <p>Group 1 rankings for the selected publication.</p>
-            </div>
-            <div class="history-card">
-                <h2><?php echo historyH($publicationLabels[(int)$selected['id']] ?? ('Publication #' . (int)$selected['id'])); ?></h2>
-                <?php if (!empty($selected['description'])): ?>
-                <p class="publication-description"><?php echo historyH($selected['description']); ?></p>
-                <?php endif; ?>
-                <div class="publication-meta">
-                    <span class="publication-meta-item">Published <?php echo historyH((new DateTimeImmutable($selected['published_at']))->format('M j, Y · g:i A')); ?></span>
-                    <span class="publication-meta-item">By <?php echo historyH($selected['published_by']); ?></span>
-                    <span class="publication-meta-item">Entry method: <?php echo historyH(ucfirst((string)$selected['data_entry_method'])); ?></span>
-                    <?php if (!empty($selected['source_filename'])): ?>
-                    <span class="publication-meta-item">Workbook: <?php echo historyH($selected['source_filename']); ?></span>
-                    <?php endif; ?>
-                </div>
-                <div class="history-table-wrap" style="margin-top:16px">
-                    <table class="history-table">
-                        <thead><tr><th>Rank</th><th>Squadron</th><th>OPA</th><th>Previous OPA</th><th>OPA Change</th><th>Previous Rank</th><th>Rank Change</th></tr></thead>
-                        <tbody>
-                        <?php foreach ($leaderboard as $row): ?>
-                        <?php
-                            $opaChange = $row['opa_change'] === null ? null : (float)$row['opa_change'];
-                            $rankChange = $row['rank_change'] === null ? null : (int)$row['rank_change'];
-                        ?>
-                        <tr>
-                            <td><strong>#<?php echo (int)$row['rank']; ?></strong></td>
-                            <td><?php echo historyH($row['name']); ?></td>
-                            <td><strong><?php echo number_format((float)$row['opa'],2); ?>%</strong></td>
-                            <td><?php echo $row['previous_opa']===null?'—':number_format((float)$row['previous_opa'],2).'%'; ?></td>
-                            <td class="<?php echo $opaChange===null?'history-change-same':($opaChange>0?'history-change-up':($opaChange<0?'history-change-down':'history-change-same')); ?>"><?php echo $opaChange===null?'—':(($opaChange>0?'+':'').number_format($opaChange,2).' pp'); ?></td>
-                            <td><?php echo $row['previous_rank']===null?'—':'#'.(int)$row['previous_rank']; ?></td>
-                            <td class="<?php echo $rankChange===null?'history-change-same':($rankChange>0?'history-change-up':($rankChange<0?'history-change-down':'history-change-same')); ?>"><?php echo $rankChange===null?'New':(($rankChange>0?'+':'').$rankChange.' positions'); ?></td>
-                        </tr>
-                        <?php endforeach; ?>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </section>
-
-        <?php if ($categoryRows): ?>
+        <?php if ($categoryComparisons): ?>
         <section class="history-section" aria-labelledby="category-results-title">
             <div class="section-heading">
-                <h2 id="category-results-title">Category Results</h2>
-                <p>Individual category scores, points, and movement for the selected snapshot.</p>
+                <h2 id="category-results-title">Category Comparisons</h2>
+                <p>Every category uses the same selected publication periods as the overall OPA comparison.</p>
             </div>
-            <?php foreach ($categoryRows as $categoryName => $rows): ?>
-            <article class="history-card" style="margin-bottom:16px">
-                <h2><?php echo historyH($categoryName); ?></h2>
+            <?php foreach ($categoryComparisons as $category): ?>
+            <article class="history-card category-comparison-card">
+                <h2><?php echo historyH($category['name']); ?></h2>
+                <p class="history-subheading">
+                    <?php echo historyH($publicationComparison['publication_a']['label']); ?> versus
+                    <?php echo historyH($publicationComparison['publication_b']['label']); ?> ·
+                    Rank movement is positive for places gained; score and points changes are B minus A.
+                </p>
                 <div class="history-table-wrap">
                     <table class="history-table">
-                        <thead><tr><th>Rank</th><th>Squadron</th><th>Category Score</th><th>Category Points</th><th>Previous Rank</th><th>Rank Movement</th><th>Score Change</th><th>Previous Points</th><th>Points Change</th><th>Source Rank</th></tr></thead>
+                        <thead>
+                            <tr>
+                                <th>Squadron</th>
+                                <th><?php echo historyH($publicationComparison['publication_a']['label']); ?> Rank</th>
+                                <th><?php echo historyH($publicationComparison['publication_b']['label']); ?> Rank</th>
+                                <th>Rank Movement</th>
+                                <th><?php echo historyH($publicationComparison['publication_a']['label']); ?> Score</th>
+                                <th><?php echo historyH($publicationComparison['publication_b']['label']); ?> Score</th>
+                                <th>Score Change</th>
+                                <th><?php echo historyH($publicationComparison['publication_a']['label']); ?> Points</th>
+                                <th><?php echo historyH($publicationComparison['publication_b']['label']); ?> Points</th>
+                                <th>Points Change</th>
+                            </tr>
+                        </thead>
                         <tbody>
-                        <?php foreach ($rows as $row): ?>
+                        <?php foreach ($category['squadrons'] as $row): ?>
                         <?php
-                            $categoryPoints = (int)$row['category_points'];
-                            $previousPoints = $row['previous_rank'] === null ? null : 11 - (int)$row['previous_rank'];
-                            $pointsChange = $previousPoints === null ? null : $categoryPoints - $previousPoints;
-                            $rankMovement = $row['rank_change'] === null ? null : (int)$row['rank_change'];
-                            $scoreChange = $row['score_change'] === null ? null : (float)$row['score_change'];
+                            $valueA = $row['a'];
+                            $valueB = $row['b'];
+                            $rankDelta = $row['change']['rank_movement'];
+                            $scoreDelta = $row['change']['score'];
+                            $pointsDelta = $row['change']['points'];
+                            $rankClass = $rankDelta === null ? 'history-change-same' : ($rankDelta > 0 ? 'history-change-up' : ($rankDelta < 0 ? 'history-change-down' : 'history-change-same'));
+                            $scoreClass = $scoreDelta === null ? 'history-change-same' : ($scoreDelta > 0.0000001 ? 'history-change-up' : ($scoreDelta < -0.0000001 ? 'history-change-down' : 'history-change-same'));
+                            $pointsClass = $pointsDelta === null ? 'history-change-same' : ($pointsDelta > 0.0000001 ? 'history-change-up' : ($pointsDelta < -0.0000001 ? 'history-change-down' : 'history-change-same'));
                         ?>
                         <tr>
-                            <td><strong>#<?php echo (int)$row['category_rank']; ?></strong></td>
-                            <td>Squadron <?php echo (int)$row['squadron_id']; ?></td>
-                            <td><?php echo number_format((float)$row['category_score'],2); ?>%</td>
-                            <td><?php echo $categoryPoints; ?></td>
-                            <td><?php echo $row['previous_rank']===null?'—':'#'.(int)$row['previous_rank']; ?></td>
-                            <td class="<?php echo $rankMovement===null?'history-change-same':($rankMovement>0?'history-change-up':($rankMovement<0?'history-change-down':'history-change-same')); ?>"><?php echo $rankMovement===null?'—':(($rankMovement>0?'+':'').$rankMovement); ?></td>
-                            <td class="<?php echo $scoreChange===null?'history-change-same':($scoreChange>0?'history-change-up':($scoreChange<0?'history-change-down':'history-change-same')); ?>"><?php echo $scoreChange===null?'—':(($scoreChange>0?'+':'').number_format($scoreChange,2).' pp'); ?></td>
-                            <td><?php echo $previousPoints===null?'—':$previousPoints; ?></td>
-                            <td class="<?php echo $pointsChange===null?'history-change-same':($pointsChange>0?'history-change-up':($pointsChange<0?'history-change-down':'history-change-same')); ?>"><?php echo $pointsChange===null?'—':(($pointsChange>0?'+':'').$pointsChange); ?></td>
-                            <td><?php echo $row['source_rank']===null?'—':(int)$row['source_rank']; ?></td>
+                            <td><strong><?php echo historyH($row['name']); ?></strong></td>
+                            <td><?php echo $valueA ? '#' . (int)$valueA['rank'] : '—'; ?></td>
+                            <td><?php echo $valueB ? '#' . (int)$valueB['rank'] : '—'; ?></td>
+                            <td class="<?php echo $rankClass; ?>">
+                                <?php
+                                    if ($rankDelta === null) echo '—';
+                                    elseif ($rankDelta > 0) echo '+' . (int)$rankDelta . ' places gained';
+                                    elseif ($rankDelta < 0) echo (int)$rankDelta . ' places lost';
+                                    else echo 'No change';
+                                ?>
+                            </td>
+                            <td><?php echo $valueA ? number_format((float)$valueA['score'], 2) . '%' : '—'; ?></td>
+                            <td><?php echo $valueB ? number_format((float)$valueB['score'], 2) . '%' : '—'; ?></td>
+                            <td class="<?php echo $scoreClass; ?>">
+                                <?php echo $scoreDelta === null ? '—' : (($scoreDelta > 0 ? '+' : '') . number_format((float)$scoreDelta, 2) . ' pp'); ?>
+                            </td>
+                            <td><?php echo $valueA ? number_format((float)$valueA['points'], 0) : '—'; ?></td>
+                            <td><?php echo $valueB ? number_format((float)$valueB['points'], 0) : '—'; ?></td>
+                            <td class="<?php echo $pointsClass; ?>">
+                                <?php echo $pointsDelta === null ? '—' : (($pointsDelta > 0 ? '+' : '') . number_format((float)$pointsDelta, 0)); ?>
+                            </td>
                         </tr>
                         <?php endforeach; ?>
                         </tbody>

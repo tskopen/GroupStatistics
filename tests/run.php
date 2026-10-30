@@ -91,6 +91,32 @@ check($squadronOneOverallComparison !== null
     && abs((float)$squadronOneOverallComparison['opa_change'] + 13.0) < 0.000001
     && (int)$squadronOneOverallComparison['rank_movement'] === -9,
     'all-squadron comparison calculates cumulative OPA and rank movement directly between selected publications');
+$categoryComparison13 = opaGetPublicationCategoryComparison($db, $firstPublication['publication_id'], $thirdPublication['publication_id']);
+$amiGroupComparison = null;
+foreach ($categoryComparison13 as $categoryComparison) if ($categoryComparison['key'] === 'ami') $amiGroupComparison = $categoryComparison;
+$amiSquadronOne = null;
+foreach (($amiGroupComparison['squadrons'] ?? []) as $categoryRow) {
+    if ((int)$categoryRow['squadron_id'] === 1) $amiSquadronOne = $categoryRow;
+}
+check(count($categoryComparison13) === 3 && $amiGroupComparison !== null
+    && count($amiGroupComparison['squadrons']) === 10,
+    'publication history category comparison includes every category and all ten squadrons');
+check($amiSquadronOne !== null
+    && (int)$amiSquadronOne['a']['rank'] === 1
+    && (int)$amiSquadronOne['b']['rank'] === 10
+    && abs((float)$amiSquadronOne['change']['score'] + 13.0) < 0.000001
+    && (float)$amiSquadronOne['change']['points'] === -9.0
+    && (int)$amiSquadronOne['change']['rank_movement'] === -9,
+    'P1 to P3 category comparison calculates rank, percentage score, and category point deltas directly across the selected periods');
+$categoryComparisonReverse = opaGetPublicationCategoryComparison($db, $thirdPublication['publication_id'], $firstPublication['publication_id']);
+$reverseAmi = null;
+foreach ($categoryComparisonReverse as $categoryComparison) if ($categoryComparison['key'] === 'ami') $reverseAmi = $categoryComparison;
+$reverseSquadronOne = $reverseAmi['squadrons'][0] ?? null;
+check($reverseSquadronOne !== null
+    && abs((float)$reverseSquadronOne['change']['score'] - 13.0) < 0.000001
+    && (float)$reverseSquadronOne['change']['points'] === 9.0,
+    'category comparison deltas reverse when publication A and B are swapped');
+
 $recentOpaHistory = opaGetRecentOpaHistoryBySquadron($db, 2);
 $squadronOneHistory = $recentOpaHistory[1] ?? [];
 check(count($squadronOneHistory) === 2
