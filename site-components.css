@@ -80,6 +80,32 @@
   font-weight: 700;
 }
 :where(.site-header-nav a:hover) { background: var(--ui-page); text-decoration: underline; }
+:where(.site-header-install-button) {
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid var(--ui-primary);
+  border-radius: 8px;
+  color: #fff;
+  background: var(--ui-primary);
+  font-weight: 700;
+  cursor: pointer;
+}
+:where(.site-header-install-button:hover, .site-header-install-button:focus-visible) {
+  background: var(--ui-secondary);
+  border-color: var(--ui-secondary);
+}
+:where(.site-header-install-button[hidden], .site-header-install-help[hidden]) { display: none !important; }
+:where(.site-header-install-help) {
+  flex-basis: 100%;
+  color: var(--ui-muted);
+  font-size: .78rem;
+  line-height: 1.4;
+  text-align: center;
+}
 :where(.site-header-mark, .site-header-squadron, .site-header-squadron-placeholder) { max-width: 100%; }
 @media (max-width: 600px) {
   :where(.site-header) { grid-template-columns: 40px minmax(0, 1fr) 40px; gap: 8px; padding: 0 6px; }

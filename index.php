@@ -391,12 +391,6 @@ usort(
     .regular-event-type { display: inline-block; background: var(--soft-accent-color); color: var(--primary-color); padding: 4px 8px; border-radius: 3px; font-size: 0.75em; margin-bottom: 8px; }
     .regular-event-score { font-size: 1.5em; font-weight: bold; color: var(--accent-color); }
     
-    .pwa-install-wrap { text-align: right; margin: 0 0 -10px; min-height: 38px; }
-    .pwa-install-button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 9px 13px; border: 0; border-radius: 6px; background: var(--primary-color); color: #fff; font-weight: 700; font-size: .92rem; cursor: pointer; box-shadow: 0 2px 5px rgba(0,0,0,.16); }
-    @media (max-width: 600px) { .pwa-install-wrap { margin-bottom: 0; } .pwa-install-button { padding: 8px 10px; font-size: .85rem; } }
-    .pwa-install-button:hover, .pwa-install-button:focus-visible { background: var(--secondary-color); }
-    .pwa-install-button[hidden], .pwa-install-help[hidden] { display: none !important; }
-    .pwa-install-help { max-width: 560px; margin: 10px auto 0; color: var(--text-color); font-size: .9rem; line-height: 1.45; }
     .announcement-preview { margin: 0 auto 26px; padding: 18px; background: var(--surface-color); border: 1px solid var(--border-color); border-left: 5px solid var(--accent-color); border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,.06); }
     .announcement-preview-head { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:12px; }
     .announcement-preview h2 { margin:0; border:0; padding:0; font-size:1.35rem; }
@@ -420,11 +414,6 @@ usort(
 <body>
 <?php require_once __DIR__ . '/site-header.php'; renderGroupSiteHeader(); ?>
 <div class="container">
-    <div class="pwa-install-wrap">
-        <button type="button" id="pwa-install-button" class="pwa-install-button" hidden>⬇ Install App</button>
-        <p id="pwa-install-help" class="pwa-install-help" hidden></p>
-    </div>
-
     <section class="announcement-preview" aria-labelledby="announcements-preview-title">
         <div class="announcement-preview-head">
             <h2 id="announcements-preview-title">📣 Next Group Event</h2>
@@ -1011,85 +1000,7 @@ if ('serviceWorker' in navigator) {
 })();
 
 </script>
-<script>
-// Offer native installation when supported, otherwise link to device-specific instructions.
-(function () {
-    var installPrompt = null;
-    var installButton = document.getElementById('pwa-install-button');
-    var installHelp = document.getElementById('pwa-install-help');
-    if (!installButton) return;
 
-    var userAgent = window.navigator.userAgent || '';
-    var isIOS = /iPad|iPhone|iPod/.test(userAgent) ||
-        (window.navigator.platform === 'MacIntel' && window.navigator.maxTouchPoints > 1);
-    var isAndroid = /Android/i.test(userAgent);
-    var guideUrl = 'https://support.google.com/chrome/answer/9658361?co=GENIE.Platform%3DAndroid&hl=en-0';
-
-    if (isIOS) {
-        guideUrl = 'https://support.apple.com/guide/iphone/bookmark-a-website-iph42ab2f3a7/ios';
-        installButton.textContent = '＋ Add to Home Screen';
-        installHelp.textContent = 'For iPhone and iPad, open this page in Safari, tap Share, then choose Add to Home Screen.';
-    } else if (isAndroid) {
-        installButton.textContent = '＋ Add to Home Screen';
-        installHelp.textContent = 'If the install prompt does not appear, follow the Chrome instructions to add this site to your home screen.';
-    } else {
-        guideUrl = 'https://developer.chrome.com/blog/how_chrome_helps_users_install_the_apps_they_value';
-        installButton.textContent = '⬇ Install App';
-        installHelp.textContent = 'If installation is not offered automatically, open the browser menu and look for Install app or Install page as app.';
-    }
-
-    function isStandalone() {
-        return window.matchMedia('(display-mode: standalone)').matches ||
-            window.navigator.standalone === true;
-    }
-
-    function hideInstallUi() {
-        installButton.hidden = true;
-        installHelp.hidden = true;
-    }
-
-    if (isStandalone()) {
-        hideInstallUi();
-        return;
-    }
-
-    // Show a useful fallback immediately; a native prompt replaces the guide action when available.
-    installButton.hidden = false;
-    installHelp.hidden = false;
-
-    window.addEventListener('beforeinstallprompt', function (event) {
-        event.preventDefault();
-        installPrompt = event;
-        installButton.hidden = false;
-        installButton.textContent = isIOS ? '＋ Add to Home Screen' : '⬇ Install App';
-        installHelp.hidden = true;
-    });
-
-    installButton.addEventListener('click', async function () {
-        if (!installPrompt) {
-            window.open(guideUrl, '_blank', 'noopener,noreferrer');
-            return;
-        }
-
-        installButton.disabled = true;
-        try {
-            await installPrompt.prompt();
-            await installPrompt.userChoice;
-        } catch (error) {
-            console.error('PWA installation prompt failed:', error);
-        } finally {
-            installPrompt = null;
-            installButton.disabled = false;
-            hideInstallUi();
-        }
-    });
-
-    window.addEventListener('appinstalled', function () {
-        installPrompt = null;
-        hideInstallUi();
-    });
-})();
-</script>
 <script>
 // Show the six most recent event cards by default, based on their existing visual timestamp order.
 (function () {

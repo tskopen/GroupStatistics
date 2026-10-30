@@ -4,7 +4,12 @@
  * then call renderGroupSiteHeader() inside the page body.
  */
 if (!function_exists('renderGroupSiteHeader')) {
-    function renderGroupSiteHeader(): void {
+    function renderGroupSiteHeader(?bool $showNavigation = null): void {
+        // Default to the public navigation on visitor pages and hide it on every admin route.
+        if ($showNavigation === null) {
+            $currentPage = basename($_SERVER['SCRIPT_NAME'] ?? '');
+            $showNavigation = strpos($currentPage, 'admin-') !== 0;
+        }
         $theme = function_exists('loadTheme') ? loadTheme() : [];
         $groupIconSettings = function_exists('readJson') && defined('DATA_DIR')
             ? readJson(DATA_DIR . '/group-icon.json') : [];
