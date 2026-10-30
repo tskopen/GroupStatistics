@@ -1,6 +1,6 @@
 # Database migrations
 
-GroupStatistics now treats SQLite as the runtime source of truth.
+GroupStatistics now treats SQLite as the runtime source of truth. The OPA scoring system keeps drafts separate from append-only published snapshots; public OPA reads must use the latest row in `scoring_publications`, never event totals.
 
 ## Runtime behavior
 
@@ -25,3 +25,7 @@ Migrations are transactional. A failed migration is rolled back and is retried o
 - `005_cadet_of_month.php` — Cadet of the Month records.
 - `006_group_announcements.php` — public group announcements.
 - `007_engagement_awards.php` — flexible engagement awards, multi-squadron recipients, and optional photos.
+- `008_meet_the_group.php` — configurable leadership and squadron directory sections, people, and role assignments.
+- `009_opa_scoring.php` — category-based OPA drafts, scoring imports, and immutable publication snapshots.
+- `010_scoring_immutability.php` — database triggers enforcing append-only published scoring snapshots.
+- `011_publication_descriptions.php` — optional short descriptions attached to OPA publications.

@@ -35,8 +35,7 @@ if (isset($_GET['logout'])) {
 <?php require_once __DIR__ . '/site-header.php'; renderGroupSiteHeader(); ?>
     <div class="panel">
         <h1>Admin Panel</h1>
-        <a class="button" href="admin-scores.php">Enter Single Score</a>
-        <a class="button" href="admin-bulk-scores.php">Enter Event (All Squadrons)</a>
+        <a class="button" href="admin-score-management.php">📊 Score Management (OPA)</a>
         <a class="button" href="admin-brackets.php">🏆 Manage Brackets</a>
         <a class="button" href="admin-squadrons.php">Manage Squadrons</a>
         <a class="button" href="admin-directory.php">👥 Manage Meet the Group</a>
@@ -47,7 +46,6 @@ if (isset($_GET['logout'])) {
         <a class="button" href="admin-announcements.php">📣 Manage Group Announcements</a>
         <a class="button" href="admin-awards.php">🏅 Manage Challenge Awards</a>
         <a class="button" href="admin-theme.php">Theme Settings</a>
-        <a class="button" href="admin-record-snapshot.php">📋 Record Leaderboard Snapshot</a>
         <a class="button" href="admin-test-notification.php">Send Notifications</a>
         <a class="button" href="debug-vapid.php" style="background: #666;">Debug VAPID Key</a>
         <div class="logout">

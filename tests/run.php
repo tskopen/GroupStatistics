@@ -13,6 +13,204 @@ mkdir($dataDir,0777,true);
 define('DATA_DIR',$dataDir);
 
 foreach(glob(__DIR__.'/../migrations/[0-9][0-9][0-9]_*.php') as $file){$migration=require $file; $migration($db);}
+
+require_once __DIR__ . '/../lib/opa-scoring.php';
+$squadronSeed = $db->prepare('INSERT OR IGNORE INTO squadrons(id,name,created_at) VALUES(?,?,?)');
+for ($sid = 1; $sid <= 10; $sid++) $squadronSeed->execute([$sid, 'Test Squadron ' . $sid, date('c')]);
+check((int)$db->query("SELECT COUNT(*) FROM scoring_categories WHERE is_active=1")->fetchColumn() === 3, 'OPA migration seeds AMI, SAMI, and PFT categories');
+
+$categoryRows = opaGetCategories($db);
+$draftId = opaCreateDraft($db, 'test-admin', 'OPA test draft');
+$draftUpdate = $db->prepare('UPDATE scoring_draft_scores SET category_rank=?,category_score=?,updated_at=? WHERE draft_id=? AND category_id=? AND squadron_id=?');
+foreach ($categoryRows as $category) {
+    for ($sid = 1; $sid <= 10; $sid++) {
+        $draftUpdate->execute([$sid, 100 - $sid, date('c'), $draftId, (int)$category['id'], $sid]);
+    }
+}
+$draftValidation = opaValidateDraft($db, $draftId);
+check(count($draftValidation['errors']) === 0, 'complete unique 1–10 category rankings and 0–100 scores pass publish validation');
+$draftPreview = opaGetDraftPreview($db, $draftId);
+check($draftPreview[0]['squadron_id'] === 1 && abs($draftPreview[0]['opa'] - 99.0) < 0.000001, 'OPA preview averages percentage scores across all active categories');
+$firstPublication = opaPublishDraft($db, $draftId, 'test-admin');
+$firstBoard = opaGetPublishedLeaderboard($db);
+check(count($firstBoard) === 10 && (int)$firstBoard[0]['squadron_id'] === 1, 'published OPA leaderboard includes only Squadrons 1–10');
+$scorePoints = $db->prepare('SELECT category_points FROM scoring_publication_scores WHERE publication_id=? AND category_key=? AND squadron_id=1');
+$scorePoints->execute([$firstPublication['publication_id'], 'ami']);
+check((float)$scorePoints->fetchColumn() === 10.0, 'category points use the 10-to-1 rank scale');
+$breakdown = opaGetSquadronBreakdown($db, 1);
+check($breakdown !== null && count($breakdown['categories']) === 3, 'published squadron breakdown returns category ranks and scores');
+
+$secondDraft = opaCreateDraft($db, 'test-admin', 'Second OPA test draft');
+foreach ($categoryRows as $category) {
+    for ($sid = 1; $sid <= 10; $sid++) {
+        $draftUpdate->execute([11 - $sid, 89 + $sid, date('c'), $secondDraft, (int)$category['id'], $sid]);
+    }
+}
+$secondPublication = opaPublishDraft($db, $secondDraft, 'test-admin');
+$secondBoard = opaGetPublishedLeaderboard($db);
+$squadronOne = null;
+foreach ($secondBoard as $entry) if ((int)$entry['squadron_id'] === 1) $squadronOne = $entry;
+check($squadronOne !== null && (int)$squadronOne['rank_change'] === -9 && abs((float)$squadronOne['opa_change'] + 9.0) < 0.000001, 'publication snapshots capture OPA and overall rank changes');
+$immutableSnapshot = false;
+try {
+    $db->prepare('UPDATE scoring_publications SET published_by=? WHERE id=?')->execute(['changed', $firstPublication['publication_id']]);
+} catch (PDOException $e) {
+    $immutableSnapshot = str_contains($e->getMessage(), 'immutable');
+}
+check($immutableSnapshot, 'published scoring snapshot rows are append-only');
+
+$comparison12 = opaGetSquadronPublicationComparison($db, 1, $firstPublication['publication_id'], $secondPublication['publication_id']);
+check($comparison12 !== null && (int)$comparison12['publication_a']['publication_number'] === 1 && (int)$comparison12['publication_b']['publication_number'] === 2, 'OPA comparison accepts explicit P1 versus P2 selections');
+check(abs($comparison12['overall']['change']['opa'] + 9.0) < 0.000001 && (int)$comparison12['overall']['change']['rank_movement'] === -9, 'P1 versus P2 calculates OPA and rank movement directly between selected periods');
+$amiComparison12 = null;
+foreach ($comparison12['categories'] as $categoryComparison) if ($categoryComparison['key'] === 'ami') $amiComparison12 = $categoryComparison;
+check($amiComparison12 !== null && (int)$amiComparison12['a']['rank'] === 1 && (int)$amiComparison12['b']['rank'] === 10 && abs($amiComparison12['change']['score'] + 9.0) < 0.000001 && (int)$amiComparison12['change']['points'] === -9, 'category details compare Group 1 rank, percentage score, and category points');
+
+$thirdDraft = opaCreateDraft($db, 'test-admin', 'Third OPA test draft');
+foreach ($categoryRows as $category) {
+    for ($sid = 1; $sid <= 10; $sid++) {
+        $draftUpdate->execute([11 - $sid, 85 + $sid, date('c'), $thirdDraft, (int)$category['id'], $sid]);
+    }
+}
+$thirdPublication = opaPublishDraft($db, $thirdDraft, 'test-admin');
+$comparison13 = opaGetSquadronPublicationComparison($db, 1, $firstPublication['publication_id'], $thirdPublication['publication_id']);
+check($comparison13 !== null && (int)$comparison13['publication_a']['publication_number'] === 1 && (int)$comparison13['publication_b']['publication_number'] === 3, 'OPA comparison supports non-adjacent P1 versus P3 selections');
+check(abs($comparison13['overall']['change']['opa'] + 13.0) < 0.000001 && (int)$comparison13['overall']['change']['rank_movement'] === -9, 'P1 versus P3 movement is calculated against P1 rather than P2');
+$comparisonReverse = opaGetSquadronPublicationComparison($db, 1, $thirdPublication['publication_id'], $firstPublication['publication_id']);
+check($comparisonReverse !== null && abs($comparisonReverse['overall']['change']['opa'] - 13.0) < 0.000001, 'publication comparison direction reverses when the A and B selectors are swapped');
+$allSquadronComparison = opaGetPublicationLeaderboardComparison($db, $firstPublication['publication_id'], $thirdPublication['publication_id']);
+$squadronOneOverallComparison = null;
+foreach ($allSquadronComparison['squadrons'] as $comparisonRow) {
+    if ((int)$comparisonRow['squadron_id'] === 1) $squadronOneOverallComparison = $comparisonRow;
+}
+check($allSquadronComparison['publication_a']['label'] === 'P1'
+    && $allSquadronComparison['publication_b']['label'] === 'P3'
+    && count($allSquadronComparison['squadrons']) === 10,
+    'publication history comparison returns every squadron for non-adjacent P1 versus P3 selections');
+check($squadronOneOverallComparison !== null
+    && abs((float)$squadronOneOverallComparison['opa_change'] + 13.0) < 0.000001
+    && (int)$squadronOneOverallComparison['rank_movement'] === -9,
+    'all-squadron comparison calculates cumulative OPA and rank movement directly between selected publications');
+$categoryComparison13 = opaGetPublicationCategoryComparison($db, $firstPublication['publication_id'], $thirdPublication['publication_id']);
+$amiGroupComparison = null;
+foreach ($categoryComparison13 as $categoryComparison) if ($categoryComparison['key'] === 'ami') $amiGroupComparison = $categoryComparison;
+$amiSquadronOne = null;
+foreach (($amiGroupComparison['squadrons'] ?? []) as $categoryRow) {
+    if ((int)$categoryRow['squadron_id'] === 1) $amiSquadronOne = $categoryRow;
+}
+check(count($categoryComparison13) === 3 && $amiGroupComparison !== null
+    && count($amiGroupComparison['squadrons']) === 10,
+    'publication history category comparison includes every category and all ten squadrons');
+check($amiSquadronOne !== null
+    && (int)$amiSquadronOne['a']['rank'] === 1
+    && (int)$amiSquadronOne['b']['rank'] === 10
+    && abs((float)$amiSquadronOne['change']['score'] + 13.0) < 0.000001
+    && (float)$amiSquadronOne['change']['points'] === -9.0
+    && (int)$amiSquadronOne['change']['rank_movement'] === -9,
+    'P1 to P3 category comparison calculates rank, percentage score, and category point deltas directly across the selected periods');
+$categoryComparisonReverse = opaGetPublicationCategoryComparison($db, $thirdPublication['publication_id'], $firstPublication['publication_id']);
+$reverseAmi = null;
+foreach ($categoryComparisonReverse as $categoryComparison) if ($categoryComparison['key'] === 'ami') $reverseAmi = $categoryComparison;
+$reverseSquadronOne = $reverseAmi['squadrons'][0] ?? null;
+check($reverseSquadronOne !== null
+    && abs((float)$reverseSquadronOne['change']['score'] - 13.0) < 0.000001
+    && (float)$reverseSquadronOne['change']['points'] === 9.0,
+    'category comparison deltas reverse when publication A and B are swapped');
+
+$recentOpaHistory = opaGetRecentOpaHistoryBySquadron($db, 2);
+$squadronOneHistory = $recentOpaHistory[1] ?? [];
+check(count($squadronOneHistory) === 2
+    && $squadronOneHistory[0]['label'] === 'P2'
+    && $squadronOneHistory[1]['label'] === 'P3'
+    && abs((float)$squadronOneHistory[1]['opa'] - 86.0) < 0.000001,
+    'main-board OPA history keeps the latest publications in chronological order with stable P labels');
+
+
+
+$sparseDraftId = opaCreateDraft($db, 'test-admin', 'Single-category update');
+$sparseRows = opaGetDraftRows($db, $sparseDraftId);
+$latestRows = $db->prepare('SELECT category_key,squadron_id,category_rank,category_score FROM scoring_publication_scores WHERE publication_id=?');
+$latestRows->execute([$thirdPublication['publication_id']]);
+$latestByCategory = [];
+foreach ($latestRows->fetchAll(PDO::FETCH_ASSOC) as $row) $latestByCategory[$row['category_key']][(int)$row['squadron_id']] = $row;
+$amiCategoryForSparse = null;
+foreach ($categoryRows as $category) if ($category['category_key'] === 'ami') $amiCategoryForSparse = $category;
+$allInherited = true;
+foreach ($categoryRows as $category) {
+    for ($sid = 1; $sid <= 10; $sid++) {
+        $expected = $latestByCategory[$category['category_key']][$sid] ?? null;
+        $actual = $sparseRows[(int)$category['id']][$sid] ?? [];
+        if (!$expected || (int)$actual['category_rank'] !== (int)$expected['category_rank']
+            || abs((float)$actual['category_score'] - (float)$expected['category_score']) > 0.0000001) $allInherited = false;
+    }
+}
+check($allInherited, 'new drafts automatically inherit the latest published ranks and percentages for every category');
+for ($sid = 1; $sid <= 10; $sid++) {
+    $draftUpdate->execute([$sid, 75 + $sid, date('c'), $sparseDraftId, (int)$amiCategoryForSparse['id'], $sid]);
+}
+$sparseStatuses = opaGetDraftCategoryStatuses($db, $sparseDraftId);
+check(($sparseStatuses[(int)$amiCategoryForSparse['id']] ?? '') === 'updated'
+    && ($sparseStatuses[(int)$categoryRows[1]['id']] ?? '') === 'unchanged',
+    'draft status distinguishes the one updated category from categories carried forward unchanged');
+$sparseDescription = 'AMI results updated after the latest competition.';
+$sparsePublication = opaPublishDraft($db, $sparseDraftId, 'test-admin', $sparseDescription);
+$carryForwardStmt = $db->prepare('SELECT category_rank,category_score FROM scoring_publication_scores WHERE publication_id=? AND category_key=? AND squadron_id=?');
+$carryForwardWorks = true;
+foreach (['sami', 'pft'] as $unchangedKey) {
+    for ($sid = 1; $sid <= 10; $sid++) {
+        $carryForwardStmt->execute([$thirdPublication['publication_id'], $unchangedKey, $sid]);
+        $before = $carryForwardStmt->fetch(PDO::FETCH_ASSOC);
+        $carryForwardStmt->execute([$sparsePublication['publication_id'], $unchangedKey, $sid]);
+        $after = $carryForwardStmt->fetch(PDO::FETCH_ASSOC);
+        if (!$before || !$after || (int)$before['category_rank'] !== (int)$after['category_rank']
+            || abs((float)$before['category_score'] - (float)$after['category_score']) > 0.0000001) $carryForwardWorks = false;
+    }
+}
+check($carryForwardWorks, 'publishing one updated category preserves every unchanged category from the previous publication');
+$descriptionStmt = $db->prepare('SELECT description FROM scoring_publications WHERE id=?');
+$descriptionStmt->execute([$sparsePublication['publication_id']]);
+check($descriptionStmt->fetchColumn() === $sparseDescription, 'publication description is stored with the immutable snapshot');
+$sparseComparison = opaGetSquadronPublicationComparison($db, 1, $thirdPublication['publication_id'], $sparsePublication['publication_id']);
+check($sparseComparison !== null && $sparseComparison['publication_b']['description'] === $sparseDescription,
+    'publication descriptions are included in squadron comparison data');
+
+$amiCategory = null;
+foreach ($categoryRows as $category) if ($category['category_key'] === 'ami') $amiCategory = $category;
+$importRows = [['row_number' => 1, 'cells' => [0 => 'Squadron', 1 => 'Source Rank', 2 => 'Percentage Score']]];
+$originalRanks = [1=>14,2=>7,3=>22,4=>3,5=>18,6=>6,7=>11,8=>2,9=>32,10=>28,11=>1];
+foreach ($originalRanks as $sid => $originalRank) {
+    $importRows[] = ['row_number' => $sid + 1, 'cells' => [0 => 'Squadron ' . $sid, 1 => (string)$originalRank, 2 => '95.0']];
+}
+$importPreview = opaBuildImportPreview([['name'=>'AMI','rows'=>$importRows]], $categoryRows);
+$importedAmi = $importPreview['records'][(int)$amiCategory['id']] ?? [];
+check(count($importedAmi) === 10 && !isset($importedAmi[11]), 'Excel-style import filtering ignores Squadrons 11–40 by identifier');
+check(isset($importedAmi[8]) && (int)$importedAmi[8]['category_rank'] === 1 && (int)$importedAmi[2]['category_rank'] === 4, 'source 1–40 rankings are recalculated as Group 1 relative rankings');
+$db->prepare("UPDATE scoring_categories SET ranking_direction='higher' WHERE id=?")->execute([(int)$amiCategory['id']]);
+$categoryRows = opaGetCategories($db);
+$percentOnlyRows = [['row_number' => 1, 'cells' => [0 => 'Squadron', 1 => 'Percentage Score']]];
+for ($sid = 1; $sid <= 10; $sid++) $percentOnlyRows[] = ['row_number' => $sid + 1, 'cells' => [0 => 'Squadron ' . $sid, 1 => (string)(80 + $sid)]];
+$percentOnlyPreview = opaBuildImportPreview([['name'=>'AMI','rows'=>$percentOnlyRows]], $categoryRows);
+$percentOnlyRecords = $percentOnlyPreview['records'][(int)$amiCategory['id']] ?? [];
+check(isset($percentOnlyRecords[10]) && (int)$percentOnlyRecords[10]['category_rank'] === 1 && (int)$percentOnlyRecords[1]['category_rank'] === 10, 'percentage performance values can determine relative ranks when higher-is-better is configured');
+$rankDraftId = opaCreateDraft($db, 'test-admin', 'Manual rank recalculation');
+$rankScoreUpdate = $db->prepare('UPDATE scoring_draft_scores SET category_score=?,updated_at=? WHERE draft_id=? AND category_id=? AND squadron_id=?');
+for ($sid = 1; $sid <= 10; $sid++) $rankScoreUpdate->execute([$sid * 8, date('c'), $rankDraftId, (int)$amiCategory['id'], $sid]);
+opaRecalculateDraftRanks($db, $rankDraftId, (int)$amiCategory['id']);
+$rankCheck = $db->prepare('SELECT category_rank FROM scoring_draft_scores WHERE draft_id=? AND category_id=? AND squadron_id=10');
+$rankCheck->execute([$rankDraftId, (int)$amiCategory['id']]);
+check((int)$rankCheck->fetchColumn() === 1, 'admin recalculation ranks percentage scores using the configured category direction');
+$provenanceDraftId = opaCreateDraft($db, 'test-admin', 'Field provenance test');
+$provenancePreview = ['records' => [(int)$amiCategory['id'] => [1 => [
+    'category_rank' => 1, 'category_score' => null, 'source_rank' => 14, 'source_measurement' => null,
+]]]];
+opaApplyImportPreview($db, $provenanceDraftId, $provenancePreview, 'provenance.xlsx', hash('sha256', 'field-provenance-test'), 'test-admin');
+$provenanceStmt = $db->prepare('SELECT rank_source,score_source FROM scoring_draft_scores WHERE draft_id=? AND category_id=? AND squadron_id=1');
+$provenanceStmt->execute([$provenanceDraftId, (int)$amiCategory['id']]);
+$provenance = $provenanceStmt->fetch(PDO::FETCH_ASSOC);
+check($provenance['rank_source'] === 'import' && $provenance['score_source'] === 'manual', 'rank and percentage provenance are tracked independently when only one field is imported');
+
+
+
 check((bool)$db->query("SELECT 1 FROM sqlite_master WHERE type='table' AND name='squadrons'")->fetchColumn(),'core schema migration creates squadrons');
 check((bool)$db->query("SELECT 1 FROM sqlite_master WHERE type='table' AND name='notification_subscriptions'")->fetchColumn(),'notification migration creates subscription table');
 check((bool)$db->query("SELECT 1 FROM sqlite_master WHERE type='table' AND name='group_announcements'")->fetchColumn(),'announcement migration creates separate announcements table');

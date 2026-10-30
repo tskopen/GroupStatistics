@@ -51,7 +51,7 @@ unset($scoreRow);
 
 // Restore the leaderboard data model used by the PR #61 homepage.
 // Keep the SQLite scoring helper as the single source of truth.
-$rankingRows = getSquadronRankings();
+$rankingRows = opaGetPublishedLeaderboard($db);
 $ranked = [];
 foreach ($rankingRows as $row) {
     $squadron = $squadronMap[(int)$row['squadron_id']] ?? null;
@@ -59,6 +59,7 @@ foreach ($rankingRows as $row) {
     $ranked[] = [
         'squadron' => $squadron,
         'total' => $row['total'],
+        'rank' => (int)$row['rank'],
     ];
 }
 
@@ -278,20 +279,56 @@ usort(
     .movement-down { color: #b00020; font-weight: bold; }
     .movement-same { color: #999; font-weight: bold; }
     .movement-new { color: #003366; font-weight: bold; background: #e3f2fd; padding: 2px 6px; border-radius: 3px; font-size: 0.85em; }
+    .opa-history { margin-top: 4px; color: var(--muted-color); font-size: .72rem; font-weight: 500; line-height: 1.35; white-space: normal; }
+    .movement-cell { min-width: 132px; line-height: 1.25; }
+    .movement-opa { display: block; white-space: nowrap; }
+    .movement-rank-meta { display: block; margin-top: 4px; color: var(--muted-color); font-size: .72rem; font-weight: 500; }
 
     .details-btn { padding: 6px 12px; background: var(--primary-color); color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 0.85em; }
     .details-btn:hover { background: var(--secondary-color); }
 
     /* Score breakdown modal */
     .breakdown-modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 20px; }
-    .breakdown-modal { background: var(--surface-color); border-radius: 8px; max-width: 500px; width: 100%; max-height: 80vh; overflow-y: auto; padding: 25px; position: relative; box-shadow: 0 4px 20px rgba(0,0,0,0.3); }
-    .breakdown-modal-close { position: absolute; top: 12px; right: 15px; background: none; border: none; font-size: 1.5em; cursor: pointer; color: #666; }
+    .breakdown-modal { background: var(--surface-color); border-radius: 10px; max-width: 1080px; width: 100%; max-height: 90vh; overflow-y: auto; padding: 26px; position: relative; box-shadow: 0 4px 20px rgba(0,0,0,0.3); }
+    .breakdown-modal-close { position: absolute; top: 12px; right: 15px; background: none; border: none; font-size: 1.5em; cursor: pointer; color: #666; z-index: 2; }
     .breakdown-modal-close:hover { color: #000; }
-    .breakdown-section { margin-top: 15px; }
-    .breakdown-section h4 { margin-bottom: 8px; color: var(--primary-color); }
-    .breakdown-item { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #eee; font-size: 0.9em; }
-    .breakdown-item-points { font-weight: bold; color: #28a745; }
+    .breakdown-section { margin-top: 18px; }
+    .breakdown-section h4 { margin: 0 0 10px; color: var(--primary-color); }
     .breakdown-total { margin-top: 10px; font-weight: bold; text-align: right; }
+    .breakdown-comparison-controls { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; margin: 16px 0; padding: 14px; border: 1px solid var(--border-color,#d8dee8); border-radius: 8px; }
+    .breakdown-control { display: flex; flex-direction: column; gap: 6px; font-size: .88em; font-weight: 700; }
+    .breakdown-control select { min-width: 0; width: 100%; padding: 9px 10px; border: 1px solid var(--border-color,#cbd5e1); border-radius: 6px; background: var(--surface-color,#fff); color: var(--text-color,#222); }
+    .breakdown-summary-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 12px; }
+    .breakdown-publication-card { border: 1px solid var(--border-color,#d8dee8); border-radius: 8px; padding: 14px; min-width: 0; }
+    .breakdown-publication-card h5 { color: var(--primary-color); margin: 0 0 8px; }
+    .breakdown-publication-card .breakdown-opa { font-size: 1.55em; font-weight: 800; margin: 4px 0; }
+    .breakdown-publication-card .breakdown-meta { display: block; color: var(--muted-color,#667085); font-size: .82em; margin-top: 5px; overflow-wrap: anywhere; }
+    .breakdown-change-card { background: var(--soft-primary-color,#f4f7fb); }
+    .breakdown-category-list { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; }
+    .breakdown-category-card { border: 1px solid var(--border-color,#d8dee8); border-radius: 8px; padding: 14px; min-width: 0; }
+    .breakdown-category-card h5 { margin: 0 0 10px; color: var(--primary-color); font-size: 1rem; }
+    .breakdown-category-columns { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 10px; }
+    .breakdown-category-period { font-size: .78em; font-weight: 800; color: var(--primary-color); margin-bottom: 7px; }
+    .breakdown-category-value { margin: 4px 0; font-size: .86em; overflow-wrap: anywhere; }
+    .breakdown-category-source { color: var(--muted-color,#667085); font-size: .76em; margin-top: 8px; line-height: 1.45; overflow-wrap: anywhere; }
+    .breakdown-category-change { background: var(--soft-primary-color,#f7f9fc); border-radius: 6px; padding: 8px; }
+    .breakdown-positive { color: #18713b; font-weight: 800; }
+    .breakdown-negative { color: #a51f35; font-weight: 800; }
+    .breakdown-neutral { color: var(--muted-color,#667085); font-weight: 700; }
+    .breakdown-explanation { color: var(--muted-color,#667085); font-size: .84em; line-height: 1.5; margin: 8px 0; }
+    .breakdown-quick-table-wrap { overflow-x: auto; border: 1px solid var(--border-color,#d8dee8); border-radius: 7px; }
+    .breakdown-quick-table { width: 100%; min-width: 520px; border-collapse: collapse; font-size: .86em; }
+    .breakdown-quick-table th, .breakdown-quick-table td { padding: 9px 11px; text-align: left; border-bottom: 1px solid var(--border-color,#e5e7eb); }
+    .breakdown-quick-table thead th { background: var(--soft-primary-color,#f4f7fb); color: var(--primary-color); white-space: nowrap; }
+    .breakdown-quick-table tbody tr:last-child th, .breakdown-quick-table tbody tr:last-child td { border-bottom: 0; }
+    @media(max-width:720px) {
+        .breakdown-modal { padding: 20px 14px; max-height: 94vh; }
+        .breakdown-summary-grid { grid-template-columns: 1fr; }
+        .breakdown-category-list { grid-template-columns: 1fr; }
+        .breakdown-category-columns { grid-template-columns: repeat(2,minmax(0,1fr)); }
+        .breakdown-category-change { grid-column: 1 / -1; }
+        .breakdown-comparison-controls { grid-template-columns: 1fr; }
+    }
     
     /* Event Cards Grid */
     .events-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 20px; margin-bottom: 30px; }
@@ -354,12 +391,6 @@ usort(
     .regular-event-type { display: inline-block; background: var(--soft-accent-color); color: var(--primary-color); padding: 4px 8px; border-radius: 3px; font-size: 0.75em; margin-bottom: 8px; }
     .regular-event-score { font-size: 1.5em; font-weight: bold; color: var(--accent-color); }
     
-    .pwa-install-wrap { text-align: right; margin: 0 0 -10px; min-height: 38px; }
-    .pwa-install-button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 9px 13px; border: 0; border-radius: 6px; background: var(--primary-color); color: #fff; font-weight: 700; font-size: .92rem; cursor: pointer; box-shadow: 0 2px 5px rgba(0,0,0,.16); }
-    @media (max-width: 600px) { .pwa-install-wrap { margin-bottom: 0; } .pwa-install-button { padding: 8px 10px; font-size: .85rem; } }
-    .pwa-install-button:hover, .pwa-install-button:focus-visible { background: var(--secondary-color); }
-    .pwa-install-button[hidden], .pwa-install-help[hidden] { display: none !important; }
-    .pwa-install-help { max-width: 560px; margin: 10px auto 0; color: var(--text-color); font-size: .9rem; line-height: 1.45; }
     .announcement-preview { margin: 0 auto 26px; padding: 18px; background: var(--surface-color); border: 1px solid var(--border-color); border-left: 5px solid var(--accent-color); border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,.06); }
     .announcement-preview-head { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:12px; }
     .announcement-preview h2 { margin:0; border:0; padding:0; font-size:1.35rem; }
@@ -383,15 +414,9 @@ usort(
 <body>
 <?php require_once __DIR__ . '/site-header.php'; renderGroupSiteHeader(); ?>
 <div class="container">
-    <div class="pwa-install-wrap">
-        <button type="button" id="pwa-install-button" class="pwa-install-button" hidden>⬇ Install App</button>
-        <p id="pwa-install-help" class="pwa-install-help" hidden></p>
-    </div>
-
     <section class="announcement-preview" aria-labelledby="announcements-preview-title">
         <div class="announcement-preview-head">
             <h2 id="announcements-preview-title">📣 Next Group Event</h2>
-            <a class="announcement-preview-link" href="announcements.php">View all announcements →</a>
         </div>
         <?php if ($homepageAnnouncements): ?>
         <div class="announcement-preview-list">
@@ -416,13 +441,13 @@ usort(
         <tr>
             <th>Rank</th>
             <th>Squadron</th>
-            <th>Total Score</th>
-            <th>Change</th>
+            <th>Overall OPA</th>
+            <th>OPA Change</th>
             <th>Details</th>
         </tr>
         <?php $rank = 1; foreach ($ranked as $entry): $s = $entry['squadron']; ?>
         <tr data-squadron-id="<?php echo htmlspecialchars((string) $s['id']); ?>">
-            <td>#<?php echo $rank; ?></td>
+            <td>#<?php echo (int)($entry['rank'] ?? $rank); ?></td>
             <td>
                 <?php if (!empty($s['icon_filename'])): ?>
                     <img src="<?php echo htmlspecialchars(iconUrl($s['icon_filename'])); ?>" alt="icon" class="icon">
@@ -431,13 +456,17 @@ usort(
                 <?php endif; ?>
                 <?php echo htmlspecialchars($s['name']); ?>
             </td>
-            <td><?php echo $entry['total']; ?></td>
+            <td class="opa-value-cell">
+                <strong><?php echo number_format((float)$entry['total'], 2); ?>%</strong>
+                <div class="opa-history" data-opa-history="<?php echo htmlspecialchars((string) $s['id']); ?>" aria-label="Recent OPA history"></div>
+            </td>
             <td class="movement-cell" data-squadron-id="<?php echo htmlspecialchars((string) $s['id']); ?>">—</td>
             <td>
                 <button type="button" class="details-btn" data-squadron-id="<?php echo htmlspecialchars((string) $s['id']); ?>" data-squadron-name="<?php echo htmlspecialchars($s['name']); ?>">Details</button>
             </td>
         </tr>
         <?php $rank++; endforeach; ?>
+        <?php if (!$ranked): ?><tr><td colspan="5" style="text-align:center;padding:22px;color:#667085;">Official OPA scores have not been published yet.</td></tr><?php endif; ?>
     </table>
 
     <!-- Score breakdown modal -->
@@ -460,15 +489,8 @@ usort(
     
     <?php if ($hasIntramurals): ?>
     <h2>🏅 Intramural Standings</h2>
-    <p style="text-align: center; margin-bottom: 20px;">
-        <a href="intramural-standings.php" style="color: var(--primary-color); text-decoration: none; font-weight: bold;">View Full Intramural Standings →</a>
-    </p>
     <?php endif; ?>
 
-    <p style="text-align: center; margin: 0 0 20px;">
-        <a href="cadet-of-month.php" style="color: var(--primary-color); text-decoration: none; font-weight: bold;">⭐ View Cadet of the Month →</a>
-    </p>
-            
     <?php if ($bracketsByTournament || $samisByEvent || $pftByEvent || $otherByEvent || $regularEvents): ?>
     <h2>🔥 Recent Events &amp; Results</h2>
     <div class="events-grid">
@@ -657,10 +679,6 @@ usort(
     <?php endif; ?>
     
     <div class="footer">
-        <a href="announcements.php">📣 Group Announcements</a>
-        <a href="awards.php">🏅 Challenge Awards</a>
-        <a href="admin-login.php">Admin Login</a>
-        <a href="notification-preferences.php" style="margin-left:10px;">🔔 Notifications</a>
         <?php if (!empty($theme['active_preset'])): ?>
             <p style="color: #999; font-size: 0.75em; margin-top: 10px;">Theme: <?php echo htmlspecialchars($theme['active_preset']); ?></p>
         <?php endif; ?>
@@ -685,29 +703,46 @@ if ('serviceWorker' in navigator) {
 // the "Change" column for every squadron row.
 (function () {
     function renderMovement(cell, entry) {
-        if (!entry) {
+        if (!entry || entry.opa_change === null || entry.opa_change === undefined) {
+            cell.textContent = entry ? 'First publication' : '—';
+            cell.className = 'movement-cell movement-same';
+            return;
+        }
+
+        var opaChange = Number(entry.opa_change);
+        if (!Number.isFinite(opaChange)) {
             cell.textContent = '—';
             cell.className = 'movement-cell movement-same';
             return;
         }
 
-        var movement = entry.movement || 'same';
-
-        if (movement === 'new') {
-            cell.textContent = 'NEW';
-            cell.className = 'movement-cell movement-new';
-        } else if (movement.indexOf('up') === 0) {
-            var upAmount = movement.split(' ')[1] || '';
-            cell.textContent = '↑ +' + upAmount;
-            cell.className = 'movement-cell movement-up';
-        } else if (movement.indexOf('down') === 0) {
-            var downAmount = movement.split(' ')[1] || '';
-            cell.textContent = '↓ -' + downAmount;
-            cell.className = 'movement-cell movement-down';
-        } else {
-            cell.textContent = '—';
-            cell.className = 'movement-cell movement-same';
+        var opaClass = opaChange > 0 ? 'movement-up' : (opaChange < 0 ? 'movement-down' : 'movement-same');
+        var opaPrefix = opaChange > 0 ? '↑ +' : (opaChange < 0 ? '↓ ' : '');
+        var rankChange = entry.rank_change === null || entry.rank_change === undefined ? null : Number(entry.rank_change);
+        var rankText = 'No rank change';
+        if (rankChange !== null && Number.isFinite(rankChange)) {
+            rankText = rankChange > 0
+                ? '↑ ' + rankChange + (rankChange === 1 ? ' place gained' : ' places gained')
+                : (rankChange < 0
+                    ? '↓ ' + Math.abs(rankChange) + (rankChange === -1 ? ' place lost' : ' places lost')
+                    : 'No rank change');
         }
+
+        cell.className = 'movement-cell';
+        cell.innerHTML = '<span class="movement-opa ' + opaClass + '">' +
+            opaPrefix + opaChange.toFixed(2) + ' pp</span>' +
+            '<small class="movement-rank-meta">' + rankText + '</small>';
+    }
+
+    function renderOpaHistory(element, history) {
+        if (!element) return;
+        if (!Array.isArray(history) || !history.length) {
+            element.textContent = '';
+            return;
+        }
+        element.textContent = history.map(function (publication) {
+            return publication.label + ' ' + Number(publication.opa).toFixed(1) + '%';
+        }).join(' → ');
     }
 
     fetch('api-leaderboard-movement.php')
@@ -722,174 +757,237 @@ if ('serviceWorker' in navigator) {
             });
             document.querySelectorAll('.movement-cell').forEach(function (cell) {
                 var sid = cell.getAttribute('data-squadron-id');
-                renderMovement(cell, bySquadronId[sid]);
+                var entry = bySquadronId[sid];
+                renderMovement(cell, entry);
+                var historyCell = document.querySelector('.opa-history[data-opa-history="' + sid + '"]');
+                renderOpaHistory(historyCell, entry ? entry.history : []);
             });
         })
         .catch(function (err) {
             console.error('Failed to load leaderboard movement:', err);
         });
 
-    // Score breakdown modal.
+    // OPA breakdown: compare any two immutable publications rather than only
+    // showing the latest publication against its immediate predecessor.
     var modal = document.getElementById('breakdown-modal');
     var modalBody = document.getElementById('breakdown-modal-body');
     var modalTitle = document.getElementById('breakdown-modal-title');
     var modalClose = document.getElementById('breakdown-modal-close');
+    var activeSquadronId = null;
+    var activeSquadronName = '';
 
     function closeModal() {
         modal.style.display = 'none';
     }
 
-    if (modalClose) {
-        modalClose.addEventListener('click', closeModal);
-    }
+    if (modalClose) modalClose.addEventListener('click', closeModal);
     if (modal) {
-        modal.addEventListener('click', function (e) {
-            if (e.target === modal) {
-                closeModal();
-            }
+        modal.addEventListener('click', function (event) {
+            if (event.target === modal) closeModal();
         });
     }
 
-    function renderBreakdownItem(item) {
-        var date = item.date ? new Date(item.date).toLocaleDateString() : '';
-        return '<div class="breakdown-item">' +
-            '<span>' + item.name + (date ? ' <small style="color:#999;">(' + date + ')</small>' : '') + '</span>' +
-            '<span class="breakdown-item-points">' + item.points + '</span>' +
+    function escapeHtml(value) {
+        return String(value == null ? '' : value).replace(/[&<>"']/g, function (character) {
+            return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[character];
+        });
+    }
+
+    function numberValue(value, digits) {
+        if (value === null || value === undefined || value === '') return '—';
+        var number = Number(value);
+        return Number.isFinite(number) ? number.toFixed(digits === undefined ? 2 : digits) : '—';
+    }
+
+    function signedValue(value, digits, suffix) {
+        if (value === null || value === undefined || value === '') return '—';
+        var number = Number(value);
+        if (!Number.isFinite(number)) return '—';
+        var prefix = number > 0 ? '+' : '';
+        return prefix + number.toFixed(digits === undefined ? 2 : digits) + (suffix || '');
+    }
+
+    function movementClass(value) {
+        if (value === null || value === undefined || Number(value) === 0) return 'breakdown-neutral';
+        return Number(value) > 0 ? 'breakdown-positive' : 'breakdown-negative';
+    }
+
+    function rankMovement(value) {
+        if (value === null || value === undefined) return 'Not comparable';
+        var number = Number(value);
+        if (number > 0) return '+' + number + (number === 1 ? ' place gained' : ' places gained');
+        if (number < 0) return number + (number === -1 ? ' place lost' : ' places lost');
+        return 'No change';
+    }
+
+    function publicationDate(publication) {
+        var raw = String(publication.published_at || '');
+        var parsed = new Date(raw.replace(' ', 'T'));
+        return Number.isNaN(parsed.getTime()) ? raw : parsed.toLocaleDateString(undefined, {
+            year: 'numeric', month: 'short', day: 'numeric'
+        });
+    }
+
+    function publicationOptionLabel(publication) {
+        return publication.label + ' · ' + publicationDate(publication) + ' · #' + publication.id;
+    }
+
+    function renderPublicationCard(title, publication) {
+        return '<div class="breakdown-publication-card">' +
+            '<h5>' + escapeHtml(title + ' · ' + publication.label) + '</h5>' +
+            '<div class="breakdown-opa">' + numberValue(publication.opa) + '%</div>' +
+            '<div>Overall rank: <strong>#' + escapeHtml(publication.overall_rank) + '</strong></div>' +
+            '<span class="breakdown-meta">Published ' + escapeHtml(publicationDate(publication)) + '</span>' +
+            (publication.description ? '<span class="breakdown-meta breakdown-description">' + escapeHtml(publication.description) + '</span>' : '') +
+            '<span class="breakdown-meta">Entry method: ' + escapeHtml(publication.data_entry_method || '—') + '</span>' +
+            (publication.source_filename ? '<span class="breakdown-meta">Workbook: ' + escapeHtml(publication.source_filename) + '</span>' : '') +
             '</div>';
     }
 
-    document.querySelectorAll('.details-btn').forEach(function (btn) {
-        btn.addEventListener('click', function () {
-            var sid = btn.getAttribute('data-squadron-id');
-            var name = btn.getAttribute('data-squadron-name');
+    function renderCategoryCard(category, publicationA, publicationB) {
+        var a = category.a;
+        var b = category.b;
+        var change = category.change || {};
+        function periodValues(value) {
+            if (!value) return '<div class="breakdown-category-value">No category data</div>';
+            var html = '<div class="breakdown-category-value">Group 1 rank: <strong>#' + escapeHtml(value.rank) + '</strong></div>' +
+                '<div class="breakdown-category-value">Percentage score: <strong>' + numberValue(value.score) + '%</strong></div>' +
+                '<div class="breakdown-category-value">Category points: <strong>' + numberValue(value.points, 0) + '</strong></div>';
+            var source = [];
+            if (value.source_rank !== null && value.source_rank !== undefined) source.push('Original source rank: #' + value.source_rank);
+            if (value.source_measurement !== null && value.source_measurement !== '') source.push('Raw measurement: ' + value.source_measurement);
+            if (source.length) html += '<div class="breakdown-category-source">' + source.map(escapeHtml).join('<br>') + '</div>';
+            return html;
+        }
+        var rankDelta = change.rank_movement;
+        var changeHtml = '<div class="breakdown-category-value">Rank movement: <strong class="' + movementClass(rankDelta) + '">' + escapeHtml(rankMovement(rankDelta)) + '</strong></div>' +
+            '<div class="breakdown-category-value">Score change: <strong class="' + movementClass(change.score) + '">' + escapeHtml(signedValue(change.score, 2, ' pp')) + '</strong></div>' +
+            '<div class="breakdown-category-value">Points change: <strong class="' + movementClass(change.points) + '">' + escapeHtml(signedValue(change.points, 0, ' pts')) + '</strong></div>';
+        if (!a || !b) changeHtml = '<div class="breakdown-category-value">This category is present in only one selected publication.</div>';
+        return '<article class="breakdown-category-card">' +
+            '<h5>' + escapeHtml(category.name) + '</h5>' +
+            '<div class="breakdown-category-columns">' +
+            '<div><div class="breakdown-category-period">' + escapeHtml(publicationA.label) + '</div>' + periodValues(a) + '</div>' +
+            '<div><div class="breakdown-category-period">' + escapeHtml(publicationB.label) + '</div>' + periodValues(b) + '</div>' +
+            '<div class="breakdown-category-change"><div class="breakdown-category-period">Change (B − A)</div>' + changeHtml + '</div>' +
+            '</div></article>';
+    }
 
-            modalTitle.textContent = name + ' — Score Breakdown';
-            modalBody.innerHTML = 'Loading…';
-            modal.style.display = 'flex';
+    function renderQuickCategoryChanges(categories, publicationA, publicationB) {
+        if (!categories || !categories.length) return '';
+        var rows = categories.map(function (category) {
+            var change = category.change || {};
+            var rankDelta = change.rank_movement;
+            return '<tr>' +
+                '<th scope="row">' + escapeHtml(category.name) + '</th>' +
+                '<td class="' + movementClass(rankDelta) + '">' + escapeHtml(rankMovement(rankDelta)) + '</td>' +
+                '<td class="' + movementClass(change.score) + '">' + escapeHtml(signedValue(change.score, 2, ' pp')) + '</td>' +
+                '<td class="' + movementClass(change.points) + '">' + escapeHtml(signedValue(change.points, 0, ' pts')) + '</td>' +
+                '</tr>';
+        }).join('');
+        return '<div class="breakdown-section breakdown-quick-change">' +
+            '<h4>Quick Changes by Category</h4>' +
+            '<p class="breakdown-explanation">Direct comparison: ' + escapeHtml(publicationA.label) +
+            ' → ' + escapeHtml(publicationB.label) + '. Positive rank movement means places gained.</p>' +
+            '<div class="breakdown-quick-table-wrap"><table class="breakdown-quick-table">' +
+            '<thead><tr><th>Category</th><th>Rank movement</th><th>Score change</th><th>Points change</th></tr></thead>' +
+            '<tbody>' + rows + '</tbody></table></div></div>';
+    }
 
-            fetch('api-score-breakdown.php?squadron_id=' + encodeURIComponent(sid))
-                .then(function (res) { return res.json(); })
-                .then(function (data) {
-                    if (data.error) {
-                        modalBody.innerHTML = '<p style="color:#b00020;">' + data.error + '</p>';
-                        return;
-                    }
+    function renderBreakdown(data) {
+        var publications = data.publications || [];
+        var a = data.publication_a;
+        var b = data.publication_b;
+        var overallChange = data.overall_change || {};
+        var optionsA = publications.map(function (publication) {
+            return '<option value="' + escapeHtml(publication.id) + '"' +
+                (Number(publication.id) === Number(a.id) ? ' selected' : '') + '>' +
+                escapeHtml(publicationOptionLabel(publication)) + '</option>';
+        }).join('');
+        var optionsB = publications.map(function (publication) {
+            return '<option value="' + escapeHtml(publication.id) + '"' +
+                (Number(publication.id) === Number(b.id) ? ' selected' : '') + '>' +
+                escapeHtml(publicationOptionLabel(publication)) + '</option>';
+        }).join('');
 
-                    var html = '';
-                    var events = data.breakdown.events;
-                    var intramurals = data.breakdown.intramurals;
+        var html = '<div class="breakdown-comparison-controls">' +
+            '<label class="breakdown-control">Compare from (A)' +
+            '<select id="breakdown-publication-a">' + optionsA + '</select></label>' +
+            '<label class="breakdown-control">Compare to (B)' +
+            '<select id="breakdown-publication-b">' + optionsB + '</select></label>' +
+            '</div>' +
+            '<p class="breakdown-explanation">OPA is the arithmetic average of the category percentage scores shown below. Changes are calculated directly between the two selected publications, not against an automatically chosen previous period. Positive rank movement means the squadron improved its position. Score and OPA changes are shown in percentage points.</p>' +
+            '<div class="breakdown-summary-grid">' +
+            renderPublicationCard('Publication A', a) +
+            renderPublicationCard('Publication B', b) +
+            '<div class="breakdown-publication-card breakdown-change-card">' +
+            '<h5>Change (B − A)</h5>' +
+            '<div class="breakdown-opa ' + movementClass(overallChange.opa) + '">' + escapeHtml(signedValue(overallChange.opa, 2, ' pp')) + '</div>' +
+            '<div>OPA change</div>' +
+            '<div style="margin-top:8px">Overall rank: <strong class="' + movementClass(overallChange.rank_movement) + '">' + escapeHtml(rankMovement(overallChange.rank_movement)) + '</strong></div>' +
+            '</div></div>';
 
-                    html += '<div class="breakdown-section"><h4>🔥 Events (' + events.total + ' pts)</h4>';
-                    if (events.items.length) {
-                        events.items.forEach(function (item) {
-                            html += renderBreakdownItem(item);
-                        });
-                    } else {
-                        html += '<p style="color:#999;">No events recorded.</p>';
-                    }
-                    html += '</div>';
+        html += renderQuickCategoryChanges(data.categories || [], a, b);
 
-                    html += '<div class="breakdown-section"><h4>🏅 Intramurals (' + intramurals.total + ' pts)</h4>';
-                    if (intramurals.items.length) {
-                        intramurals.items.forEach(function (item) {
-                            html += renderBreakdownItem(item);
-                        });
-                    } else {
-                        html += '<p style="color:#999;">No intramural results recorded.</p>';
-                    }
-                    html += '</div>';
+        html += '<div class="breakdown-section"><h4>OPA Category Breakdown</h4>' +
+            '<p class="breakdown-explanation">' + escapeHtml(data.category_count) + ' category entries are included in the selected publication comparison. Category points are calculated as 11 minus Group 1 rank (1st = 10 points, 10th = 1 point); OPA itself averages percentage scores, not category points.</p>' +
+            '<div class="breakdown-category-list">';
+        if (data.categories && data.categories.length) {
+            data.categories.forEach(function (category) {
+                html += renderCategoryCard(category, a, b);
+            });
+        } else {
+            html += '<p>No category-level records were stored for these publications.</p>';
+        }
+        html += '</div></div>';
 
-                    html += '<div class="breakdown-total">Total: ' + data.total_points + ' pts</div>';
+        modalBody.innerHTML = html;
 
-                    modalBody.innerHTML = html;
-                })
-                .catch(function (err) {
-                    modalBody.innerHTML = '<p style="color:#b00020;">Failed to load breakdown.</p>';
-                    console.error('Failed to load score breakdown:', err);
+        function updateComparison() {
+            var selectA = document.getElementById('breakdown-publication-a');
+            var selectB = document.getElementById('breakdown-publication-b');
+            if (selectA && selectB) loadBreakdown(selectA.value, selectB.value);
+        }
+        var selectA = document.getElementById('breakdown-publication-a');
+        var selectB = document.getElementById('breakdown-publication-b');
+        if (selectA) selectA.addEventListener('change', updateComparison);
+        if (selectB) selectB.addEventListener('change', updateComparison);
+    }
+
+    function loadBreakdown(publicationAId, publicationBId) {
+        if (activeSquadronId === null) return;
+        modalBody.textContent = 'Loading selected publication comparison…';
+        var url = 'api-score-breakdown.php?squadron_id=' + encodeURIComponent(activeSquadronId);
+        if (publicationAId) url += '&publication_a=' + encodeURIComponent(publicationAId);
+        if (publicationBId) url += '&publication_b=' + encodeURIComponent(publicationBId);
+        fetch(url)
+            .then(function (response) {
+                return response.json().then(function (data) {
+                    if (!response.ok || data.error) throw new Error(data.error || 'Failed to load publication comparison.');
+                    return data;
                 });
+            })
+            .then(renderBreakdown)
+            .catch(function (error) {
+                modalBody.textContent = error.message || 'Failed to load OPA breakdown.';
+                console.error('Failed to load OPA publication comparison:', error);
+            });
+    }
+
+    document.querySelectorAll('.details-btn').forEach(function (button) {
+        button.addEventListener('click', function () {
+            activeSquadronId = button.getAttribute('data-squadron-id');
+            activeSquadronName = button.getAttribute('data-squadron-name') || ('Squadron ' + activeSquadronId);
+            modalTitle.textContent = activeSquadronName + ' — OPA Score Breakdown';
+            modalBody.textContent = 'Loading published OPA data…';
+            modal.style.display = 'flex';
+            loadBreakdown(null, null);
         });
     });
 })();
+
 </script>
-<script>
-// Offer native installation when supported, otherwise link to device-specific instructions.
-(function () {
-    var installPrompt = null;
-    var installButton = document.getElementById('pwa-install-button');
-    var installHelp = document.getElementById('pwa-install-help');
-    if (!installButton) return;
 
-    var userAgent = window.navigator.userAgent || '';
-    var isIOS = /iPad|iPhone|iPod/.test(userAgent) ||
-        (window.navigator.platform === 'MacIntel' && window.navigator.maxTouchPoints > 1);
-    var isAndroid = /Android/i.test(userAgent);
-    var guideUrl = 'https://support.google.com/chrome/answer/9658361?co=GENIE.Platform%3DAndroid&hl=en-0';
-
-    if (isIOS) {
-        guideUrl = 'https://support.apple.com/guide/iphone/bookmark-a-website-iph42ab2f3a7/ios';
-        installButton.textContent = '＋ Add to Home Screen';
-        installHelp.textContent = 'For iPhone and iPad, open this page in Safari, tap Share, then choose Add to Home Screen.';
-    } else if (isAndroid) {
-        installButton.textContent = '＋ Add to Home Screen';
-        installHelp.textContent = 'If the install prompt does not appear, follow the Chrome instructions to add this site to your home screen.';
-    } else {
-        guideUrl = 'https://developer.chrome.com/blog/how_chrome_helps_users_install_the_apps_they_value';
-        installButton.textContent = '⬇ Install App';
-        installHelp.textContent = 'If installation is not offered automatically, open the browser menu and look for Install app or Install page as app.';
-    }
-
-    function isStandalone() {
-        return window.matchMedia('(display-mode: standalone)').matches ||
-            window.navigator.standalone === true;
-    }
-
-    function hideInstallUi() {
-        installButton.hidden = true;
-        installHelp.hidden = true;
-    }
-
-    if (isStandalone()) {
-        hideInstallUi();
-        return;
-    }
-
-    // Show a useful fallback immediately; a native prompt replaces the guide action when available.
-    installButton.hidden = false;
-    installHelp.hidden = false;
-
-    window.addEventListener('beforeinstallprompt', function (event) {
-        event.preventDefault();
-        installPrompt = event;
-        installButton.hidden = false;
-        installButton.textContent = isIOS ? '＋ Add to Home Screen' : '⬇ Install App';
-        installHelp.hidden = true;
-    });
-
-    installButton.addEventListener('click', async function () {
-        if (!installPrompt) {
-            window.open(guideUrl, '_blank', 'noopener,noreferrer');
-            return;
-        }
-
-        installButton.disabled = true;
-        try {
-            await installPrompt.prompt();
-            await installPrompt.userChoice;
-        } catch (error) {
-            console.error('PWA installation prompt failed:', error);
-        } finally {
-            installPrompt = null;
-            installButton.disabled = false;
-            hideInstallUi();
-        }
-    });
-
-    window.addEventListener('appinstalled', function () {
-        installPrompt = null;
-        hideInstallUi();
-    });
-})();
-</script>
 <script>
 // Show the six most recent event cards by default, based on their existing visual timestamp order.
 (function () {
