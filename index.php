@@ -51,7 +51,7 @@ unset($scoreRow);
 
 // Restore the leaderboard data model used by the PR #61 homepage.
 // Keep the SQLite scoring helper as the single source of truth.
-$rankingRows = getSquadronRankings();
+$rankingRows = opaGetPublishedLeaderboard($db);
 $ranked = [];
 foreach ($rankingRows as $row) {
     $squadron = $squadronMap[(int)$row['squadron_id']] ?? null;
@@ -59,6 +59,7 @@ foreach ($rankingRows as $row) {
     $ranked[] = [
         'squadron' => $squadron,
         'total' => $row['total'],
+        'rank' => (int)$row['rank'],
     ];
 }
 
@@ -416,13 +417,13 @@ usort(
         <tr>
             <th>Rank</th>
             <th>Squadron</th>
-            <th>Total Score</th>
+            <th>Overall OPA</th>
             <th>Change</th>
             <th>Details</th>
         </tr>
         <?php $rank = 1; foreach ($ranked as $entry): $s = $entry['squadron']; ?>
         <tr data-squadron-id="<?php echo htmlspecialchars((string) $s['id']); ?>">
-            <td>#<?php echo $rank; ?></td>
+            <td>#<?php echo (int)($entry['rank'] ?? $rank); ?></td>
             <td>
                 <?php if (!empty($s['icon_filename'])): ?>
                     <img src="<?php echo htmlspecialchars(iconUrl($s['icon_filename'])); ?>" alt="icon" class="icon">
@@ -431,14 +432,16 @@ usort(
                 <?php endif; ?>
                 <?php echo htmlspecialchars($s['name']); ?>
             </td>
-            <td><?php echo $entry['total']; ?></td>
+            <td><strong><?php echo number_format((float)$entry['total'], 2); ?>%</strong></td>
             <td class="movement-cell" data-squadron-id="<?php echo htmlspecialchars((string) $s['id']); ?>">—</td>
             <td>
                 <button type="button" class="details-btn" data-squadron-id="<?php echo htmlspecialchars((string) $s['id']); ?>" data-squadron-name="<?php echo htmlspecialchars($s['name']); ?>">Details</button>
             </td>
         </tr>
         <?php $rank++; endforeach; ?>
+        <?php if (!$ranked): ?><tr><td colspan="5" style="text-align:center;padding:22px;color:#667085;">Official OPA scores have not been published yet.</td></tr><?php endif; ?>
     </table>
+    <p style="text-align:right;margin-top:-18px;"><a href="score-history.php" style="color:var(--primary-color);font-weight:bold;">View publication history →</a></p>
 
     <!-- Score breakdown modal -->
     <div id="breakdown-modal" class="breakdown-modal-overlay" style="display:none;">
@@ -750,66 +753,68 @@ if ('serviceWorker' in navigator) {
         });
     }
 
-    function renderBreakdownItem(item) {
-        var date = item.date ? new Date(item.date).toLocaleDateString() : '';
-        return '<div class="breakdown-item">' +
-            '<span>' + item.name + (date ? ' <small style="color:#999;">(' + date + ')</small>' : '') + '</span>' +
-            '<span class="breakdown-item-points">' + item.points + '</span>' +
-            '</div>';
+    function escapeHtml(value) {
+        return String(value == null ? '' : value).replace(/[&<>"']/g, function (character) {
+            return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[character];
+        });
     }
 
     document.querySelectorAll('.details-btn').forEach(function (btn) {
         btn.addEventListener('click', function () {
             var sid = btn.getAttribute('data-squadron-id');
             var name = btn.getAttribute('data-squadron-name');
-
-            modalTitle.textContent = name + ' — Score Breakdown';
-            modalBody.innerHTML = 'Loading…';
+            modalTitle.textContent = name + ' — OPA Score Breakdown';
+            modalBody.textContent = 'Loading…';
             modal.style.display = 'flex';
 
             fetch('api-score-breakdown.php?squadron_id=' + encodeURIComponent(sid))
                 .then(function (res) { return res.json(); })
                 .then(function (data) {
                     if (data.error) {
-                        modalBody.innerHTML = '<p style="color:#b00020;">' + data.error + '</p>';
+                        modalBody.textContent = data.error;
                         return;
                     }
-
-                    var html = '';
-                    var events = data.breakdown.events;
-                    var intramurals = data.breakdown.intramurals;
-
-                    html += '<div class="breakdown-section"><h4>🔥 Events (' + events.total + ' pts)</h4>';
-                    if (events.items.length) {
-                        events.items.forEach(function (item) {
-                            html += renderBreakdownItem(item);
-                        });
-                    } else {
-                        html += '<p style="color:#999;">No events recorded.</p>';
+                    var html = '<div class="breakdown-section"><h4>Overall Performance Average</h4>' +
+                        '<div class="breakdown-total">' + Number(data.current.opa).toFixed(2) + '% · Overall Rank #' +
+                        escapeHtml(data.current.overall_rank) + '</div>';
+                    if (data.previous) {
+                        var opaChange = Number(data.current.opa_change || 0);
+                        var rankChange = Number(data.current.rank_change || 0);
+                        html += '<div class="breakdown-item"><span>Previous OPA: ' + Number(data.previous.opa).toFixed(2) +
+                            '%</span><strong>' + (opaChange > 0 ? '+' : '') + opaChange.toFixed(2) + ' percentage points</strong></div>';
+                        html += '<div class="breakdown-item"><span>Previous overall rank: #' + escapeHtml(data.previous.overall_rank) +
+                            '</span><strong>' + (rankChange > 0 ? '+' : '') + rankChange + ' positions</strong></div>';
                     }
+                    html += '<p class="score-note">Published ' + escapeHtml(data.publication.published_at) + '</p></div>';
+                    html += '<div class="breakdown-section"><h4>Category Performance</h4>';
+                    (data.categories || []).forEach(function (item) {
+                        var rankMovement = item.rank_change == null ? 'New' :
+                            (Number(item.rank_change) > 0 ? '+' : '') + Number(item.rank_change) + ' positions';
+                        var scoreMovement = item.score_change == null ? 'New' :
+                            (Number(item.score_change) > 0 ? '+' : '') + Number(item.score_change).toFixed(2) + ' percentage points';
+                        html += '<div class="breakdown-item"><span><strong>' + escapeHtml(item.name) + '</strong><br>' +
+                            'Rank #' + escapeHtml(item.rank) + ' · ' + escapeHtml(item.score.toFixed(2)) + '%</span>' +
+                            '<span class="breakdown-item-points">' + escapeHtml(item.points) + ' pts<br><small>' +
+                            escapeHtml(rankMovement) + '<br>' + escapeHtml(scoreMovement) + '</small></span></div>';
+                    });
                     html += '</div>';
-
-                    html += '<div class="breakdown-section"><h4>🏅 Intramurals (' + intramurals.total + ' pts)</h4>';
-                    if (intramurals.items.length) {
-                        intramurals.items.forEach(function (item) {
-                            html += renderBreakdownItem(item);
+                    if (data.history && data.history.length > 1) {
+                        html += '<div class="breakdown-section"><h4>Historical OPA</h4>';
+                        data.history.slice(1).forEach(function (item) {
+                            html += '<div class="breakdown-item"><span>' + escapeHtml(item.published_at) +
+                                ' · Rank #' + escapeHtml(item.overall_rank) + '</span><strong>' +
+                                Number(item.opa).toFixed(2) + '%</strong></div>';
                         });
-                    } else {
-                        html += '<p style="color:#999;">No intramural results recorded.</p>';
+                        html += '<p><a href="score-history.php">View all publication history →</a></p></div>';
                     }
-                    html += '</div>';
-
-                    html += '<div class="breakdown-total">Total: ' + data.total_points + ' pts</div>';
-
                     modalBody.innerHTML = html;
                 })
                 .catch(function (err) {
-                    modalBody.innerHTML = '<p style="color:#b00020;">Failed to load breakdown.</p>';
+                    modalBody.textContent = 'Failed to load OPA breakdown.';
                     console.error('Failed to load score breakdown:', err);
                 });
         });
     });
-})();
 </script>
 <script>
 // Offer native installation when supported, otherwise link to device-specific instructions.

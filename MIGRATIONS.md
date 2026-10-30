@@ -1,6 +1,6 @@
 # Database migrations
 
-GroupStatistics now treats SQLite as the runtime source of truth.
+GroupStatistics now treats SQLite as the runtime source of truth. The OPA scoring system keeps drafts separate from append-only published snapshots; public OPA reads must use the latest row in `scoring_publications`, never event totals.
 
 ## Runtime behavior
 

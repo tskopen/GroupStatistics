@@ -13,6 +13,64 @@ mkdir($dataDir,0777,true);
 define('DATA_DIR',$dataDir);
 
 foreach(glob(__DIR__.'/../migrations/[0-9][0-9][0-9]_*.php') as $file){$migration=require $file; $migration($db);}
+
+require_once __DIR__ . '/../lib/opa-scoring.php';
+$squadronSeed = $db->prepare('INSERT OR IGNORE INTO squadrons(id,name,created_at) VALUES(?,?,?)');
+for ($sid = 1; $sid <= 10; $sid++) $squadronSeed->execute([$sid, 'Test Squadron ' . $sid, date('c')]);
+check((int)$db->query("SELECT COUNT(*) FROM scoring_categories WHERE is_active=1")->fetchColumn() === 3, 'OPA migration seeds AMI, SAMI, and PFT categories');
+
+$categoryRows = opaGetCategories($db);
+$draftId = opaCreateDraft($db, 'test-admin', 'OPA test draft');
+$draftUpdate = $db->prepare('UPDATE scoring_draft_scores SET category_rank=?,category_score=?,updated_at=? WHERE draft_id=? AND category_id=? AND squadron_id=?');
+foreach ($categoryRows as $category) {
+    for ($sid = 1; $sid <= 10; $sid++) {
+        $draftUpdate->execute([$sid, 100 - $sid, date('c'), $draftId, (int)$category['id'], $sid]);
+    }
+}
+$draftValidation = opaValidateDraft($db, $draftId);
+check(count($draftValidation['errors']) === 0, 'complete unique 1–10 category rankings and 0–100 scores pass publish validation');
+$draftPreview = opaGetDraftPreview($db, $draftId);
+check($draftPreview[0]['squadron_id'] === 1 && abs($draftPreview[0]['opa'] - 99.0) < 0.000001, 'OPA preview averages percentage scores across all active categories');
+$firstPublication = opaPublishDraft($db, $draftId, 'test-admin');
+$firstBoard = opaGetPublishedLeaderboard($db);
+check(count($firstBoard) === 10 && (int)$firstBoard[0]['squadron_id'] === 1, 'published OPA leaderboard includes only Squadrons 1–10');
+$scorePoints = $db->prepare('SELECT category_points FROM scoring_publication_scores WHERE publication_id=? AND category_key=? AND squadron_id=1');
+$scorePoints->execute([$firstPublication['publication_id'], 'ami']);
+check((float)$scorePoints->fetchColumn() === 10.0, 'category points use the 10-to-1 rank scale');
+$breakdown = opaGetSquadronBreakdown($db, 1);
+check($breakdown !== null && count($breakdown['categories']) === 3, 'published squadron breakdown returns category ranks and scores');
+
+$secondDraft = opaCreateDraft($db, 'test-admin', 'Second OPA test draft');
+foreach ($categoryRows as $category) {
+    for ($sid = 1; $sid <= 10; $sid++) {
+        $draftUpdate->execute([11 - $sid, 89 + $sid, date('c'), $secondDraft, (int)$category['id'], $sid]);
+    }
+}
+$secondPublication = opaPublishDraft($db, $secondDraft, 'test-admin');
+$secondBoard = opaGetPublishedLeaderboard($db);
+$squadronOne = null;
+foreach ($secondBoard as $entry) if ((int)$entry['squadron_id'] === 1) $squadronOne = $entry;
+check($squadronOne !== null && (int)$squadronOne['rank_change'] === -9 && abs((float)$squadronOne['opa_change'] + 9.0) < 0.000001, 'publication snapshots capture OPA and overall rank changes');
+$immutableSnapshot = false;
+try {
+    $db->prepare('UPDATE scoring_publications SET published_by=? WHERE id=?')->execute(['changed', $firstPublication['publication_id']]);
+} catch (PDOException $e) {
+    $immutableSnapshot = str_contains($e->getMessage(), 'immutable');
+}
+check($immutableSnapshot, 'published scoring snapshot rows are append-only');
+
+$amiCategory = null;
+foreach ($categoryRows as $category) if ($category['category_key'] === 'ami') $amiCategory = $category;
+$importRows = [['row_number' => 1, 'cells' => [0 => 'Squadron', 1 => 'Source Rank', 2 => 'Percentage Score']]];
+$originalRanks = [1=>14,2=>7,3=>22,4=>3,5=>18,6=>6,7=>11,8=>2,9=>32,10=>28,11=>1];
+foreach ($originalRanks as $sid => $originalRank) {
+    $importRows[] = ['row_number' => $sid + 1, 'cells' => [0 => 'Squadron ' . $sid, 1 => (string)$originalRank, 2 => '95.0']];
+}
+$importPreview = opaBuildImportPreview([['name'=>'AMI','rows'=>$importRows]], $categoryRows);
+$importedAmi = $importPreview['records'][(int)$amiCategory['id']] ?? [];
+check(count($importedAmi) === 10 && !isset($importedAmi[11]), 'Excel-style import filtering ignores Squadrons 11–40 by identifier');
+check(isset($importedAmi[8]) && (int)$importedAmi[8]['category_rank'] === 1 && (int)$importedAmi[2]['category_rank'] === 3, 'source 1–40 rankings are recalculated as Group 1 relative rankings');
+
 check((bool)$db->query("SELECT 1 FROM sqlite_master WHERE type='table' AND name='squadrons'")->fetchColumn(),'core schema migration creates squadrons');
 check((bool)$db->query("SELECT 1 FROM sqlite_master WHERE type='table' AND name='notification_subscriptions'")->fetchColumn(),'notification migration creates subscription table');
 check((bool)$db->query("SELECT 1 FROM sqlite_master WHERE type='table' AND name='group_announcements'")->fetchColumn(),'announcement migration creates separate announcements table');

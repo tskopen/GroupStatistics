@@ -1,108 +1,63 @@
 <?php
-header('Content-Type: application/json');
+header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-cache, must-revalidate, max-age=0');
 header('Pragma: no-cache');
 require __DIR__ . '/config.php';
 
-$db = getDb();
-
-$squadronId = isset($_GET['squadron_id']) ? (int) $_GET['squadron_id'] : 0;
-
-if (!$squadronId) {
+$squadronId = isset($_GET['squadron_id']) ? (int)$_GET['squadron_id'] : 0;
+if ($squadronId < 1 || $squadronId > 10) {
     http_response_code(400);
-    echo json_encode(['error' => 'Missing or invalid squadron_id parameter.']);
+    echo json_encode(['error' => 'Choose a valid Group 1 squadron.']);
     exit;
 }
-
-$stmt = $db->prepare('SELECT * FROM squadrons WHERE id = ?');
+$stmt = getDb()->prepare('SELECT id,name FROM squadrons WHERE id=? LIMIT 1');
 $stmt->execute([$squadronId]);
-$squadron = $stmt->fetch();
-
+$squadron = $stmt->fetch(PDO::FETCH_ASSOC);
 if (!$squadron) {
     http_response_code(404);
     echo json_encode(['error' => 'Squadron not found.']);
     exit;
 }
-
-// Event categories: samis, pft, other, bracket (intramural events are
-// tracked separately via intramural_wl_records, not the events table).
-$eventTypes = ['samis', 'pft', 'other', 'bracket', 'cadet_of_month'];
-
-$placeholders = implode(',', array_fill(0, count($eventTypes), '?'));
-
-$stmt = $db->prepare("
-    SELECT event_type, COALESCE(SUM(COALESCE(points_awarded, value, 0)), 0) as total
-    FROM events
-    WHERE squadron_id = ? AND event_type IN ($placeholders)
-    GROUP BY event_type
-");
-$stmt->execute(array_merge([$squadronId], $eventTypes));
-$eventTotalsByType = [];
-foreach ($stmt->fetchAll() as $row) {
-    $eventTotalsByType[$row['event_type']] = (float) $row['total'];
+$breakdown = opaGetSquadronBreakdown(getDb(), $squadronId);
+if (!$breakdown) {
+    echo json_encode(['error' => 'Official OPA scores have not been published yet.']);
+    exit;
 }
-
-$stmt = $db->prepare("
-    SELECT event_type, event_name, COALESCE(points_awarded, value, 0) AS points_awarded, timestamp
-    FROM events
-    WHERE squadron_id = ? AND event_type IN ($placeholders)
-    ORDER BY timestamp DESC
-");
-$stmt->execute(array_merge([$squadronId], $eventTypes));
-$eventRows = $stmt->fetchAll();
-
-$eventItems = [];
-$eventsTotal = 0;
-foreach ($eventRows as $row) {
-    $points = (float) $row['points_awarded'];
-    $eventsTotal += $points;
-    $eventItems[] = [
-        'name' => $row['event_name'] ?? ucfirst($row['event_type']),
-        'type' => $row['event_type'],
-        'points' => $points,
-        'date' => $row['timestamp'],
+$current = $breakdown['current'];
+$previous = $breakdown['previous'];
+$categories = [];
+foreach ($breakdown['categories'] as $row) {
+    $categories[] = [
+        'name' => $row['category_name'],
+        'rank' => (int)$row['category_rank'],
+        'score' => (float)$row['category_score'],
+        'points' => (float)$row['category_points'],
+        'source_rank' => $row['source_rank'] !== null ? (int)$row['source_rank'] : null,
+        'previous_rank' => $row['previous_rank'] !== null ? (int)$row['previous_rank'] : null,
+        'rank_change' => $row['rank_change'] !== null ? (int)$row['rank_change'] : null,
+        'previous_score' => $row['previous_score'] !== null ? (float)$row['previous_score'] : null,
+        'score_change' => $row['score_change'] !== null ? (float)$row['score_change'] : null,
     ];
 }
-
-// Intramural totals/items, joined against sports for a readable name.
-$stmt = $db->prepare('
-    SELECT r.points_awarded, r.wins, r.losses, r.updated_at, s.sport_name
-    FROM intramural_wl_records r
-    LEFT JOIN intramural_sports s ON r.sport_id = s.id
-    WHERE r.squadron_id = ?
-    ORDER BY r.updated_at DESC
-');
-$stmt->execute([$squadronId]);
-$intramuralRows = $stmt->fetchAll();
-
-$intramuralItems = [];
-$intramuralsTotal = 0;
-foreach ($intramuralRows as $row) {
-    $points = (float) $row['points_awarded'];
-    $intramuralsTotal += $points;
-    $intramuralItems[] = [
-        'name' => ($row['sport_name'] ?? 'Intramural') . ' (' . (int) $row['wins'] . 'W-' . (int) $row['losses'] . 'L)',
-        'type' => 'intramural',
-        'points' => $points,
-        'date' => $row['updated_at'],
-    ];
-}
-
-$totalPoints = $eventsTotal + $intramuralsTotal;
-
 echo json_encode([
-    'squadron_id' => $squadron['id'],
+    'squadron_id' => (int)$squadron['id'],
     'squadron_name' => $squadron['name'],
-    'total_points' => $totalPoints,
-    'breakdown' => [
-        'events' => [
-            'total' => $eventsTotal,
-            'by_type' => $eventTotalsByType,
-            'items' => $eventItems,
-        ],
-        'intramurals' => [
-            'total' => $intramuralsTotal,
-            'items' => $intramuralItems,
-        ],
+    'publication' => $breakdown['publication'],
+    'current' => [
+        'opa' => (float)$current['opa'],
+        'overall_rank' => (int)$current['overall_rank'],
+        'opa_change' => $current['opa_change'] !== null ? (float)$current['opa_change'] : null,
+        'rank_change' => $current['rank_change'] !== null ? (int)$current['rank_change'] : null,
     ],
+    'previous' => $previous ? [
+        'opa' => (float)$previous['opa'],
+        'overall_rank' => (int)$previous['overall_rank'],
+    ] : null,
+    'categories' => $categories,
+    'history' => array_map(static fn($row) => [
+        'publication_id' => (int)$row['id'],
+        'published_at' => $row['published_at'],
+        'opa' => (float)$row['opa'],
+        'overall_rank' => (int)$row['overall_rank'],
+    ], $breakdown['history']),
 ]);
