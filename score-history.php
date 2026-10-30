@@ -87,7 +87,7 @@ function historyH($value): string {
             <h2><?php echo historyH($categoryName); ?></h2>
             <div class="history-table-wrap">
                 <table class="history-table">
-                    <thead><tr><th>Rank</th><th>Squadron</th><th>Category Score</th><th>Category Points</th><th>Previous Rank</th><th>Rank Movement</th><th>Score Change</th><th>Source Rank</th></tr></thead>
+                    <thead><tr><th>Rank</th><th>Squadron</th><th>Category Score</th><th>Category Points</th><th>Previous Rank</th><th>Rank Movement</th><th>Score Change</th><th>Previous Points</th><th>Points Change</th><th>Source Rank</th></tr></thead>
                     <tbody>
                     <?php foreach ($rows as $row): ?>
                     <tr>
@@ -98,6 +98,8 @@ function historyH($value): string {
                         <td><?php echo $row['previous_rank']===null?'—':'#'.(int)$row['previous_rank']; ?></td>
                         <td><?php echo $row['rank_change']===null?'—':(($row['rank_change']>0?'+':'').(int)$row['rank_change']); ?></td>
                         <td><?php echo $row['score_change']===null?'—':(($row['score_change']>0?'+':'').number_format((float)$row['score_change'],2).' pp'); ?></td>
+                        <td><?php echo $row['previous_rank']===null?'—':(11-(int)$row['previous_rank']); ?></td>
+                        <td><?php echo $row['previous_rank']===null?'—':(($row['category_points']-(11-(int)$row['previous_rank'])>0?'+':'').($row['category_points']-(11-(int)$row['previous_rank']))); ?></td>
                         <td><?php echo $row['source_rank']===null?'—':(int)$row['source_rank']; ?></td>
                     </tr>
                     <?php endforeach; ?>

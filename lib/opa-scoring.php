@@ -66,6 +66,38 @@ function opaCategoryPoints(?int $rank): ?int {
     return ($rank !== null && $rank >= 1 && $rank <= 10) ? 11 - $rank : null;
 }
 
+function opaRecalculateDraftRanks(PDO $db, int $draftId, int $categoryId): void {
+    $categoryStmt = $db->prepare("SELECT ranking_direction,display_name FROM scoring_categories WHERE id=? AND is_active=1");
+    $categoryStmt->execute([$categoryId]);
+    $category = $categoryStmt->fetch(PDO::FETCH_ASSOC);
+    if (!$category) throw new RuntimeException('Choose an active category before recalculating ranks.');
+    $direction = (string)$category['ranking_direction'];
+    if (!in_array($direction, ['higher', 'lower'], true)) throw new RuntimeException('Set this category ranking direction to higher-is-better or lower-is-better before recalculating.');
+    $stmt = $db->prepare('SELECT squadron_id,category_score FROM scoring_draft_scores WHERE draft_id=? AND category_id=? AND squadron_id BETWEEN 1 AND 10 ORDER BY squadron_id');
+    $stmt->execute([$draftId, $categoryId]);
+    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    if (count($rows) !== 10) throw new RuntimeException($category['display_name'] . ': all ten Group 1 squads must have percentage scores before ranks can be recalculated.');
+    foreach ($rows as $row) {
+        if ($row['category_score'] === null || !is_numeric($row['category_score']) || (float)$row['category_score'] < 0 || (float)$row['category_score'] > 100) {
+            throw new RuntimeException($category['display_name'] . ': each squadron needs a percentage score from 0–100 before ranks can be recalculated.');
+        }
+    }
+    usort($rows, static function (array $a, array $b) use ($direction): int {
+        $comparison = (float)$a['category_score'] <=> (float)$b['category_score'];
+        if ($comparison === 0) return (int)$a['squadron_id'] <=> (int)$b['squadron_id'];
+        return $direction === 'higher' ? -$comparison : $comparison;
+    });
+    for ($index = 1; $index < count($rows); $index++) {
+        if (abs((float)$rows[$index - 1]['category_score'] - (float)$rows[$index]['category_score']) < 0.0000001) {
+            throw new RuntimeException($category['display_name'] . ': tied percentage scores require manual rank resolution; automatic unique rankings were not applied.');
+        }
+    }
+    $update = $db->prepare("UPDATE scoring_draft_scores SET category_rank=?,entry_source=CASE WHEN entry_source IN ('import','modified') THEN 'modified' ELSE 'manual' END,updated_at=? WHERE draft_id=? AND category_id=? AND squadron_id=?");
+    foreach ($rows as $index => $row) {
+        $update->execute([$index + 1, opaNow(), $draftId, $categoryId, (int)$row['squadron_id']]);
+    }
+}
+
 function opaGetDraftPreview(PDO $db, int $draftId): array {
     $categories = opaGetCategories($db);
     $rows = opaGetDraftRows($db, $draftId);
@@ -431,6 +463,13 @@ function opaReadXlsxWorkbook(string $filePath): array {
             }
             $sheets[] = ['name' => (string)$sheet['name'], 'rows' => $rows];
         }
+        if ($zip->numFiles > 500) throw new RuntimeException('The workbook contains too many ZIP entries to inspect safely.');
+        $expandedBytes = 0;
+        for ($entryIndex = 0; $entryIndex < $zip->numFiles; $entryIndex++) {
+            $stat = $zip->statIndex($entryIndex);
+            $expandedBytes += (int)($stat['size'] ?? 0);
+            if ($expandedBytes > 30000000) throw new RuntimeException('The expanded workbook is too large to inspect safely (30 MB limit).');
+        }
         if (!$sheets) throw new RuntimeException('No readable worksheets were found in the workbook.');
         return $sheets;
     } finally {
@@ -573,26 +612,31 @@ function opaBuildImportPreview(array $sheets, array $categories): array {
                     usort($ordered, static fn($a, $b) => $a['source_rank'] <=> $b['source_rank']);
                     foreach ($ordered as $index => $record) $categoryRecords[$record['squadron_id']]['category_rank'] = $index + 1;
                 }
-            } elseif ($columns['raw'] !== null && $hasAllTen && in_array($category['ranking_direction'], ['higher', 'lower'], true)) {
-                $values = array_column($categoryRecords, 'source_measurement');
+            } elseif ($hasAllTen && in_array($category['ranking_direction'], ['higher', 'lower'], true)) {
+                // If the workbook has no usable 1–40 rank for every Group 1 squadron,
+                // use raw measurements when supplied; otherwise use the percentage
+                // performance values as the ranking metric. Never infer a score from rank.
+                $basisKey = $columns['raw'] !== null ? 'source_measurement' : 'category_score';
+                $values = array_map(static fn($record) => $record[$basisKey], array_values($categoryRecords));
                 $numericValues = array_filter($values, static fn($v) => $v !== null && is_numeric($v));
                 if (count($numericValues) === 10) {
-                    $counts = array_count_values($numericValues);
+                    $normalized = array_map(static fn($v) => (string)(float)$v, $numericValues);
+                    $counts = array_count_values($normalized);
                     if (max($counts) > 1) {
-                        $warnings[] = $category['display_name'] . ': tied raw measurements were found among Squadrons 1–10. Group 1 ranks were left blank for manual review.';
+                        $warnings[] = $category['display_name'] . ': tied performance values were found among Squadrons 1–10. Group 1 ranks were left blank for manual review.';
                     } else {
                         $ordered = array_values($categoryRecords);
-                        usort($ordered, static function ($a, $b) use ($category) {
-                            $comparison = (float)$a['source_measurement'] <=> (float)$b['source_measurement'];
+                        usort($ordered, static function ($a, $b) use ($category, $basisKey) {
+                            $comparison = (float)$a[$basisKey] <=> (float)$b[$basisKey];
                             return $category['ranking_direction'] === 'higher' ? -$comparison : $comparison;
                         });
                         foreach ($ordered as $index => $record) $categoryRecords[$record['squadron_id']]['category_rank'] = $index + 1;
                     }
                 } else {
-                    $warnings[] = $category['display_name'] . ': raw measurements were incomplete or non-numeric, so ranks were not inferred.';
+                    $warnings[] = $category['display_name'] . ': performance measurements were incomplete or non-numeric, so ranks were not inferred.';
                 }
-            } elseif ($columns['raw'] !== null && $category['ranking_direction'] === 'manual') {
-                $warnings[] = $category['display_name'] . ': raw measurements were found, but the category ranking direction is not configured. Set higher-is-better or lower-is-better before calculating ranks.';
+            } elseif (($columns['raw'] !== null || $columns['percent'] !== null) && $category['ranking_direction'] === 'manual') {
+                $warnings[] = $category['display_name'] . ': performance values were found, but the category ranking direction is not configured. Set higher-is-better or lower-is-better before calculating ranks.';
             } elseif ($columns['rank'] !== null) {
                 $warnings[] = $category['display_name'] . ': source ranks were incomplete for Squadrons 1–10, so Group 1 ranks were left blank.';
             }

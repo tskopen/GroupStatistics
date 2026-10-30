@@ -32,6 +32,8 @@ foreach ($breakdown['categories'] as $row) {
         'rank' => (int)$row['category_rank'],
         'score' => (float)$row['category_score'],
         'points' => (float)$row['category_points'],
+        'previous_points' => $row['previous_rank'] !== null ? 11 - (int)$row['previous_rank'] : null,
+        'points_change' => $row['previous_rank'] !== null ? (11 - (int)$row['category_rank']) - (11 - (int)$row['previous_rank']) : null,
         'source_rank' => $row['source_rank'] !== null ? (int)$row['source_rank'] : null,
         'previous_rank' => $row['previous_rank'] !== null ? (int)$row['previous_rank'] : null,
         'rank_change' => $row['rank_change'] !== null ? (int)$row['rank_change'] : null,

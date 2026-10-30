@@ -792,10 +792,12 @@ if ('serviceWorker' in navigator) {
                             (Number(item.rank_change) > 0 ? '+' : '') + Number(item.rank_change) + ' positions';
                         var scoreMovement = item.score_change == null ? 'New' :
                             (Number(item.score_change) > 0 ? '+' : '') + Number(item.score_change).toFixed(2) + ' percentage points';
+                        var pointMovement = item.previous_points == null ? 'New' :
+                            'Points: ' + item.previous_points + ' → ' + item.points + ' (' + (item.points_change > 0 ? '+' : '') + item.points_change + ')';
                         html += '<div class="breakdown-item"><span><strong>' + escapeHtml(item.name) + '</strong><br>' +
                             'Rank #' + escapeHtml(item.rank) + ' · ' + escapeHtml(item.score.toFixed(2)) + '%</span>' +
                             '<span class="breakdown-item-points">' + escapeHtml(item.points) + ' pts<br><small>' +
-                            escapeHtml(rankMovement) + '<br>' + escapeHtml(scoreMovement) + '</small></span></div>';
+                            escapeHtml(rankMovement) + '<br>' + escapeHtml(scoreMovement) + '<br>' + escapeHtml(pointMovement) + '</small></span></div>';
                     });
                     html += '</div>';
                     if (data.history && data.history.length > 1) {

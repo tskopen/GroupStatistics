@@ -70,6 +70,20 @@ $importPreview = opaBuildImportPreview([['name'=>'AMI','rows'=>$importRows]], $c
 $importedAmi = $importPreview['records'][(int)$amiCategory['id']] ?? [];
 check(count($importedAmi) === 10 && !isset($importedAmi[11]), 'Excel-style import filtering ignores Squadrons 11–40 by identifier');
 check(isset($importedAmi[8]) && (int)$importedAmi[8]['category_rank'] === 1 && (int)$importedAmi[2]['category_rank'] === 3, 'source 1–40 rankings are recalculated as Group 1 relative rankings');
+$db->prepare("UPDATE scoring_categories SET ranking_direction='higher' WHERE id=?")->execute([(int)$amiCategory['id']]);
+$percentOnlyRows = [['row_number' => 1, 'cells' => [0 => 'Squadron', 1 => 'Percentage Score']]];
+for ($sid = 1; $sid <= 10; $sid++) $percentOnlyRows[] = ['row_number' => $sid + 1, 'cells' => [0 => 'Squadron ' . $sid, 1 => (string)(80 + $sid)]];
+$percentOnlyPreview = opaBuildImportPreview([['name'=>'AMI','rows'=>$percentOnlyRows]], $categoryRows);
+$percentOnlyRecords = $percentOnlyPreview['records'][(int)$amiCategory['id']] ?? [];
+check(isset($percentOnlyRecords[10]) && (int)$percentOnlyRecords[10]['category_rank'] === 1 && (int)$percentOnlyRecords[1]['category_rank'] === 10, 'percentage performance values can determine relative ranks when higher-is-better is configured');
+$rankDraftId = opaCreateDraft($db, 'test-admin', 'Manual rank recalculation');
+$rankScoreUpdate = $db->prepare('UPDATE scoring_draft_scores SET category_score=?,updated_at=? WHERE draft_id=? AND category_id=? AND squadron_id=?');
+for ($sid = 1; $sid <= 10; $sid++) $rankScoreUpdate->execute([$sid * 8, date('c'), $rankDraftId, (int)$amiCategory['id'], $sid]);
+opaRecalculateDraftRanks($db, $rankDraftId, (int)$amiCategory['id']);
+$rankCheck = $db->prepare('SELECT category_rank FROM scoring_draft_scores WHERE draft_id=? AND category_id=? AND squadron_id=10');
+$rankCheck->execute([$rankDraftId, (int)$amiCategory['id']]);
+check((int)$rankCheck->fetchColumn() === 1, 'admin recalculation ranks percentage scores using the configured category direction');
+
 
 check((bool)$db->query("SELECT 1 FROM sqlite_master WHERE type='table' AND name='squadrons'")->fetchColumn(),'core schema migration creates squadrons');
 check((bool)$db->query("SELECT 1 FROM sqlite_master WHERE type='table' AND name='notification_subscriptions'")->fetchColumn(),'notification migration creates subscription table');

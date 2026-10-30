@@ -33,7 +33,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $draft = opaGetDraft($db, $draftId);
         if (!$draft) throw new RuntimeException('This draft is no longer editable. Create or select an open draft.');
 
-        if ($action === 'save_draft') {
+        if ($action === 'save_draft' || $action === 'recalculate_ranks') {
             $categories = opaGetCategories($db);
             $squadrons = $db->query('SELECT id FROM squadrons WHERE id BETWEEN 1 AND 10 ORDER BY id')->fetchAll(PDO::FETCH_COLUMN);
             $submitted = $_POST['scores'] ?? [];
@@ -65,13 +65,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $source = $changed ? (($old['entry_source'] ?? '') === 'import' || ($old['entry_source'] ?? '') === 'modified' ? 'modified' : 'manual') : ($old['entry_source'] ?? 'manual');
                     $update->execute([$rank, $score, $source, opaNow(), $draftId, $categoryId, $sid]);
                 }
+                if ($action === 'recalculate_ranks') {
+                    opaRecalculateDraftRanks($db, $draftId, (int)($_POST['recalculate_category_id'] ?? 0));
+                }
                 $db->prepare('UPDATE scoring_drafts SET updated_by=?,updated_at=? WHERE id=?')->execute([$username, opaNow(), $draftId]);
                 $db->commit();
             } catch (Throwable $e) {
                 if ($db->inTransaction()) $db->rollBack();
                 throw $e;
             }
-            opaRedirectToDraft($draftId, ['notice' => 'saved']);
+            opaRedirectToDraft($draftId, ['notice' => $action === 'recalculate_ranks' ? 'ranks_recalculated' : 'saved']);
         }
 
         if ($action === 'update_category') {
@@ -118,12 +121,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             $existingRows = opaGetDraftRows($db, $draftId);
             $replacements = 0;
+            $manualOverrideCount = 0;
             $importRecordCount = 0;
             foreach ($preview['records'] as $categoryId => $squadronRecords) {
                 foreach ($squadronRecords as $sid => $record) {
                     $existing = $existingRows[(int)$categoryId][(int)$sid] ?? [];
-                    if ($record['category_rank'] !== null && isset($existing['category_rank']) && $existing['category_rank'] !== null && (int)$existing['category_rank'] !== (int)$record['category_rank']) $replacements++;
-                    if ($record['category_score'] !== null && isset($existing['category_score']) && $existing['category_score'] !== null && abs((float)$existing['category_score'] - (float)$record['category_score']) > 0.0000001) $replacements++;
+                    $rankChanges = $record['category_rank'] !== null && isset($existing['category_rank']) && $existing['category_rank'] !== null && (int)$existing['category_rank'] !== (int)$record['category_rank'];
+                    $scoreChanges = $record['category_score'] !== null && isset($existing['category_score']) && $existing['category_score'] !== null && abs((float)$existing['category_score'] - (float)$record['category_score']) > 0.0000001;
+                    if ($rankChanges) $replacements++;
+                    if ($scoreChanges) $replacements++;
+                    if (($rankChanges || $scoreChanges) && in_array($existing['entry_source'] ?? 'manual', ['manual', 'modified'], true)) $manualOverrideCount++;
                     $importRecordCount++;
                 }
             }
@@ -135,7 +142,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $stmt->execute([(int)$categoryId]);
                     return (string)$stmt->fetchColumn();
                 }, array_keys($preview['records'])))),
-                'replacement_count' => $replacements, 'record_count' => $importRecordCount,
+                'replacement_count' => $replacements, 'manual_override_count' => $manualOverrideCount, 'record_count' => $importRecordCount,
             ];
             opaRedirectToDraft($draftId, ['notice' => 'import_preview']);
         }
@@ -175,6 +182,7 @@ if (isset($_GET['notice'])) {
         'draft_created' => 'A new scoring draft was created.',
         'legacy' => 'Legacy event points are retained for event history, but official squadron standings are now managed through OPA Score Management.',
         'saved' => 'Draft saved. Published results have not changed.',
+        'ranks_recalculated' => 'Ranks recalculated from the category percentage scores. Review the values and save or publish when ready.',
         'category_updated' => 'Category settings updated.',
         'category_created' => 'New scoring category added to this draft.',
         'import_preview' => 'Workbook inspected. Review the affected categories before applying it.',
@@ -297,7 +305,7 @@ function opaH($value): string {
         <?php if ($pendingImport): ?>
         <div class="score-message warning">
             <strong>Workbook preview: <?php echo opaH($pendingImport['file_name']); ?></strong>
-            <p><?php echo (int)$pendingImport['record_count']; ?> squadron/category records identified. <?php echo (int)$pendingImport['replacement_count']; ?> existing field values would change. Categories without workbook data will be preserved.</p>
+            <p><?php echo (int)$pendingImport['record_count']; ?> squadron/category records identified. <?php echo (int)$pendingImport['replacement_count']; ?> existing field values would change. <?php echo (int)($pendingImport['manual_override_count'] ?? 0); ?> manually entered or corrected rows would be affected. Categories without workbook data will be preserved.</p>
             <p><strong>Categories affected:</strong> <?php echo opaH(implode(', ', $pendingImport['categories'] ?? [])); ?></p>
             <div class="score-table-wrap">
                 <table class="score-table">
@@ -344,6 +352,7 @@ function opaH($value): string {
             <details class="score-category" open>
                 <summary><?php echo opaH($category['display_name']); ?> <span class="score-tag"><?php echo $category['ranking_direction'] === 'manual' ? 'Direction not configured' : ($category['ranking_direction'] === 'higher' ? 'Higher is better' : 'Lower is better'); ?></span></summary>
                 <div class="score-category-content">
+                    <div class="score-inline" style="margin-bottom:10px"><button class="score-btn secondary score-recalculate" type="button" data-category-id="<?php echo $categoryId; ?>">Recalculate ranks from percentage scores</button><span class="score-note">Requires all ten scores and a configured higher/lower ranking direction. Ties need manual resolution.</span></div>
                     <div class="score-table-wrap">
                         <table class="score-table">
                             <thead><tr><th>Squadron</th><th>Group 1 Rank</th><th>Category Score</th><th>Category Points</th><th>Entry Source</th></tr></thead>
@@ -517,6 +526,22 @@ function opaH($value): string {
             tableBody.appendChild(row);
         });
     }
+    document.querySelectorAll('.score-recalculate').forEach(function (button) {
+        button.addEventListener('click', function () {
+            const form = document.getElementById('score-entry-form');
+            const action = form.querySelector('input[name="action"]');
+            action.value = 'recalculate_ranks';
+            let category = form.querySelector('input[name="recalculate_category_id"]');
+            if (!category) {
+                category = document.createElement('input');
+                category.type = 'hidden';
+                category.name = 'recalculate_category_id';
+                form.appendChild(category);
+            }
+            category.value = button.getAttribute('data-category-id');
+            form.requestSubmit();
+        });
+    });
     inputs.forEach(input => input.addEventListener('input', calculate));
     calculate();
 })();
