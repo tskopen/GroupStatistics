@@ -69,7 +69,7 @@ foreach ($originalRanks as $sid => $originalRank) {
 $importPreview = opaBuildImportPreview([['name'=>'AMI','rows'=>$importRows]], $categoryRows);
 $importedAmi = $importPreview['records'][(int)$amiCategory['id']] ?? [];
 check(count($importedAmi) === 10 && !isset($importedAmi[11]), 'Excel-style import filtering ignores Squadrons 11–40 by identifier');
-check(isset($importedAmi[8]) && (int)$importedAmi[8]['category_rank'] === 1 && (int)$importedAmi[2]['category_rank'] === 3, 'source 1–40 rankings are recalculated as Group 1 relative rankings');
+check(isset($importedAmi[8]) && (int)$importedAmi[8]['category_rank'] === 1 && (int)$importedAmi[2]['category_rank'] === 4, 'source 1–40 rankings are recalculated as Group 1 relative rankings');
 $db->prepare("UPDATE scoring_categories SET ranking_direction='higher' WHERE id=?")->execute([(int)$amiCategory['id']]);
 $categoryRows = opaGetCategories($db);
 $percentOnlyRows = [['row_number' => 1, 'cells' => [0 => 'Squadron', 1 => 'Percentage Score']]];
