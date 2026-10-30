@@ -40,12 +40,17 @@ if (!function_exists('renderGroupSiteHeader')) {
                     <img src="<?php echo htmlspecialchars($squadronIconUrl, ENT_QUOTES, 'UTF-8'); ?>" alt="<?php echo htmlspecialchars(($themeSquadron['name'] ?? 'Squadron') . ' logo', ENT_QUOTES, 'UTF-8'); ?>">
                 <?php else: ?><span class="site-header-squadron-placeholder" aria-hidden="true"></span><?php endif; ?>
             </div>
+            <?php if ($showNavigation): ?>
             <nav class="site-header-nav" aria-label="Main navigation">
                 <a href="index.php">Home</a>
                 <a href="meet-the-group.php">Meet the Group</a>
                 <a href="announcements.php">Announcements</a>
                 <a href="intramural-standings.php">Standings</a>
+                <button type="button" id="pwa-install-button" class="site-header-install-button" hidden>⬇ Install App</button>
+                <span id="pwa-install-help" class="site-header-install-help" role="status" hidden></span>
             </nav>
+            <script src="pwa-install.js" defer></script>
+            <?php endif; ?>
         </div>
         <?php
     }
