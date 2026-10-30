@@ -1008,6 +1008,7 @@ if ('serviceWorker' in navigator) {
             loadBreakdown(null, null);
         });
     });
+})();
 
 </script>
 <script>
