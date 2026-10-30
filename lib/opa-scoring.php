@@ -67,7 +67,7 @@ function opaCategoryPoints(?int $rank): ?int {
 }
 
 function opaRecalculateDraftRanks(PDO $db, int $draftId, int $categoryId): void {
-    $categoryStmt = $db->prepare("SELECT ranking_direction,display_name FROM scoring_categories WHERE id=? AND is_active=1");
+    $categoryStmt = $db->prepare('SELECT ranking_direction,display_name FROM scoring_categories WHERE id=? AND is_active=1');
     $categoryStmt->execute([$categoryId]);
     $category = $categoryStmt->fetch(PDO::FETCH_ASSOC);
     if (!$category) throw new RuntimeException('Choose an active category before recalculating ranks.');
@@ -76,7 +76,7 @@ function opaRecalculateDraftRanks(PDO $db, int $draftId, int $categoryId): void 
     $stmt = $db->prepare('SELECT squadron_id,category_score FROM scoring_draft_scores WHERE draft_id=? AND category_id=? AND squadron_id BETWEEN 1 AND 10 ORDER BY squadron_id');
     $stmt->execute([$draftId, $categoryId]);
     $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    if (count($rows) !== 10) throw new RuntimeException($category['display_name'] . ': all ten Group 1 squads must have percentage scores before ranks can be recalculated.');
+    if (count($rows) !== 10) throw new RuntimeException($category['display_name'] . ': all ten Group 1 squadrons must have percentage scores before ranks can be recalculated.');
     foreach ($rows as $row) {
         if ($row['category_score'] === null || !is_numeric($row['category_score']) || (float)$row['category_score'] < 0 || (float)$row['category_score'] > 100) {
             throw new RuntimeException($category['display_name'] . ': each squadron needs a percentage score from 0–100 before ranks can be recalculated.');
@@ -93,9 +93,7 @@ function opaRecalculateDraftRanks(PDO $db, int $draftId, int $categoryId): void 
         }
     }
     $update = $db->prepare("UPDATE scoring_draft_scores SET category_rank=?,entry_source=CASE WHEN entry_source IN ('import','modified') THEN 'modified' ELSE 'manual' END,updated_at=? WHERE draft_id=? AND category_id=? AND squadron_id=?");
-    foreach ($rows as $index => $row) {
-        $update->execute([$index + 1, opaNow(), $draftId, $categoryId, (int)$row['squadron_id']]);
-    }
+    foreach ($rows as $index => $row) $update->execute([$index + 1, opaNow(), $draftId, $categoryId, (int)$row['squadron_id']]);
 }
 
 function opaGetDraftPreview(PDO $db, int $draftId): array {
@@ -374,6 +372,13 @@ function opaReadXlsxWorkbook(string $filePath): array {
     $zip = new ZipArchive();
     if ($zip->open($filePath) !== true) throw new RuntimeException('The workbook could not be opened as a valid .xlsx file.');
     try {
+        if ($zip->numFiles > 500) throw new RuntimeException('The workbook contains too many ZIP entries to inspect safely.');
+        $expandedBytes = 0;
+        for ($entryIndex = 0; $entryIndex < $zip->numFiles; $entryIndex++) {
+            $stat = $zip->statIndex($entryIndex);
+            $expandedBytes += (int)($stat['size'] ?? 0);
+            if ($expandedBytes > 30000000) throw new RuntimeException('The expanded workbook is too large to inspect safely (30 MB limit).');
+        }
         $mainNs = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main';
         $relNs = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
         $pkgRelNs = 'http://schemas.openxmlformats.org/package/2006/relationships';
@@ -393,8 +398,7 @@ function opaReadXlsxWorkbook(string $filePath): array {
                 foreach (($styles->xpath('//m:numFmts/m:numFmt') ?: []) as $format) {
                     if (strpos((string)$format['formatCode'], '%') !== false) $percentFormatIds[] = (int)$format['numFmtId'];
                 }
-                $cellFormats = $styles->xpath('//m:cellXfs/m:xf') ?: [];
-                foreach ($cellFormats as $styleIndex => $format) {
+                foreach (($styles->xpath('//m:cellXfs/m:xf') ?: []) as $styleIndex => $format) {
                     if (in_array((int)$format['numFmtId'], $percentFormatIds, true)) $percentageStyles[(int)$styleIndex] = true;
                 }
             }
@@ -424,9 +428,9 @@ function opaReadXlsxWorkbook(string $filePath): array {
             $rid = (string)$sheet->attributes($relNs)['id'];
             $target = $targets[$rid] ?? '';
             if ($target === '') continue;
-            $target = ltrim($target, '/');
+            $target = str_replace('\\', '/', ltrim($target, '/'));
+            if (strpos($target, '../') !== false || $target === '') continue;
             if (strpos($target, 'xl/') !== 0) $target = 'xl/' . $target;
-            $target = preg_replace('#(^|/)\.\./#', '/', $target);
             $sheetXml = $zip->getFromName($target);
             if ($sheetXml === false) continue;
             $xml = @simplexml_load_string($sheetXml, 'SimpleXMLElement', LIBXML_NONET | LIBXML_NOBLANKS);
@@ -463,13 +467,6 @@ function opaReadXlsxWorkbook(string $filePath): array {
             }
             $sheets[] = ['name' => (string)$sheet['name'], 'rows' => $rows];
         }
-        if ($zip->numFiles > 500) throw new RuntimeException('The workbook contains too many ZIP entries to inspect safely.');
-        $expandedBytes = 0;
-        for ($entryIndex = 0; $entryIndex < $zip->numFiles; $entryIndex++) {
-            $stat = $zip->statIndex($entryIndex);
-            $expandedBytes += (int)($stat['size'] ?? 0);
-            if ($expandedBytes > 30000000) throw new RuntimeException('The expanded workbook is too large to inspect safely (30 MB limit).');
-        }
         if (!$sheets) throw new RuntimeException('No readable worksheets were found in the workbook.');
         return $sheets;
     } finally {
@@ -505,200 +502,6 @@ function opaParseSquadronIdentifier($value): ?int {
 function opaParseNumericValue($value): ?float {
     if ($value === null || trim((string)$value) === '') return null;
     $text = str_replace([',', chr(36)], '', trim((string)$value));
-    $text = ltrim($text, '#');
-    $text = preg_replace('/\\s+/', '', $text) ?? $text;
-    $text = preg_replace('/(st|nd|rd|th)$/i', '', $text) ?? $text;
-    if (!is_numeric(rtrim($text, '%'))) return null;
-    return (float)rtrim($text, '%');
-}
-function opaMatchCategory(string $label, array $categories): ?array {
-    $needle = opaNormalizeHeader($label);
-    if ($needle === '') return null;
-    $matches = [];
-    foreach ($categories as $category) {
-        $key = opaNormalizeHeader((string)$category['category_key']);
-        $name = opaNormalizeHeader((string)$category['display_name']);
-        if ($needle === $key || $needle === $name || ($key !== '' && strpos($needle, $key) === 0)) $matches[] = $category;
-    }
-    return count($matches) === 1 ? $matches[0] : null;
-}
-
-/**
- * Identify a table by its header labels, rather than assuming a worksheet name,
- * fixed column order, or fixed row number. Unknown layouts are reported, not guessed.
- */
-function opaBuildImportPreview(array $sheets, array $categories): array {
-    $records = [];
-    $warnings = [];
-    $identifiedSheets = 0;
-    foreach ($sheets as $sheet) {
-        $headerIndex = null;
-        $columns = null;
-        foreach (array_slice($sheet['rows'], 0, 25) as $index => $row) {
-            $headers = $row['cells'];
-            $squadronColumn = opaFindHeaderColumn($headers, ['squadron', 'squadronid', 'squadronnumber', 'squadronno', 'squadronname', 'sq', 'sqnumber', 'unit'], true);
-            $rankColumn = opaFindHeaderColumn($headers, ['rank', 'sourcerank', 'overallrank', 'placement', 'place', 'position', 'standing'], true);
-            $percentColumn = opaFindHeaderColumn($headers, ['categoryscore', 'percentagescore', 'percent', 'percentage', 'scorepercent', 'scorepct', 'pctscore'], true);
-            $rawColumn = opaFindHeaderColumn($headers, ['rawmeasurement', 'measurement', 'performancemeasurement', 'performancevalue', 'metricvalue', 'resultvalue'], true);
-            $categoryColumn = opaFindHeaderColumn($headers, ['category', 'scoringcategory'], true);
-            if ($squadronColumn !== null && ($rankColumn !== null || $percentColumn !== null || $rawColumn !== null)) {
-                $headerIndex = $index;
-                $columns = [
-                    'squadron' => $squadronColumn, 'rank' => $rankColumn,
-                    'percent' => $percentColumn, 'raw' => $rawColumn, 'category' => $categoryColumn,
-                ];
-                break;
-            }
-        }
-        if ($headerIndex === null || $columns === null) {
-            $warnings[] = 'Worksheet "' . $sheet['name'] . '" was skipped because its header row could not be reliably identified.';
-            continue;
-        }
-        $identifiedSheets++;
-        $sheetCategory = opaMatchCategory((string)$sheet['name'], $categories);
-        $sheetRecords = [];
-        foreach (array_slice($sheet['rows'], $headerIndex + 1) as $row) {
-            $cells = $row['cells'];
-            $squadronId = opaParseSquadronIdentifier($cells[$columns['squadron']] ?? '');
-            if ($squadronId === null || $squadronId < 1 || $squadronId > 10) continue;
-            $category = $sheetCategory;
-            if ($columns['category'] !== null) {
-                $rowCategory = opaMatchCategory((string)($cells[$columns['category']] ?? ''), $categories);
-                if ($rowCategory) $category = $rowCategory;
-            }
-            if (!$category || (int)$category['is_active'] !== 1) {
-                $warnings[] = 'Worksheet "' . $sheet['name'] . '" includes Group 1 data but its category could not be matched to an active scoring category.';
-                continue;
-            }
-            $sourceRank = $columns['rank'] !== null ? opaParseNumericValue($cells[$columns['rank']] ?? null) : null;
-            $score = $columns['percent'] !== null ? opaParseNumericValue($cells[$columns['percent']] ?? null) : null;
-            $rawScoreCell = (string)($cells[$columns['percent']] ?? '');
-            if ($score !== null && $score >= 0 && $score <= 1 && strpos($rawScoreCell, '%') !== false) $score *= 100;
-            elseif ($score !== null && $score > 0 && $score <= 1 && $columns['percent'] !== null) {
-                $warnings[] = $category['display_name'] . ': a percentage value between 0 and 1 was found without a percent sign. It was read literally; verify whether the workbook stores fractions or percent values.';
-            }
-            if ($score !== null && ($score < 0 || $score > 100)) {
-                $warnings[] = 'Worksheet "' . $sheet['name'] . '" has a percentage outside 0–100 for Squadron ' . $squadronId . '; that score was not imported.';
-                $score = null;
-            }
-            $rawValue = $columns['raw'] !== null ? opaParseNumericValue($cells[$columns['raw']] ?? null) : null;
-            if ($sourceRank === null && $score === null && $rawValue === null) continue;
-            $categoryId = (int)$category['id'];
-            if (isset($sheetRecords[$categoryId][$squadronId])) {
-                $warnings[] = $category['display_name'] . ': duplicate source rows were found for Squadron ' . $squadronId . ' in worksheet "' . $sheet['name'] . '". The duplicate row was ignored.';
-                continue;
-            }
-            $sheetRecords[$categoryId][$squadronId] = [
-                'category_id' => $categoryId, 'squadron_id' => $squadronId,
-                'source_rank' => ($sourceRank !== null && $sourceRank >= 1 && $sourceRank <= 1000 && floor($sourceRank) == $sourceRank) ? (int)$sourceRank : null,
-                'category_rank' => null, 'category_score' => $score,
-                'source_measurement' => $rawValue !== null ? (string)$rawValue : null,
-            ];
-        }
-
-        foreach ($sheetRecords as $categoryId => $categoryRecords) {
-            $category = null;
-            foreach ($categories as $candidate) if ((int)$candidate['id'] === (int)$categoryId) $category = $candidate;
-            if (!$category) continue;
-            $ids = array_keys($categoryRecords);
-            $hasAllTen = count($ids) === 10;
-            $rankValues = array_filter(array_column($categoryRecords, 'source_rank'), static fn($v) => $v !== null);
-            if (count($rankValues) === 10 && $hasAllTen) {
-                $counts = array_count_values($rankValues);
-                if (max($counts) > 1) {
-                    $warnings[] = $category['display_name'] . ': tied source rankings were found among Squadrons 1–10. Percentage scores were imported, but Group 1 ranks were left blank for manual review.';
-                } else {
-                    $ordered = array_values($categoryRecords);
-                    usort($ordered, static fn($a, $b) => $a['source_rank'] <=> $b['source_rank']);
-                    foreach ($ordered as $index => $record) $categoryRecords[$record['squadron_id']]['category_rank'] = $index + 1;
-                }
-            } elseif ($hasAllTen && in_array($category['ranking_direction'], ['higher', 'lower'], true)) {
-                // If the workbook has no usable 1–40 rank for every Group 1 squadron,
-                // use raw measurements when supplied; otherwise use the percentage
-                // performance values as the ranking metric. Never infer a score from rank.
-                $basisKey = $columns['raw'] !== null ? 'source_measurement' : 'category_score';
-                $values = array_map(static fn($record) => $record[$basisKey], array_values($categoryRecords));
-                $numericValues = array_filter($values, static fn($v) => $v !== null && is_numeric($v));
-                if (count($numericValues) === 10) {
-                    $normalized = array_map(static fn($v) => (string)(float)$v, $numericValues);
-                    $counts = array_count_values($normalized);
-                    if (max($counts) > 1) {
-                        $warnings[] = $category['display_name'] . ': tied performance values were found among Squadrons 1–10. Group 1 ranks were left blank for manual review.';
-                    } else {
-                        $ordered = array_values($categoryRecords);
-                        usort($ordered, static function ($a, $b) use ($category, $basisKey) {
-                            $comparison = (float)$a[$basisKey] <=> (float)$b[$basisKey];
-                            return $category['ranking_direction'] === 'higher' ? -$comparison : $comparison;
-                        });
-                        foreach ($ordered as $index => $record) $categoryRecords[$record['squadron_id']]['category_rank'] = $index + 1;
-                    }
-                } else {
-                    $warnings[] = $category['display_name'] . ': performance measurements were incomplete or non-numeric, so ranks were not inferred.';
-                }
-            } elseif (($columns['raw'] !== null || $columns['percent'] !== null) && $category['ranking_direction'] === 'manual') {
-                $warnings[] = $category['display_name'] . ': performance values were found, but the category ranking direction is not configured. Set higher-is-better or lower-is-better before calculating ranks.';
-            } elseif ($columns['rank'] !== null) {
-                $warnings[] = $category['display_name'] . ': source ranks were incomplete for Squadrons 1–10, so Group 1 ranks were left blank.';
-            }
-            foreach ($categoryRecords as $record) {
-                $sid = (int)$record['squadron_id'];
-                if (isset($records[$categoryId][$sid])) {
-                    $warnings[] = $category['display_name'] . ': repeated Squadron ' . $sid . ' records were found across worksheets or reporting periods. The later record was ignored; select one reporting period before import.';
-                    continue;
-                }
-                $records[$categoryId][$sid] = $record;
-            }
-        }
-    }
-    if (!$identifiedSheets) $warnings[] = 'No worksheet contained a recognizable Squadron plus rank, percentage, or raw-measurement header. The workbook was not applied.';
-    return ['records' => $records, 'warnings' => array_values(array_unique($warnings)), 'identified_sheets' => $identifiedSheets];
-}
-
-function opaApplyImportPreview(PDO $db, int $draftId, array $preview, string $fileName, string $fileHash, string $username): int {
-    $duplicate = $db->prepare('SELECT id FROM scoring_imports WHERE file_sha256=?');
-    $duplicate->execute([$fileHash]);
-    if ($duplicate->fetchColumn()) throw new RuntimeException('This exact workbook has already been imported. Upload a revised workbook or continue editing the existing draft.');
-    $records = $preview['records'] ?? [];
-    if (!$records) throw new RuntimeException('The workbook did not contain any importable Group 1 records.');
-    $db->beginTransaction();
-    try {
-        $now = opaNow();
-        $update = $db->prepare("UPDATE scoring_draft_scores SET
-            category_rank=COALESCE(?,category_rank),
-            category_score=COALESCE(?,category_score),
-            source_rank=COALESCE(?,source_rank),
-            source_measurement=COALESCE(?,source_measurement),
-            entry_source='import', validation_note=?, updated_at=?
-            WHERE draft_id=? AND category_id=? AND squadron_id=?");
-        $recordCount = 0;
-        $categoryNames = [];
-        foreach ($records as $categoryId => $squadronRecords) {
-            $categoryStmt = $db->prepare('SELECT display_name,is_active FROM scoring_categories WHERE id=?');
-            $categoryStmt->execute([(int)$categoryId]);
-            $category = $categoryStmt->fetch(PDO::FETCH_ASSOC);
-            if (!$category || (int)$category['is_active'] !== 1) continue;
-            $categoryNames[] = $category['display_name'];
-            foreach ($squadronRecords as $squadronId => $record) {
-                $update->execute([
-                    $record['category_rank'], $record['category_score'], $record['source_rank'],
-                    $record['source_measurement'], '', $now, $draftId, (int)$categoryId, (int)$squadronId,
-                ]);
-                $recordCount++;
-            }
-        }
-        if ($recordCount === 0) throw new RuntimeException('No supported category rows could be applied to this draft.');
-        $insert = $db->prepare('INSERT INTO scoring_imports(draft_id,file_name,file_sha256,records_processed,categories_json,imported_by,imported_at)
-            VALUES(?,?,?,?,?,?,?)');
-        $insert->execute([$draftId, basename($fileName), $fileHash, $recordCount, json_encode(array_values(array_unique($categoryNames))), $username, $now]);
-        $db->prepare('UPDATE scoring_drafts SET updated_by=?,updated_at=? WHERE id=?')->execute([$username, $now, $draftId]);
-        $db->commit();
-        return $recordCount;
-    } catch (Throwable $e) {
-        if ($db->inTransaction()) $db->rollBack();
-        throw $e;
-    }
-}
-], '', trim((string)$value));
     $text = ltrim($text, '#');
     $text = preg_replace('/\s+/', '', $text) ?? $text;
     $text = preg_replace('/(st|nd|rd|th)$/i', '', $text) ?? $text;
@@ -767,7 +570,9 @@ function opaBuildImportPreview(array $sheets, array $categories): array {
             }
             $sourceRank = $columns['rank'] !== null ? opaParseNumericValue($cells[$columns['rank']] ?? null) : null;
             $score = $columns['percent'] !== null ? opaParseNumericValue($cells[$columns['percent']] ?? null) : null;
-            if ($score !== null && $score >= 0 && $score <= 1 && strpos((string)($cells[$columns['percent']] ?? ''), '%') !== false) $score *= 100;
+            if ($score !== null && $score > 0 && $score <= 1 && $columns['percent'] !== null && strpos((string)($cells[$columns['percent']] ?? ''), '%') === false) {
+                $warnings[] = $category['display_name'] . ': a percentage value between 0 and 1 was found without a percent sign. It was read literally; verify whether the workbook stores fractions or percent values.';
+            }
             if ($score !== null && ($score < 0 || $score > 100)) {
                 $warnings[] = 'Worksheet "' . $sheet['name'] . '" has a percentage outside 0–100 for Squadron ' . $squadronId . '; that score was not imported.';
                 $score = null;
@@ -803,26 +608,28 @@ function opaBuildImportPreview(array $sheets, array $categories): array {
                     usort($ordered, static fn($a, $b) => $a['source_rank'] <=> $b['source_rank']);
                     foreach ($ordered as $index => $record) $categoryRecords[$record['squadron_id']]['category_rank'] = $index + 1;
                 }
-            } elseif ($columns['raw'] !== null && $hasAllTen && in_array($category['ranking_direction'], ['higher', 'lower'], true)) {
-                $values = array_column($categoryRecords, 'source_measurement');
+            } elseif ($hasAllTen && in_array($category['ranking_direction'], ['higher', 'lower'], true)) {
+                $basisKey = $columns['raw'] !== null ? 'source_measurement' : 'category_score';
+                $values = array_map(static fn($record) => $record[$basisKey], array_values($categoryRecords));
                 $numericValues = array_filter($values, static fn($v) => $v !== null && is_numeric($v));
                 if (count($numericValues) === 10) {
-                    $counts = array_count_values($numericValues);
+                    $normalized = array_map(static fn($v) => (string)(float)$v, $numericValues);
+                    $counts = array_count_values($normalized);
                     if (max($counts) > 1) {
-                        $warnings[] = $category['display_name'] . ': tied raw measurements were found among Squadrons 1–10. Group 1 ranks were left blank for manual review.';
+                        $warnings[] = $category['display_name'] . ': tied performance values were found among Squadrons 1–10. Group 1 ranks were left blank for manual review.';
                     } else {
                         $ordered = array_values($categoryRecords);
-                        usort($ordered, static function ($a, $b) use ($category) {
-                            $comparison = (float)$a['source_measurement'] <=> (float)$b['source_measurement'];
+                        usort($ordered, static function ($a, $b) use ($category, $basisKey) {
+                            $comparison = (float)$a[$basisKey] <=> (float)$b[$basisKey];
                             return $category['ranking_direction'] === 'higher' ? -$comparison : $comparison;
                         });
                         foreach ($ordered as $index => $record) $categoryRecords[$record['squadron_id']]['category_rank'] = $index + 1;
                     }
                 } else {
-                    $warnings[] = $category['display_name'] . ': raw measurements were incomplete or non-numeric, so ranks were not inferred.';
+                    $warnings[] = $category['display_name'] . ': performance measurements were incomplete or non-numeric, so ranks were not inferred.';
                 }
-            } elseif ($columns['raw'] !== null && $category['ranking_direction'] === 'manual') {
-                $warnings[] = $category['display_name'] . ': raw measurements were found, but the category ranking direction is not configured. Set higher-is-better or lower-is-better before calculating ranks.';
+            } elseif (($columns['raw'] !== null || $columns['percent'] !== null) && $category['ranking_direction'] === 'manual') {
+                $warnings[] = $category['display_name'] . ': performance values were found, but the category ranking direction is not configured. Set higher-is-better or lower-is-better before calculating ranks.';
             } elseif ($columns['rank'] !== null) {
                 $warnings[] = $category['display_name'] . ': source ranks were incomplete for Squadrons 1–10, so Group 1 ranks were left blank.';
             }
