@@ -404,6 +404,51 @@ usort(
     .events-toggle-wrap { text-align: center; margin: -10px 0 30px; }
     .events-toggle-button { padding: 10px 18px; border: 0; border-radius: 6px; background: var(--primary-color); color: #fff; font-weight: bold; cursor: pointer; }
     .events-toggle-button:hover, .events-toggle-button:focus-visible { background: var(--secondary-color); }
+    .homepage-hotbar {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 10px;
+        margin: 18px 0 22px;
+        padding: 12px;
+        border: 1px solid var(--border-color);
+        border-radius: 10px;
+        background: var(--surface-color);
+        box-shadow: 0 2px 8px rgba(0,0,0,.07);
+    }
+    .homepage-hotbar-button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 42px;
+        padding: 10px 16px;
+        border: 1px solid var(--primary-color);
+        border-radius: 7px;
+        background: var(--surface-color);
+        color: var(--primary-color);
+        font-weight: 700;
+        text-decoration: none;
+        text-align: center;
+        transition: background .15s ease, color .15s ease, transform .15s ease;
+    }
+    .homepage-hotbar-button:hover, .homepage-hotbar-button:focus-visible {
+        background: var(--soft-primary-color);
+        text-decoration: none;
+        transform: translateY(-1px);
+    }
+    .homepage-hotbar-button.homepage-hotbar-featured {
+        background: var(--primary-color);
+        color: #fff;
+    }
+    .homepage-hotbar-button.homepage-hotbar-featured:hover,
+    .homepage-hotbar-button.homepage-hotbar-featured:focus-visible {
+        background: var(--secondary-color);
+        color: #fff;
+    }
+    @media (max-width: 620px) {
+        .homepage-hotbar { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); }
+        .homepage-hotbar-button { padding: 10px 8px; font-size: .9rem; }
+    }
     .footer { text-align: center; margin-top: 40px; }
     .footer a { color: var(--primary-color); text-decoration: none; margin: 0 15px; }
     .footer a:hover { text-decoration: underline; }
@@ -414,6 +459,12 @@ usort(
 <body>
 <?php require_once __DIR__ . '/site-header.php'; renderGroupSiteHeader(); ?>
 <div class="container">
+    <nav class="homepage-hotbar" aria-label="Quick links">
+        <a class="homepage-hotbar-button homepage-hotbar-featured" href="cadet-of-month.php">⭐ View Cadet of the Month</a>
+        <a class="homepage-hotbar-button" href="announcements.php">📣 Group Announcements</a>
+        <a class="homepage-hotbar-button" href="awards.php">🏅 Challenge Award</a>
+        <a class="homepage-hotbar-button" href="notification-preferences.php">🔔 Notifications</a>
+    </nav>
     <section class="announcement-preview" aria-labelledby="announcements-preview-title">
         <div class="announcement-preview-head">
             <h2 id="announcements-preview-title">📣 Next Group Event</h2>
@@ -496,10 +547,6 @@ usort(
     </p>
     <?php endif; ?>
 
-    <p style="text-align: center; margin: 0 0 20px;">
-        <a href="cadet-of-month.php" style="color: var(--primary-color); text-decoration: none; font-weight: bold;">⭐ View Cadet of the Month →</a>
-    </p>
-            
     <?php if ($bracketsByTournament || $samisByEvent || $pftByEvent || $otherByEvent || $regularEvents): ?>
     <h2>🔥 Recent Events &amp; Results</h2>
     <div class="events-grid">
@@ -688,10 +735,7 @@ usort(
     <?php endif; ?>
     
     <div class="footer">
-        <a href="announcements.php">📣 Group Announcements</a>
-        <a href="awards.php">🏅 Challenge Awards</a>
         <a href="admin-login.php">Admin Login</a>
-        <a href="notification-preferences.php" style="margin-left:10px;">🔔 Notifications</a>
         <?php if (!empty($theme['active_preset'])): ?>
             <p style="color: #999; font-size: 0.75em; margin-top: 10px;">Theme: <?php echo htmlspecialchars($theme['active_preset']); ?></p>
         <?php endif; ?>
