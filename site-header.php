@@ -39,7 +39,7 @@ if (!function_exists('renderGroupSiteHeader')) {
                 <a href="index.php">Home</a>
                 <a href="meet-the-group.php">Meet the Group</a>
                 <a href="announcements.php">Announcements</a>
-                <a href="intramural-standings.php">Standings</a>
+                <a href="intramural-standings.php">Intramurals</a>
             </nav>
         </div>
         <?php
