@@ -873,10 +873,56 @@ function opaMatchCategory(string $label, array $categories): ?array {
  * Identify a table by its header labels, rather than assuming a worksheet name,
  * fixed column order, or fixed row number. Unknown layouts are reported, not guessed.
  */
+function opaMatchWideCategory(string $label, array $categories): ?array {
+    $needle = opaNormalizeHeader($label);
+    if ($needle === '') return null;
+
+    $aliases = [
+        'mae' => ['majorassessmentevent', 'mae'],
+        'marching' => ['marching'],
+        'sami' => ['sami'],
+        'ami' => ['ami'],
+        'pai' => ['pai'],
+        'cai' => ['cai'],
+        'ppnonoticeami' => ['ppnonoticeami', 'ppnonotice'],
+        'commissioningeducation' => ['commissioningeducation'],
+        'knowledgetesting' => ['knowledgetesting'],
+        'groupcommander' => ['groupcommander'],
+        'spotdiscrepancies' => ['spotdiscrepancies'],
+    ];
+
+    $matches = [];
+    foreach ($categories as $category) {
+        $key = opaNormalizeHeader((string)$category['category_key']);
+        $name = opaNormalizeHeader((string)$category['display_name']);
+        $matched = $needle === $key || $needle === $name
+            || ($key !== '' && strpos($needle, $key) !== false)
+            || ($name !== '' && strpos($needle, $name) !== false);
+
+        foreach ($aliases as $alias => $needles) {
+            if (in_array($needle, $needles, true)) {
+                if ($key === $alias || $name === $alias
+                    || ($key !== '' && strpos($key, $alias) !== false)
+                    || ($name !== '' && strpos($name, $alias) !== false)) {
+                    $matched = true;
+                }
+            }
+        }
+        if ($matched) $matches[] = $category;
+    }
+    return count($matches) === 1 ? $matches[0] : null;
+}
+
+/**
+ * Import both normalized tables (Squadron / Category / Rank / Percentage)
+ * and the Group 1 wide workbook: one row per squadron, with category-specific
+ * "<category> Ranking" and "<category> Avg" columns.
+ */
 function opaBuildImportPreview(array $sheets, array $categories): array {
     $records = [];
     $warnings = [];
     $identifiedSheets = 0;
+
     foreach ($sheets as $sheet) {
         $headerIndex = null;
         $columns = null;
@@ -887,15 +933,39 @@ function opaBuildImportPreview(array $sheets, array $categories): array {
             $percentColumn = opaFindHeaderColumn($headers, ['categoryscore', 'percentagescore', 'percent', 'percentage', 'scorepercent', 'scorepct', 'pctscore'], true);
             $rawColumn = opaFindHeaderColumn($headers, ['rawmeasurement', 'measurement', 'performancemeasurement', 'performancevalue', 'metricvalue', 'resultvalue'], true);
             $categoryColumn = opaFindHeaderColumn($headers, ['category', 'scoringcategory'], true);
-            if ($squadronColumn !== null && ($rankColumn !== null || $percentColumn !== null || $rawColumn !== null)) {
+
+            $wideColumns = [];
+            foreach ($headers as $columnIndex => $header) {
+                $normalized = opaNormalizeHeader((string)$header);
+                if (preg_match('/ranking$/', $normalized)) {
+                    $categoryLabel = preg_replace('/ranking$/', '', $normalized) ?? '';
+                    $category = opaMatchWideCategory($categoryLabel, $categories);
+                    if ($category && (int)$category['is_active'] === 1) {
+                        $wideColumns[(int)$category['id']]['rank'] = (int)$columnIndex;
+                    }
+                } elseif (preg_match('/avg$/', $normalized)) {
+                    $categoryLabel = preg_replace('/avg$/', '', $normalized) ?? '';
+                    $category = opaMatchWideCategory($categoryLabel, $categories);
+                    if ($category && (int)$category['is_active'] === 1) {
+                        $wideColumns[(int)$category['id']]['percent'] = (int)$columnIndex;
+                    }
+                }
+            }
+
+            $normalizedLayout = $squadronColumn !== null
+                && ($rankColumn !== null || $percentColumn !== null || $rawColumn !== null);
+            if ($squadronColumn !== null && ($normalizedLayout || $wideColumns)) {
                 $headerIndex = $index;
                 $columns = [
                     'squadron' => $squadronColumn, 'rank' => $rankColumn,
-                    'percent' => $percentColumn, 'raw' => $rawColumn, 'category' => $categoryColumn,
+                    'percent' => $percentColumn, 'raw' => $rawColumn,
+                    'category' => $categoryColumn, 'wide' => $wideColumns,
+                    'normalized' => $normalizedLayout,
                 ];
                 break;
             }
         }
+
         if ($headerIndex === null || $columns === null) {
             $warnings[] = 'Worksheet "' . $sheet['name'] . '" was skipped because its header row could not be reliably identified.';
             continue;
@@ -903,41 +973,71 @@ function opaBuildImportPreview(array $sheets, array $categories): array {
         $identifiedSheets++;
         $sheetCategory = opaMatchCategory((string)$sheet['name'], $categories);
         $sheetRecords = [];
+
         foreach (array_slice($sheet['rows'], $headerIndex + 1) as $row) {
             $cells = $row['cells'];
             $squadronId = opaParseSquadronIdentifier($cells[$columns['squadron']] ?? '');
             if ($squadronId === null || $squadronId < 1 || $squadronId > 10) continue;
-            $category = $sheetCategory;
-            if ($columns['category'] !== null) {
-                $rowCategory = opaMatchCategory((string)($cells[$columns['category']] ?? ''), $categories);
-                if ($rowCategory) $category = $rowCategory;
+
+            $rowValues = [];
+            if ($columns['normalized']) {
+                $category = $sheetCategory;
+                if ($columns['category'] !== null) {
+                    $rowCategory = opaMatchCategory((string)($cells[$columns['category']] ?? ''), $categories);
+                    if ($rowCategory) $category = $rowCategory;
+                }
+                if (!$category || (int)$category['is_active'] !== 1) {
+                    $warnings[] = 'Worksheet "' . $sheet['name'] . '" includes Group 1 data but its category could not be matched to an active scoring category.';
+                    continue;
+                }
+                $rowValues[(int)$category['id']] = [
+                    'rank' => $columns['rank'] !== null ? opaParseNumericValue($cells[$columns['rank']] ?? null) : null,
+                    'score' => $columns['percent'] !== null ? opaParseNumericValue($cells[$columns['percent']] ?? null) : null,
+                    'raw' => $columns['raw'] !== null ? opaParseNumericValue($cells[$columns['raw']] ?? null) : null,
+                    'fraction_score' => false,
+                ];
             }
-            if (!$category || (int)$category['is_active'] !== 1) {
-                $warnings[] = 'Worksheet "' . $sheet['name'] . '" includes Group 1 data but its category could not be matched to an active scoring category.';
-                continue;
+
+            foreach ($columns['wide'] as $categoryId => $wide) {
+                $rank = isset($wide['rank']) ? opaParseNumericValue($cells[$wide['rank']] ?? null) : null;
+                $score = isset($wide['percent']) ? opaParseNumericValue($cells[$wide['percent']] ?? null) : null;
+                // The supplied workbook stores averages as Excel fractions (e.g. 0.9746 = 97.46%).
+                if ($score !== null && $score >= 0 && $score <= 1) $score *= 100;
+                $rowValues[(int)$categoryId] = [
+                    'rank' => $rank, 'score' => $score, 'raw' => null,
+                    'fraction_score' => true,
+                ];
             }
-            $sourceRank = $columns['rank'] !== null ? opaParseNumericValue($cells[$columns['rank']] ?? null) : null;
-            $score = $columns['percent'] !== null ? opaParseNumericValue($cells[$columns['percent']] ?? null) : null;
-            if ($score !== null && $score > 0 && $score <= 1 && $columns['percent'] !== null && strpos((string)($cells[$columns['percent']] ?? ''), '%') === false) {
-                $warnings[] = $category['display_name'] . ': a percentage value between 0 and 1 was found without a percent sign. It was read literally; verify whether the workbook stores fractions or percent values.';
+
+            foreach ($rowValues as $categoryId => $values) {
+                $category = null;
+                foreach ($categories as $candidate) {
+                    if ((int)$candidate['id'] === (int)$categoryId) { $category = $candidate; break; }
+                }
+                if (!$category || (int)$category['is_active'] !== 1) continue;
+
+                $sourceRank = $values['rank'];
+                $score = $values['score'];
+                $rawValue = $values['raw'];
+                if ($score !== null && ($score < 0 || $score > 100)) {
+                    $warnings[] = $category['display_name'] . ': a percentage outside 0–100 was found for Squadron ' . $squadronId . '; that score was not imported.';
+                    $score = null;
+                }
+                if ($sourceRank === null && $score === null && $rawValue === null) continue;
+
+                if (isset($sheetRecords[$categoryId][$squadronId])) {
+                    $warnings[] = $category['display_name'] . ': duplicate source rows were found for Squadron ' . $squadronId . ' in worksheet "' . $sheet['name'] . '". The duplicate row was ignored.';
+                    continue;
+                }
+                $sheetRecords[$categoryId][$squadronId] = [
+                    'category_id' => (int)$categoryId,
+                    'squadron_id' => $squadronId,
+                    'source_rank' => ($sourceRank !== null && $sourceRank >= 1 && $sourceRank <= 1000 && floor($sourceRank) == $sourceRank) ? (int)$sourceRank : null,
+                    'category_rank' => null,
+                    'category_score' => $score,
+                    'source_measurement' => $rawValue !== null ? (string)$rawValue : null,
+                ];
             }
-            if ($score !== null && ($score < 0 || $score > 100)) {
-                $warnings[] = 'Worksheet "' . $sheet['name'] . '" has a percentage outside 0–100 for Squadron ' . $squadronId . '; that score was not imported.';
-                $score = null;
-            }
-            $rawValue = $columns['raw'] !== null ? opaParseNumericValue($cells[$columns['raw']] ?? null) : null;
-            if ($sourceRank === null && $score === null && $rawValue === null) continue;
-            $categoryId = (int)$category['id'];
-            if (isset($sheetRecords[$categoryId][$squadronId])) {
-                $warnings[] = $category['display_name'] . ': duplicate source rows were found for Squadron ' . $squadronId . ' in worksheet "' . $sheet['name'] . '". The duplicate row was ignored.';
-                continue;
-            }
-            $sheetRecords[$categoryId][$squadronId] = [
-                'category_id' => $categoryId, 'squadron_id' => $squadronId,
-                'source_rank' => ($sourceRank !== null && $sourceRank >= 1 && $sourceRank <= 1000 && floor($sourceRank) == $sourceRank) ? (int)$sourceRank : null,
-                'category_rank' => null, 'category_score' => $score,
-                'source_measurement' => $rawValue !== null ? (string)$rawValue : null,
-            ];
         }
 
         foreach ($sheetRecords as $categoryId => $categoryRecords) {
@@ -947,6 +1047,7 @@ function opaBuildImportPreview(array $sheets, array $categories): array {
             $ids = array_keys($categoryRecords);
             $hasAllTen = count($ids) === 10;
             $rankValues = array_filter(array_column($categoryRecords, 'source_rank'), static fn($v) => $v !== null);
+
             if (count($rankValues) === 10 && $hasAllTen) {
                 $counts = array_count_values($rankValues);
                 if (max($counts) > 1) {
@@ -957,7 +1058,7 @@ function opaBuildImportPreview(array $sheets, array $categories): array {
                     foreach ($ordered as $index => $record) $categoryRecords[$record['squadron_id']]['category_rank'] = $index + 1;
                 }
             } elseif ($hasAllTen && in_array($category['ranking_direction'], ['higher', 'lower'], true)) {
-                $basisKey = $columns['raw'] !== null ? 'source_measurement' : 'category_score';
+                $basisKey = 'category_score';
                 $values = array_map(static fn($record) => $record[$basisKey], array_values($categoryRecords));
                 $numericValues = array_filter($values, static fn($v) => $v !== null && is_numeric($v));
                 if (count($numericValues) === 10) {
@@ -976,11 +1077,10 @@ function opaBuildImportPreview(array $sheets, array $categories): array {
                 } else {
                     $warnings[] = $category['display_name'] . ': performance measurements were incomplete or non-numeric, so ranks were not inferred.';
                 }
-            } elseif (($columns['raw'] !== null || $columns['percent'] !== null) && $category['ranking_direction'] === 'manual') {
-                $warnings[] = $category['display_name'] . ': performance values were found, but the category ranking direction is not configured. Set higher-is-better or lower-is-better before calculating ranks.';
-            } elseif ($columns['rank'] !== null) {
-                $warnings[] = $category['display_name'] . ': source ranks were incomplete for Squadrons 1–10, so Group 1 ranks were left blank.';
+            } elseif ($category['ranking_direction'] === 'manual' && count($rankValues) !== 10) {
+                $warnings[] = $category['display_name'] . ': source ranks were incomplete and ranking direction is manual, so Group 1 ranks were left blank.';
             }
+
             foreach ($categoryRecords as $record) {
                 $sid = (int)$record['squadron_id'];
                 if (isset($records[$categoryId][$sid])) {
@@ -991,10 +1091,10 @@ function opaBuildImportPreview(array $sheets, array $categories): array {
             }
         }
     }
-    if (!$identifiedSheets) $warnings[] = 'No worksheet contained a recognizable Squadron plus rank, percentage, or raw-measurement header. The workbook was not applied.';
+
+    if (!$identifiedSheets) $warnings[] = 'No worksheet contained a recognizable Squadron plus category-specific Ranking or Avg headers, or a normalized Squadron plus rank, percentage, or raw-measurement header. The workbook was not applied.';
     return ['records' => $records, 'warnings' => array_values(array_unique($warnings)), 'identified_sheets' => $identifiedSheets];
 }
-
 function opaApplyImportPreview(PDO $db, int $draftId, array $preview, string $fileName, string $fileHash, string $username): int {
     $duplicate = $db->prepare('SELECT id FROM scoring_imports WHERE file_sha256=?');
     $duplicate->execute([$fileHash]);
