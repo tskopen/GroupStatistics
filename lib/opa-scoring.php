@@ -877,7 +877,11 @@ function opaMatchWideCategory(string $label, array $categories): ?array {
     $needle = opaNormalizeHeader($label);
     if ($needle === '') return null;
 
-    $aliasGroups = [
+    // The Group 1 source workbook uses abbreviations in some headers and full
+    // names in others. Match against active category keys/display names without
+    // allowing short aliases (for example AMI) to collide with longer names
+    // (for example SAMI).
+    $aliases = [
         'mae' => ['mae', 'majorassessmentevent'],
         'marching' => ['marching'],
         'sami' => ['sami'],
@@ -893,25 +897,42 @@ function opaMatchWideCategory(string $label, array $categories): ?array {
 
     $matches = [];
     foreach ($categories as $category) {
-        $key = opaNormalizeHeader((string)$category['category_key']);
-        $name = opaNormalizeHeader((string)$category['display_name']);
-        $matched = $needle === $key || $needle === $name
-            || ($key !== '' && strlen($key) > 3 && strpos($needle, $key) !== false)
-            || ($name !== '' && strlen($name) > 3 && strpos($needle, $name) !== false);
+        $key = opaNormalizeHeader((string)($category['category_key'] ?? ''));
+        $name = opaNormalizeHeader((string)($category['display_name'] ?? ''));
+        $candidateValues = [$key, $name];
+        $matched = in_array($needle, $candidateValues, true);
 
-        foreach ($aliasGroups as $shortAlias => $aliases) {
-            if ($needle !== $shortAlias) continue;
-            foreach ($aliases as $alias) {
-                if ($key === $alias || $name === $alias
-                    || (strlen($alias) > 3 && $key !== '' && strpos($key, $alias) !== false)
-                    || (strlen($alias) > 3 && $name !== '' && strpos($name, $alias) !== false)) {
+        // Allow a source header's full category name to match a longer
+        // configured key/name, but only when the match starts at the beginning.
+        if (!$matched && strlen($needle) >= 4) {
+            foreach ($candidateValues as $candidate) {
+                if ($candidate !== '' && strpos($candidate, $needle) === 0) {
                     $matched = true;
-                    break 2;
+                    break;
                 }
             }
         }
+
+        // Explicit source aliases. Short abbreviations require an exact
+        // category-key/name match so AMI cannot accidentally match SAMI.
+        foreach ($aliases[$needle] ?? [] as $alias) {
+            if (in_array($alias, $candidateValues, true)) {
+                $matched = true;
+                break;
+            }
+            if (strlen($alias) >= 4) {
+                foreach ($candidateValues as $candidate) {
+                    if ($candidate !== '' && strpos($candidate, $alias) === 0) {
+                        $matched = true;
+                        break 2;
+                    }
+                }
+            }
+        }
+
         if ($matched) $matches[] = $category;
     }
+
     return count($matches) === 1 ? $matches[0] : null;
 }
 /**
