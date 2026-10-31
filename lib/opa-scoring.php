@@ -877,8 +877,8 @@ function opaMatchWideCategory(string $label, array $categories): ?array {
     $needle = opaNormalizeHeader($label);
     if ($needle === '') return null;
 
-    $aliases = [
-        'mae' => ['majorassessmentevent', 'mae'],
+    $aliasGroups = [
+        'mae' => ['mae', 'majorassessmentevent'],
         'marching' => ['marching'],
         'sami' => ['sami'],
         'ami' => ['ami'],
@@ -899,12 +899,15 @@ function opaMatchWideCategory(string $label, array $categories): ?array {
             || ($key !== '' && strpos($needle, $key) !== false)
             || ($name !== '' && strpos($needle, $name) !== false);
 
-        foreach ($aliases as $alias => $needles) {
-            if (in_array($needle, $needles, true)) {
-                if ($key === $alias || $name === $alias
-                    || ($key !== '' && strpos($key, $alias) !== false)
-                    || ($name !== '' && strpos($name, $alias) !== false)) {
-                    $matched = true;
+        foreach ($aliasGroups as $aliases) {
+            if (in_array($needle, $aliases, true)) {
+                foreach ($aliases as $alias) {
+                    if ($key === $alias || $name === $alias
+                        || ($key !== '' && strpos($key, $alias) !== false)
+                        || ($name !== '' && strpos($name, $alias) !== false)) {
+                        $matched = true;
+                        break 2;
+                    }
                 }
             }
         }
@@ -912,7 +915,6 @@ function opaMatchWideCategory(string $label, array $categories): ?array {
     }
     return count($matches) === 1 ? $matches[0] : null;
 }
-
 /**
  * Import both normalized tables (Squadron / Category / Rank / Percentage)
  * and the Group 1 wide workbook: one row per squadron, with category-specific
