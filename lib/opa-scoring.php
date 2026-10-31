@@ -896,18 +896,17 @@ function opaMatchWideCategory(string $label, array $categories): ?array {
         $key = opaNormalizeHeader((string)$category['category_key']);
         $name = opaNormalizeHeader((string)$category['display_name']);
         $matched = $needle === $key || $needle === $name
-            || ($key !== '' && strpos($needle, $key) !== false)
-            || ($name !== '' && strpos($needle, $name) !== false);
+            || ($key !== '' && strlen($key) > 3 && strpos($needle, $key) !== false)
+            || ($name !== '' && strlen($name) > 3 && strpos($needle, $name) !== false);
 
-        foreach ($aliasGroups as $aliases) {
-            if (in_array($needle, $aliases, true)) {
-                foreach ($aliases as $alias) {
-                    if ($key === $alias || $name === $alias
-                        || ($key !== '' && strpos($key, $alias) !== false)
-                        || ($name !== '' && strpos($name, $alias) !== false)) {
-                        $matched = true;
-                        break 2;
-                    }
+        foreach ($aliasGroups as $shortAlias => $aliases) {
+            if ($needle !== $shortAlias) continue;
+            foreach ($aliases as $alias) {
+                if ($key === $alias || $name === $alias
+                    || (strlen($alias) > 3 && $key !== '' && strpos($key, $alias) !== false)
+                    || (strlen($alias) > 3 && $name !== '' && strpos($name, $alias) !== false)) {
+                    $matched = true;
+                    break 2;
                 }
             }
         }
