@@ -951,10 +951,14 @@ function opaBuildImportPreview(array $sheets, array $categories): array {
         foreach (array_slice($sheet['rows'], 0, 25) as $index => $row) {
             $headers = $row['cells'];
             $squadronColumn = opaFindHeaderColumn($headers, ['squadron', 'squadronid', 'squadronnumber', 'squadronno', 'squadronname', 'sq', 'sqnumber', 'unit'], true);
-            $rankColumn = opaFindHeaderColumn($headers, ['rank', 'sourcerank', 'overallrank', 'placement', 'place', 'position', 'standing'], true);
-            $percentColumn = opaFindHeaderColumn($headers, ['categoryscore', 'percentagescore', 'percent', 'percentage', 'scorepercent', 'scorepct', 'pctscore'], true);
-            $rawColumn = opaFindHeaderColumn($headers, ['rawmeasurement', 'measurement', 'performancemeasurement', 'performancevalue', 'metricvalue', 'resultvalue'], true);
-            $categoryColumn = opaFindHeaderColumn($headers, ['category', 'scoringcategory'], true);
+            // Normalized-layout fields must match complete header labels. A
+            // contains-match for "rank" incorrectly treats every wide-layout
+            // header ending in "Ranking" (for example "MAE Ranking") as the
+            // generic Rank column and prevents the wide-layout importer running.
+            $rankColumn = opaFindHeaderColumn($headers, ['rank', 'sourcerank', 'overallrank', 'placement', 'place', 'position', 'standing']);
+            $percentColumn = opaFindHeaderColumn($headers, ['categoryscore', 'percentagescore', 'percent', 'percentage', 'scorepercent', 'scorepct', 'pctscore']);
+            $rawColumn = opaFindHeaderColumn($headers, ['rawmeasurement', 'measurement', 'performancemeasurement', 'performancevalue', 'metricvalue', 'resultvalue']);
+            $categoryColumn = opaFindHeaderColumn($headers, ['category', 'scoringcategory']);
 
             $wideColumns = [];
             foreach ($headers as $columnIndex => $header) {
