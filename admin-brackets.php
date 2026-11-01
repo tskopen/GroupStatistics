@@ -289,6 +289,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $db->beginTransaction();
 
+            // Tombstone the ID so bracketBootstrap() cannot restore this record
+            // from the legacy brackets.json file on the next page load.
+            $db->prepare('INSERT OR REPLACE INTO bracket_deleted_legacy_ids(bracket_id,deleted_at) VALUES(?,?)')
+                ->execute([$bracketId, date('c')]);
+
             // Remove score-ledger entries created by this bracket before removing
             // the link and bracket records. This avoids orphaned points and does
             // not touch unrelated event records.
