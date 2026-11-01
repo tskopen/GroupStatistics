@@ -1,108 +1,86 @@
 <?php
-header('Content-Type: application/json');
+header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-cache, must-revalidate, max-age=0');
 header('Pragma: no-cache');
 require __DIR__ . '/config.php';
 
 $db = getDb();
-
-$squadronId = isset($_GET['squadron_id']) ? (int) $_GET['squadron_id'] : 0;
-
-if (!$squadronId) {
+$squadronId = isset($_GET['squadron_id']) ? (int)$_GET['squadron_id'] : 0;
+if ($squadronId < 1 || $squadronId > 10) {
     http_response_code(400);
-    echo json_encode(['error' => 'Missing or invalid squadron_id parameter.']);
+    echo json_encode(['error' => 'Choose a valid Group 1 squadron.']);
     exit;
 }
 
-$stmt = $db->prepare('SELECT * FROM squadrons WHERE id = ?');
+$stmt = $db->prepare('SELECT id,name FROM squadrons WHERE id=? LIMIT 1');
 $stmt->execute([$squadronId]);
-$squadron = $stmt->fetch();
-
+$squadron = $stmt->fetch(PDO::FETCH_ASSOC);
 if (!$squadron) {
     http_response_code(404);
     echo json_encode(['error' => 'Squadron not found.']);
     exit;
 }
 
-// Event categories: samis, pft, other, bracket (intramural events are
-// tracked separately via intramural_wl_records, not the events table).
-$eventTypes = ['samis', 'pft', 'other', 'bracket', 'cadet_of_month'];
+$publicationAId = isset($_GET['publication_a']) && $_GET['publication_a'] !== ''
+    ? (int)$_GET['publication_a'] : null;
+$publicationBId = isset($_GET['publication_b']) && $_GET['publication_b'] !== ''
+    ? (int)$_GET['publication_b'] : null;
 
-$placeholders = implode(',', array_fill(0, count($eventTypes), '?'));
-
-$stmt = $db->prepare("
-    SELECT event_type, COALESCE(SUM(COALESCE(points_awarded, value, 0)), 0) as total
-    FROM events
-    WHERE squadron_id = ? AND event_type IN ($placeholders)
-    GROUP BY event_type
-");
-$stmt->execute(array_merge([$squadronId], $eventTypes));
-$eventTotalsByType = [];
-foreach ($stmt->fetchAll() as $row) {
-    $eventTotalsByType[$row['event_type']] = (float) $row['total'];
+try {
+    $comparison = opaGetSquadronPublicationComparison($db, $squadronId, $publicationAId, $publicationBId);
+    if (!$comparison) {
+        echo json_encode(['error' => 'Official OPA scores have not been published for this squadron yet.']);
+        exit;
+    }
+} catch (InvalidArgumentException $e) {
+    http_response_code(400);
+    echo json_encode(['error' => $e->getMessage()]);
+    exit;
 }
 
-$stmt = $db->prepare("
-    SELECT event_type, event_name, COALESCE(points_awarded, value, 0) AS points_awarded, timestamp
-    FROM events
-    WHERE squadron_id = ? AND event_type IN ($placeholders)
-    ORDER BY timestamp DESC
-");
-$stmt->execute(array_merge([$squadronId], $eventTypes));
-$eventRows = $stmt->fetchAll();
-
-$eventItems = [];
-$eventsTotal = 0;
-foreach ($eventRows as $row) {
-    $points = (float) $row['points_awarded'];
-    $eventsTotal += $points;
-    $eventItems[] = [
-        'name' => $row['event_name'] ?? ucfirst($row['event_type']),
-        'type' => $row['event_type'],
-        'points' => $points,
-        'date' => $row['timestamp'],
+$publicationOptions = array_map(static function (array $publication): array {
+    return [
+        'id' => (int)$publication['id'],
+        'number' => (int)$publication['publication_number'],
+        'label' => 'P' . (int)$publication['publication_number'],
+        'published_at' => $publication['published_at'],
+        'published_by' => $publication['published_by'],
+        'description' => $publication['description'] ?? '',
+        'data_entry_method' => $publication['data_entry_method'],
+        'source_filename' => $publication['source_filename'],
+        'records_processed' => (int)$publication['records_processed'],
     ];
-}
+}, $comparison['publications']);
 
-// Intramural totals/items, joined against sports for a readable name.
-$stmt = $db->prepare('
-    SELECT r.points_awarded, r.wins, r.losses, r.updated_at, s.sport_name
-    FROM intramural_wl_records r
-    LEFT JOIN intramural_sports s ON r.sport_id = s.id
-    WHERE r.squadron_id = ?
-    ORDER BY r.updated_at DESC
-');
-$stmt->execute([$squadronId]);
-$intramuralRows = $stmt->fetchAll();
+$publicationA = $comparison['publication_a'];
+$publicationB = $comparison['publication_b'];
+$overall = $comparison['overall'];
 
-$intramuralItems = [];
-$intramuralsTotal = 0;
-foreach ($intramuralRows as $row) {
-    $points = (float) $row['points_awarded'];
-    $intramuralsTotal += $points;
-    $intramuralItems[] = [
-        'name' => ($row['sport_name'] ?? 'Intramural') . ' (' . (int) $row['wins'] . 'W-' . (int) $row['losses'] . 'L)',
-        'type' => 'intramural',
-        'points' => $points,
-        'date' => $row['updated_at'],
+$serializePublication = static function (array $publication, array $values): array {
+    return [
+        'id' => (int)$publication['id'],
+        'number' => (int)$publication['publication_number'],
+        'label' => 'P' . (int)$publication['publication_number'],
+        'published_at' => $publication['published_at'],
+        'published_by' => $publication['published_by'],
+        'description' => $publication['description'] ?? '',
+        'data_entry_method' => $publication['data_entry_method'],
+        'source_filename' => $publication['source_filename'],
+        'opa' => (float)$values['opa'],
+        'overall_rank' => (int)$values['rank'],
     ];
-}
-
-$totalPoints = $eventsTotal + $intramuralsTotal;
+};
 
 echo json_encode([
-    'squadron_id' => $squadron['id'],
+    'squadron_id' => (int)$squadron['id'],
     'squadron_name' => $squadron['name'],
-    'total_points' => $totalPoints,
-    'breakdown' => [
-        'events' => [
-            'total' => $eventsTotal,
-            'by_type' => $eventTotalsByType,
-            'items' => $eventItems,
-        ],
-        'intramurals' => [
-            'total' => $intramuralsTotal,
-            'items' => $intramuralItems,
-        ],
+    'publications' => $publicationOptions,
+    'publication_a' => $serializePublication($publicationA, $overall['a']),
+    'publication_b' => $serializePublication($publicationB, $overall['b']),
+    'overall_change' => [
+        'opa' => (float)$overall['change']['opa'],
+        'rank_movement' => (int)$overall['change']['rank_movement'],
     ],
-]);
+    'category_count' => (int)$comparison['category_count'],
+    'categories' => $comparison['categories'],
+], JSON_INVALID_UTF8_SUBSTITUTE);

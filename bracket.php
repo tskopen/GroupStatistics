@@ -165,8 +165,7 @@ foreach ($bracket['participants'] as $p) {
     </div>
     <?php endif; ?>
 
-    <div class="nav">
-        <a href="index.php">← Back to Rankings</a>
+    <div class="bracket-footer-meta">
         <?php if (!empty($theme['active_preset'])): ?>
             <p style="color: #666; font-size: 0.75em; margin-top: 10px;">Theme: <?php echo htmlspecialchars($theme['active_preset']); ?></p>
         <?php endif; ?>

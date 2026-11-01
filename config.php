@@ -7,6 +7,7 @@ require_once __DIR__.'/database-migrations.php';
 require_once __DIR__.'/security.php';
 require_once __DIR__.'/lib/database.php';
 require_once __DIR__.'/lib/scoring.php';
+require_once __DIR__.'/lib/opa-scoring.php';
 require_once __DIR__.'/lib/auth.php';
 require_once __DIR__.'/lib/storage.php';
 initDataStore();

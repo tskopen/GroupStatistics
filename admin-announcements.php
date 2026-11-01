@@ -159,7 +159,7 @@ $counts = $db->query("SELECT COUNT(*) AS total, SUM(CASE WHEN status='published'
 <style>
 :root{--navy:#002147;--blue:#003366;--accent:#667eea;--ink:#1e293b;--muted:#64748b;--line:#dbe3ed;--page:#f3f6fa;--danger:#b42332;--green:#167447}
 *{box-sizing:border-box}body{margin:0;background:var(--page);color:var(--ink);font-family:Arial,Helvetica,sans-serif;line-height:1.5}
-.topbar{background:var(--navy);color:#fff;padding:20px}.topbar-inner{max-width:1240px;margin:auto;display:flex;justify-content:space-between;align-items:center;gap:15px;flex-wrap:wrap}.topbar h1{font-size:1.5rem;margin:0}.topbar p{margin:3px 0 0;color:#d7e4f2;font-size:.92rem}.top-links{display:flex;gap:8px;flex-wrap:wrap}.top-links a{color:#fff;text-decoration:none;border:1px solid #ffffff60;border-radius:8px;padding:8px 11px;font-weight:700;font-size:.9rem}
+.topbar{background:var(--navy);color:#fff;padding:20px}.topbar-inner{max-width:1240px;margin:auto;display:flex;justify-content:space-between;align-items:center;gap:15px;flex-wrap:wrap}.topbar h1{font-size:1.5rem;margin:0}.topbar p{margin:3px 0 0;color:#d7e4f2;font-size:.92rem}
 .wrap{max-width:1240px;margin:24px auto;padding:0 16px 45px}.stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-bottom:20px}.stat{background:#fff;border:1px solid var(--line);border-radius:12px;padding:15px 18px}.stat span{display:block;color:var(--muted);font-size:.85rem;font-weight:700}.stat strong{font-size:1.8rem;color:var(--navy)}
 .layout{display:grid;grid-template-columns:minmax(300px,.85fr) minmax(0,1.4fr);gap:20px;align-items:start}.panel{background:#fff;border:1px solid var(--line);border-radius:14px;box-shadow:0 4px 14px #0f172a08;overflow:hidden}.panel-head{padding:18px 20px;border-bottom:1px solid var(--line);background:#fbfcfe}.panel-head h2{margin:0;color:var(--navy);font-size:1.15rem}.panel-head p{margin:5px 0 0;color:var(--muted);font-size:.9rem}.panel-body{padding:20px}
 label{display:block;font-weight:700;color:#334155;font-size:.9rem;margin:14px 0 6px}label:first-child{margin-top:0}.hint{font-size:.8rem;color:var(--muted);font-weight:400}input[type=text],input[type=url],input[type=datetime-local],input[type=search],textarea,select{display:block;width:100%;min-width:0;max-width:100%;padding:11px 12px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;color:var(--ink);font:inherit}textarea{min-height:145px;resize:vertical}input:focus,textarea:focus,select:focus{outline:3px solid #667eea30;border-color:var(--accent)}.date-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.date-grid>div{min-width:0}.date-grid input[type=datetime-local]{padding:11px 8px;min-width:0;max-width:100%;font-size:.92rem}.date-grid .hint{overflow-wrap:anywhere}
@@ -172,10 +172,10 @@ label{display:block;font-weight:700;color:#334155;font-size:.9rem;margin:14px 0 
 <link rel="stylesheet" href="site-components.css">
 </head>
 <body>
-<?php require_once __DIR__ . '/site-header.php'; renderGroupSiteHeader(); ?>
+<?php require_once __DIR__ . '/site-header.php'; renderGroupSiteHeader(false); ?>
 <header class="topbar"><div class="topbar-inner">
 <div><h1>📣 Manage Group Announcements</h1><p>Create event posts, keep details current, and remove outdated announcements.</p></div>
-<nav class="top-links"><a href="announcements.php">View public board ↗</a><a href="admin-panel.php">Admin panel</a><a href="index.php">Home</a></nav>
+
 </div></header>
 <main class="wrap">
 <?php if ($notice): ?><div class="alert success" role="status"><?php echo adminAnnouncementEscape($notice); ?></div><?php endif; ?>

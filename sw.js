@@ -5,13 +5,15 @@
  * are always network-only and are never written to Cache Storage.
  */
 
-const CACHE_VERSION = 'v4';
+const CACHE_VERSION = 'v5';
 const CACHE_NAME = `squadron-tracker-${CACHE_VERSION}`;
 
 const PRECACHE_URLS = [
     './',
     './index.php',
     './manifest.json',
+    './pwa-install.js',
+    './site-components.css',
     './assets/pwa-icon-192.png',
     './assets/pwa-icon-512.png'
 ];
