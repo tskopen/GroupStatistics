@@ -24,7 +24,7 @@ function awardStorePhoto(array $file, string $dir): ?string {
     if (!$saved) { if(is_file($path)) @unlink($path); throw new RuntimeException('Could not safely re-encode this photo.'); }
     @chmod($path,0640); return $name;
 }
-$form=['id'=>null,'title'=>'','description'=>'','award_type'=>'description','points_awarded'=>'','teams_url'=>'','challenge_id'=>0,'status'=>'published'];
+$form=['id'=>null,'title'=>'','description'=>'','award_type'=>'description','points_awarded'=>'','teams_url'=>'','challenge_id'=>(int)($_GET['challenge']??0),'status'=>'published'];
 $selected=[];
 $photos=[];
 if ($_SERVER['REQUEST_METHOD']==='POST') {
