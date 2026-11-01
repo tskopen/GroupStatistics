@@ -75,7 +75,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
         if ($action === 'create') {
             $name = trim($_POST['name'] ?? '');
-            $type = ($_POST['bracket_type'] ?? 'single_round') === 'multi_round' ? 'multi_round' : 'single_round';
+            $type = 'single_round';
             $ids = array_values(array_unique(array_map('intval', $_POST['participant_ids'] ?? [])));
 
             if ($name === '') throw new Exception('Enter a bracket name.');
@@ -86,13 +86,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 array_column($db->query('SELECT id FROM squadrons')->fetchAll(), 'id')
             );
             if (array_diff($ids, $valid)) throw new Exception('One or more selected teams are invalid.');
-
-            if ($type === 'multi_round') {
-                $count = count($ids);
-                if ($count > 64 || ($count & ($count - 1)) !== 0) {
-                    throw new Exception('Multi-round brackets require 2, 4, 8, 16, 32, or 64 teams.');
-                }
-            }
 
             $db->beginTransaction();
             $now = date('c');
@@ -284,18 +277,44 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         if ($action === 'delete') {
-            $eventIds = $db->prepare(
-                'SELECT event_id FROM bracket_score_events
-                 WHERE matchup_id IN (SELECT id FROM bracket_matchups WHERE bracket_id=?)'
-            );
-            $eventIds->execute([$bracketId]);
-
-            foreach ($eventIds->fetchAll(PDO::FETCH_COLUMN) as $eventId) {
-                $db->prepare('DELETE FROM events WHERE id=?')->execute([$eventId]);
+            if ($bracketId === '') {
+                throw new Exception('Select a bracket to delete.');
             }
 
+            $exists = $db->prepare('SELECT 1 FROM brackets WHERE id=?');
+            $exists->execute([$bracketId]);
+            if (!$exists->fetchColumn()) {
+                throw new Exception('The bracket no longer exists. Refresh the page and try again.');
+            }
+
+            $db->beginTransaction();
+
+            // Remove score-ledger entries created by this bracket before removing
+            // the link and bracket records. This avoids orphaned points and does
+            // not touch unrelated event records.
+            $eventIds = $db->prepare(
+                'SELECT bse.event_id
+                 FROM bracket_score_events bse
+                 INNER JOIN bracket_matchups bm ON bm.id=bse.matchup_id
+                 WHERE bm.bracket_id=?'
+            );
+            $eventIds->execute([$bracketId]);
+            $deleteEvent = $db->prepare('DELETE FROM events WHERE id=?');
+            foreach ($eventIds->fetchAll(PDO::FETCH_COLUMN) as $eventId) {
+                $deleteEvent->execute([(int)$eventId]);
+            }
+
+            // Explicit child cleanup makes deletion reliable on databases
+            // containing older bracket tables without ON DELETE CASCADE.
+            $db->prepare('DELETE FROM bracket_score_events WHERE matchup_id IN (SELECT id FROM bracket_matchups WHERE bracket_id=?)')
+                ->execute([$bracketId]);
+            $db->prepare('DELETE FROM bracket_matchups WHERE bracket_id=?')->execute([$bracketId]);
+            $db->prepare('DELETE FROM bracket_rounds WHERE bracket_id=?')->execute([$bracketId]);
+            $db->prepare('DELETE FROM bracket_participants WHERE bracket_id=?')->execute([$bracketId]);
             $db->prepare('DELETE FROM brackets WHERE id=?')->execute([$bracketId]);
-            header('Location: admin-brackets.php');
+
+            $db->commit();
+            header('Location: admin-brackets.php?deleted=1');
             exit;
         }
     } catch (Throwable $e) {
@@ -375,7 +394,7 @@ h1,h2,h3 { color:var(--primary); }
     <div class="header">
         <div>
             <h1 style="margin:0;">Bracket Manager</h1>
-            <div class="subtitle">Create either independent single-round matchups or a multi-round elimination bracket. Teams can be posted before scores are entered.</div>
+            <div class="subtitle">Create independent single-round matchups. Teams can be posted before scores are entered.</div>
         </div>
         <a class="btn secondary" href="index.php">View Public Tracker</a>
     </div>
@@ -403,21 +422,13 @@ h1,h2,h3 { color:var(--primary); }
 
         <div class="card">
             <h2 style="margin-top:0;">New Bracket</h2>
-            <p class="muted"><strong>Single Round:</strong> independent matchups that never feed into another round.<br><strong>Multi-Round:</strong> elimination bracket where winners automatically advance. Multi-Round requires 2, 4, 8, 16, 32, or 64 teams.</p>
+            <p class="muted">Each matchup is independent. Teams do not advance into other matchups.</p>
             <form method="post">
                 <input type="hidden" name="action" value="create">
                 <label>
                     Bracket name
                     <input class="input" name="name" placeholder="e.g. Flag Football" required>
                 </label>
-                <label>
-                    Bracket type
-                    <select class="input" name="bracket_type" id="bracket-type">
-                        <option value="single_round">Single Round — independent matchups</option>
-                        <option value="multi_round">Multi-Round — winners advance to the next round</option>
-                    </select>
-                </label>
-                <p class="muted" id="bracket-type-help">Single Round keeps every matchup independent.</p>
                 <div class="team-grid">
                     <?php foreach ($teams as $team): ?>
                         <label class="team-option">
@@ -435,7 +446,7 @@ h1,h2,h3 { color:var(--primary); }
     <?php if (!$bracket): ?>
         <div class="card">
             <h2 style="margin-top:0;"><?php echo $all ? 'Select a bracket' : 'Create your first bracket'; ?></h2>
-            <p class="muted">Single Round uses independent matchups. Multi-Round connects each round so winners advance automatically. Completed scores are locked after posting.</p>
+            <p class="muted">Each bracket contains independent matchups. Completed scores are locked after posting.</p>
         </div>
     <?php else: ?>
         <div class="card">
@@ -451,9 +462,7 @@ h1,h2,h3 { color:var(--primary); }
                 <div>
                     <h2 style="margin:0;"><?php echo h($bracket['name']); ?></h2>
                     <p class="subtitle">
-                        <?php echo $bracket['bracket_type'] === 'multi_round'
-                            ? 'Multi-Round Elimination · winners advance automatically.'
-                            : 'Single Round · independent matchups.'; ?>
+                        Single Round · independent matchups.
                     </p>
                 </div>
                 <span class="status"><?php echo count($bracket['participants'] ?? []); ?> teams</span>
@@ -565,17 +574,6 @@ h1,h2,h3 { color:var(--primary); }
     </main>
 </div>
 </div>
-<script>
-(function () {
-    var type = document.getElementById('bracket-type');
-    var help = document.getElementById('bracket-type-help');
-    if (!type || !help) return;
-    type.addEventListener('change', function () {
-        help.textContent = this.value === 'multi_round'
-            ? 'Multi-Round requires a power-of-two number of teams (2, 4, 8, 16, 32, or 64).'
-            : 'Single Round keeps every matchup independent.';
-    });
-})();
-</script>
+
 </body>
 </html>
