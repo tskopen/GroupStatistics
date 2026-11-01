@@ -9,6 +9,6 @@ function normalizeLegacyBracket(array $bracket): array
 function migrateLegacyBrackets(PDO $db,string $jsonPath):int
 {
     if(!is_file($jsonPath)||!function_exists('initBracketTables'))return 0;initBracketTables($db);$legacy=json_decode(file_get_contents($jsonPath),true);if(!is_array($legacy))return 0;$count=0;
-    foreach($legacy as $raw){if(empty($raw['id'])||empty($raw['name']))continue;$exists=$db->prepare('SELECT 1 FROM brackets WHERE id=? LIMIT 1');$exists->execute([(string)$raw['id']]);if($exists->fetchColumn())continue;try{bracketSave($db,normalizeLegacyBracket($raw));$count++;}catch(Throwable $e){error_log('Bracket migration failed for '.$raw['id'].': '.$e->getMessage());}}
+    foreach($legacy as $raw){if(empty($raw['id'])||empty($raw['name']))continue;$deleted=$db->prepare('SELECT 1 FROM bracket_deleted_legacy_ids WHERE bracket_id=? LIMIT 1');$deleted->execute([(string)$raw['id']]);if($deleted->fetchColumn())continue;$exists=$db->prepare('SELECT 1 FROM brackets WHERE id=? LIMIT 1');$exists->execute([(string)$raw['id']]);if($exists->fetchColumn())continue;try{bracketSave($db,normalizeLegacyBracket($raw));$count++;}catch(Throwable $e){error_log('Bracket migration failed for '.$raw['id'].': '.$e->getMessage());}}
     return $count;
 }
