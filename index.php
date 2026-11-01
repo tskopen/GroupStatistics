@@ -231,6 +231,15 @@ usort(
     $otherByEvent,
     fn($a, $b) => ($b['latest_timestamp'] ?? 0) <=> ($a['latest_timestamp'] ?? 0)
 );
+
+// Challenge awards are also published in the homepage Results feed.
+$challengeAwards = $db->query("SELECT a.*, c.title AS challenge_title FROM engagement_awards a LEFT JOIN challenges c ON c.id=a.challenge_id WHERE a.status='published' AND a.challenge_id IS NOT NULL ORDER BY a.created_at DESC, a.id DESC")->fetchAll(PDO::FETCH_ASSOC);
+$challengeAwardRecipients = [];
+if ($challengeAwards) {
+    $recipientRows = $db->query("SELECT r.award_id, r.points_awarded, q.name AS squadron_name FROM engagement_award_recipients r JOIN squadrons q ON q.id=r.squadron_id ORDER BY q.id")->fetchAll(PDO::FETCH_ASSOC);
+    foreach ($recipientRows as $recipientRow) $challengeAwardRecipients[(int)$recipientRow['award_id']][] = $recipientRow;
+}
+
 ?>
 <!DOCTYPE html>
 <html>
@@ -390,7 +399,7 @@ usort(
     .sami-timestamp { font-size: 0.75em; color: #666; margin-top: 10px; text-align: center; }
     
     /* Regular event card */
-    .regular-event { text-align: center; }
+    .challenge-award-recipients{margin-top:12px;padding-top:10px;border-top:1px solid var(--border-color)}.challenge-award-recipient{display:flex;justify-content:space-between;gap:10px;padding:5px 0;border-bottom:1px solid var(--border-color);font-size:.9rem}.challenge-award-recipient:last-child{border-bottom:0}.regular-event { text-align: center; }
     .regular-event-icon { width: 60px; height: 60px; margin: 0 auto 10px; border-radius: 4px; object-fit: cover; }
     .regular-event-name { font-weight: bold; margin: 5px 0; }
     .regular-event-type { display: inline-block; background: var(--soft-accent-color); color: var(--primary-color); padding: 4px 8px; border-radius: 3px; font-size: 0.75em; margin-bottom: 8px; }
@@ -496,8 +505,8 @@ usort(
     <h2>🏅 Intramural Standings</h2>
     <?php endif; ?>
 
-    <?php if ($bracketsByTournament || $samisByEvent || $pftByEvent || $otherByEvent || $regularEvents): ?>
-    <h2>🔥 Recent Events &amp; Results</h2>
+    <?php if ($bracketsByTournament || $samisByEvent || $pftByEvent || $otherByEvent || $regularEvents || $challengeAwards): ?>
+    <h2 id="results">🔥 Recent Events &amp; Results</h2>
     <div class="events-grid">
         <?php /* Tournaments are shown first (most recent competitions), followed by
                  regular events. Both lists are pre-sorted newest-first above, so within
@@ -655,6 +664,31 @@ usort(
                 <?php endif; ?>
             </div>
         </div>
+        <?php endforeach; ?>
+
+        <?php foreach ($challengeAwards as $challengeAward): ?>
+        <?php $awardTimestamp = strtotime($challengeAward['created_at'] ?? '') ?: 0; $awardRecipients = $challengeAwardRecipients[(int)$challengeAward['id']] ?? []; ?>
+        <article class="event-card challenge-award-card" style="order: <?php echo -$awardTimestamp; ?>;">
+            <div class="event-header">🏅 CHALLENGE AWARD</div>
+            <div class="event-body">
+                <h3 style="margin:0 0 6px;color:var(--primary-color);"><?php echo htmlspecialchars($challengeAward['title'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?></h3>
+                <div class="regular-event-type"><?php echo htmlspecialchars($challengeAward['challenge_title'] ?? 'Group Challenge', ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?></div>
+                <p style="white-space:pre-line;margin:8px 0;"><?php echo htmlspecialchars($challengeAward['description'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?></p>
+                <?php if ($awardRecipients): ?>
+                <div class="challenge-award-recipients"><strong>Recipients</strong>
+                    <?php foreach ($awardRecipients as $awardRecipient): ?>
+                    <div class="challenge-award-recipient">
+                        <span><?php echo htmlspecialchars($awardRecipient['squadron_name'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?></span>
+                        <?php if ($awardRecipient['points_awarded'] !== null): ?><strong><?php echo rtrim(rtrim(number_format((float)$awardRecipient['points_awarded'], 2), '0'), '.'); ?> pts</strong><?php endif; ?>
+                    </div>
+                    <?php endforeach; ?>
+                </div>
+                <?php endif; ?>
+                <?php if (in_array($challengeAward['award_type'], ['points','both'], true) && !$awardRecipients): ?><strong><?php echo htmlspecialchars((string)$challengeAward['points_awarded'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?> points</strong><?php endif; ?>
+                <?php if (!empty($challengeAward['teams_url'])): ?><p><a href="<?php echo htmlspecialchars($challengeAward['teams_url'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?>" target="_blank" rel="noopener noreferrer">View award details ↗</a></p><?php endif; ?>
+                <div class="sami-timestamp">Published <?php echo $awardTimestamp ? htmlspecialchars(date('M j, Y', $awardTimestamp), ENT_QUOTES, 'UTF-8') : ''; ?></div>
+            </div>
+        </article>
         <?php endforeach; ?>
 
         <?php foreach ($regularEvents as $event): ?>
