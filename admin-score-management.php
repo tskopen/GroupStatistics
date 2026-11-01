@@ -176,6 +176,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($action === 'publish') {
             $result = opaPublishDraft($db, $draftId, $username, $publicationDescription);
             unset($_SESSION['opa_import_preview']);
+
+            // Publication notices go to every subscribed device, regardless of
+            // its selected squadron score preferences.
+            try {
+                require_once __DIR__ . '/notifications-helper.php';
+                require_once __DIR__ . '/push-service.php';
+                $publicationNotifications = sendNotificationForPublication($publicationDescription);
+                if ($publicationNotifications) {
+                    $delivery = sendPushNotifications($publicationNotifications);
+                    error_log('[opa-publication] Push notification delivery: '
+                        . (int)($delivery['sent'] ?? 0) . ' accepted, '
+                        . (int)($delivery['failed'] ?? 0) . ' failed');
+                }
+            } catch (Throwable $notificationError) {
+                // Do not undo a successfully published score update if push
+                // delivery is unavailable; record the issue for diagnostics.
+                error_log('[opa-publication] Notification error: ' . $notificationError->getMessage());
+            }
+
             header('Location: score-history.php?publication_id=' . $result['publication_id'] . '&published=1');
             exit;
         }
