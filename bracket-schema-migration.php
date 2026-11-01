@@ -31,6 +31,10 @@ function initBracketTables(PDO $db): void
     }
     if (!$hasType) $db->exec("ALTER TABLE brackets ADD COLUMN bracket_type TEXT NOT NULL DEFAULT 'single_round'");
 
+    $db->exec("CREATE TABLE IF NOT EXISTS bracket_deleted_legacy_ids (
+        bracket_id TEXT PRIMARY KEY, deleted_at DATETIME NOT NULL
+    )");
+
     $db->exec("CREATE TABLE IF NOT EXISTS bracket_score_events (
         matchup_id TEXT PRIMARY KEY, event_id INTEGER NOT NULL UNIQUE,
         FOREIGN KEY (matchup_id) REFERENCES bracket_matchups(id) ON DELETE CASCADE,
