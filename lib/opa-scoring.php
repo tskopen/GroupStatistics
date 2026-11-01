@@ -1376,7 +1376,7 @@ function opaRecalculatePublicationSnapshots(PDO $db): void {
             if (!isset($rankBySquadron[$sid])) {
                 throw new RuntimeException('Publication #' . $publicationId . ' is missing an overall result for Squadron ' . $sid . '.');
             }
-            $opa = (float)$scoresBySquadron[$sid] ? (array_sum($scoresBySquadron[$sid]) / $categoryCount) : 0.0;
+            $opa = array_sum($scoresBySquadron[$sid]) / $categoryCount;
             $previous = $previousSquadronRows[$sid] ?? null;
             $updateSquadron->execute([
                 $opa,
