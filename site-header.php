@@ -47,6 +47,7 @@ if (!function_exists('renderGroupSiteHeader')) {
                 <a href="announcements.php"<?php echo $currentPage === 'announcements.php' ? ' aria-current="page"' : ''; ?>>📣 Group Announcements</a>
                 <a href="intramural-standings.php"<?php echo $currentPage === 'intramural-standings.php' ? ' aria-current="page"' : ''; ?>>Intramurals</a>
                 <a href="cadet-of-month.php"<?php echo $currentPage === 'cadet-of-month.php' ? ' aria-current="page"' : ''; ?>>⭐ Cadet of the Month</a>
+                <a href="challenges.php"<?php echo $currentPage === 'challenges.php' ? ' aria-current="page"' : ''; ?>>🎯 Group Challenges</a>
                 <a href="awards.php"<?php echo $currentPage === 'awards.php' ? ' aria-current="page"' : ''; ?>>🏅 Challenge Awards</a>
                 <a href="score-history.php"<?php echo $currentPage === 'score-history.php' ? ' aria-current="page"' : ''; ?>>OPA History</a>
                 <a href="notification-preferences.php"<?php echo $currentPage === 'notification-preferences.php' ? ' aria-current="page"' : ''; ?>>🔔 Notifications</a>
