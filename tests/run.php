@@ -274,6 +274,188 @@ check($matchCount===1,'legacy import adds the missing matchup without duplicatin
 check(is_file($dataDir.'/brackets.json.legacy.bak'),'legacy bracket JSON is archived after successful import');
 
 
+// Regression: inspect a real XLSX package structure like the Group 1 workbook.
+// Its headers are stored in sharedStrings.xml, rankings contain Excel #N/A error
+// cells, and percentage averages are numeric fractions using built-in percent style 10.
+if (class_exists('ZipArchive') && function_exists('simplexml_load_string')) {
+    $xlsxHeaders = [
+        'Squadron', 'MAE Ranking', 'Marching Ranking', 'SAMI Ranking', 'AMI Ranking',
+        'PAI Ranking', 'CAI Ranking', 'PP No-Notice AMI Ranking',
+        'Commissioning Education Ranking', 'Knowledge Testing Ranking',
+        'Group Commander', 'Spot Discrepancies', 'Major Assessment Event Avg',
+        'Marching Avg', 'SAMI Avg', 'AMI Avg', 'PAI Avg', 'CAI Avg',
+        'PP No-Notice AMI Avg', 'Commissioning Education Avg',
+        'Knowledge Testing Avg', 'Group Commander Avg', 'Spot Discrepancies Avg',
+    ];
+    $wideCategoryDefinitions = [
+        [101, 'mae', 'MAE'],
+        [102, 'marching', 'Marching'],
+        [103, 'sami', 'SAMI'],
+        [104, 'ami', 'AMI'],
+        [105, 'pai', 'PAI'],
+        [106, 'cai', 'CAI'],
+        [107, 'pp-no-notice-ami', 'PP No-Notice AMI'],
+        [108, 'commissioning-education', 'Commissioning Education'],
+        [109, 'knowledge-testing', 'Knowledge Testing'],
+        [110, 'group-commander', 'Group Commander'],
+        [111, 'spot-discrepancies', 'Spot Discrepancies'],
+    ];
+    $wideTestCategories = [];
+    foreach ($wideCategoryDefinitions as [$id, $key, $name]) {
+        $wideTestCategories[] = [
+            'id' => $id, 'category_key' => $key, 'display_name' => $name,
+            'is_active' => 1, 'ranking_direction' => 'manual',
+        ];
+    }
+
+    $samiRanks = [4, 35, 3, 10, 8, 20, 9, 19, 34, 18];
+    $amiRanks = [3, 9, 26, 19, 15, 13, 1, 36, 14, 35];
+    $paiRanks = [38, 29, 25, 31, 2, 4, 19, 21, 1, 24];
+    $commissioningRanks = [26, 13, 8, 2, 19, 4, 9, 5, 29, 37];
+    $knowledgeRanks = [4, 7, 38, 15, 25, 11, 29, 37, 2, 18];
+    $samiScores = [.9746, .9544, .9747, .9732, .9734, .9653, .9733, .9667, .9549, .9669];
+    $amiScores = [.9542, .9467, .9298, .9348, .9404, .9413, .9606, .9197, .9412, .9219];
+    $paiScores = [.9825, .9906, .9911, .9906, .9984, .9979, .9932, .9919, .9996, .9912];
+    $commissioningScores = [.9261, .9321, .9340, .9431, .9282, .9400, .9331, .9370, .9241, .9147];
+    $knowledgeScores = [.9153, .9103, .8791, .8982, .8882, .9027, .8849, .8794, .9234, .8953];
+
+    $xlsxRows = [];
+    for ($sid = 1; $sid <= 10; $sid++) {
+        $i = $sid - 1;
+        $xlsxRows[] = [
+            $sid, '#N/A', '#N/A', $samiRanks[$i], $amiRanks[$i], $paiRanks[$i],
+            '#N/A', '#N/A', $commissioningRanks[$i], $knowledgeRanks[$i],
+            '#N/A', '#N/A', null, null, $samiScores[$i], $amiScores[$i],
+            $paiScores[$i], null, null, $commissioningScores[$i],
+            $knowledgeScores[$i], null, null,
+        ];
+    }
+    // Include an out-of-scope row, as the uploaded workbook contains Squadrons 1–40.
+    $xlsxRows[] = [11, '#N/A', '#N/A', 29, 12, 35, '#N/A', '#N/A', 39, 16,
+        '#N/A', '#N/A', null, null, .9575, .9421, .9891, null, null, .9081, .8969, null, null];
+
+    $xlsxStrings = array_merge($xlsxHeaders, ['Original screenshot — preserved at full resolution']);
+    $xlsxStringXml = '<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="' . count($xlsxStrings) . '" uniqueCount="' . count($xlsxStrings) . '">';
+    foreach ($xlsxStrings as $string) {
+        $xlsxStringXml .= '<si><t>' . htmlspecialchars($string, ENT_XML1 | ENT_QUOTES, 'UTF-8') . '</t></si>';
+    }
+    $xlsxStringXml .= '</sst>';
+
+    $columnName = static function (int $index): string {
+        $name = '';
+        while ($index >= 0) {
+            $name = chr(($index % 26) + 65) . $name;
+            $index = intdiv($index, 26) - 1;
+        }
+        return $name;
+    };
+    $worksheetRows = [];
+    $headerCells = [];
+    foreach ($xlsxHeaders as $column => $_header) {
+        $cellRef = $columnName($column) . '1';
+        $headerCells[] = '<c r="' . $cellRef . '" t="s"><v>' . $column . '</v></c>';
+    }
+    $worksheetRows[] = '<row r="1">' . implode('', $headerCells) . '</row>';
+    foreach ($xlsxRows as $rowIndex => $values) {
+        $excelRow = $rowIndex + 2;
+        $cells = [];
+        foreach ($values as $column => $value) {
+            $cellRef = $columnName($column) . $excelRow;
+            if ($value === null) {
+                $cells[] = '<c r="' . $cellRef . '"/>';
+            } elseif ($value === '#N/A') {
+                $cells[] = '<c r="' . $cellRef . '" t="e"><v>#N/A</v></c>';
+            } else {
+                $style = ($column >= 14 && $column <= 20) ? ' s="1"' : '';
+                $cells[] = '<c r="' . $cellRef . '"' . $style . '><v>' . (string)$value . '</v></c>';
+            }
+        }
+        $worksheetRows[] = '<row r="' . $excelRow . '">' . implode('', $cells) . '</row>';
+    }
+    $sheetOneXml = '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>'
+        . implode('', $worksheetRows) . '</sheetData></worksheet>';
+    $sheetTwoXml = '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>'
+        . '<row r="1"><c r="A1" t="s"><v>' . count($xlsxHeaders) . '</v></c></row>'
+        . '</sheetData></worksheet>';
+
+    $workbookXml = '<?xml version="1.0" encoding="UTF-8"?>'
+        . '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '
+        . 'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+        . '<sheets><sheet name="Editable Table" sheetId="1" r:id="rId1"/>'
+        . '<sheet name="Screenshot" sheetId="2" r:id="rId2"/></sheets></workbook>';
+    $relationshipsXml = '<?xml version="1.0" encoding="UTF-8"?>'
+        . '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+        . '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>'
+        . '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet2.xml"/>'
+        . '<Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>'
+        . '<Relationship Id="rId4" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings" Target="sharedStrings.xml"/>'
+        . '</Relationships>';
+    $stylesXml = '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+        . '<numFmts count="0"/><cellXfs count="2"><xf numFmtId="0"/><xf numFmtId="10"/></cellXfs>'
+        . '</styleSheet>';
+
+    $xlsxPath = tempnam(sys_get_temp_dir(), 'opa-xlsx-');
+    $zip = new ZipArchive();
+    $opened = $zip->open($xlsxPath, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+    if ($opened === true) {
+        $zip->addFromString('xl/workbook.xml', $workbookXml);
+        $zip->addFromString('xl/_rels/workbook.xml.rels', $relationshipsXml);
+        $zip->addFromString('xl/sharedStrings.xml', $xlsxStringXml);
+        $zip->addFromString('xl/styles.xml', $stylesXml);
+        $zip->addFromString('xl/worksheets/sheet1.xml', $sheetOneXml);
+        $zip->addFromString('xl/worksheets/sheet2.xml', $sheetTwoXml);
+        $zip->close();
+
+        try {
+            $decodedWorkbook = opaReadXlsxWorkbook($xlsxPath);
+            $decodedHeaders = $decodedWorkbook[0]['rows'][0]['cells'] ?? [];
+            check(($decodedHeaders[0] ?? null) === 'Squadron'
+                && ($decodedHeaders[1] ?? null) === 'MAE Ranking'
+                && ($decodedHeaders[22] ?? null) === 'Spot Discrepancies Avg',
+                'XLSX reader resolves shared-string headers from the Editable Table sheet');
+            check(($decodedWorkbook[0]['rows'][1]['cells'][14] ?? null) === '97.46%',
+                'XLSX reader converts styled fractional averages into readable percentages');
+
+            check((opaMatchWideCategory('MAE', $wideTestCategories)['id'] ?? null) === 101
+                && (opaMatchWideCategory('Major Assessment Event', $wideTestCategories)['id'] ?? null) === 101,
+                'wide category aliases match MAE and Major Assessment Event symmetrically');
+
+            $widePreview = opaBuildImportPreview($decodedWorkbook, $wideTestCategories);
+            $samiRecords = $widePreview['records'][103] ?? [];
+            $amiRecords = $widePreview['records'][104] ?? [];
+            $paiRecords = $widePreview['records'][105] ?? [];
+            $commissioningRecords = $widePreview['records'][108] ?? [];
+            $knowledgeRecords = $widePreview['records'][109] ?? [];
+            check($widePreview['identified_sheets'] === 1
+                && count($samiRecords) === 10
+                && count($amiRecords) === 10
+                && count($paiRecords) === 10
+                && count($commissioningRecords) === 10
+                && count($knowledgeRecords) === 10,
+                'uploaded Group 1 workbook layout is identified and imports all ten eligible squadrons');
+            check(abs((float)$samiRecords[1]['category_score'] - 97.46) < 0.000001
+                && abs((float)$amiRecords[1]['category_score'] - 95.42) < 0.000001
+                && abs((float)$paiRecords[1]['category_score'] - 98.25) < 0.000001
+                && abs((float)$commissioningRecords[1]['category_score'] - 92.61) < 0.000001
+                && abs((float)$knowledgeRecords[1]['category_score'] - 91.53) < 0.000001,
+                'Group 1 workbook imports source averages as 0–100 percentage scores');
+            check((int)$samiRecords[3]['category_rank'] === 1
+                && (int)$amiRecords[7]['category_rank'] === 1
+                && !isset($samiRecords[11]),
+                'source ranks are recalculated within Squadrons 1–10 and exclude Squadron 11–40 data');
+        } catch (Throwable $e) {
+            check(false, 'generated Group 1 XLSX fixture is readable: ' . $e->getMessage());
+        } finally {
+            @unlink($xlsxPath);
+        }
+    } else {
+        @unlink($xlsxPath);
+        check(false, 'generated Group 1 XLSX fixture can be created');
+    }
+} else {
+    check(false, 'PHP ZipArchive and SimpleXML extensions are installed for XLSX reader tests');
+}
+
 // Web Push configuration regression checks. These use synthetic format fixtures
 // only; they do not contain or access production credentials.
 require_once __DIR__ . '/../vapid-config.php';
