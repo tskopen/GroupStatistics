@@ -834,7 +834,6 @@ if ('serviceWorker' in navigator) {
         return Number.isNaN(parsed.getTime()) ? raw : parsed.toLocaleDateString(undefined, {
             year: 'numeric', month: 'short', day: 'numeric'
         });
-    });
     }
 
     function publicationOptionLabel(publication) {
