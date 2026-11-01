@@ -127,6 +127,41 @@ function sendNotificationForScore(array $scoreData,?string $customMessage=null):
     return $matched;
 }
 
+
+/**
+ * Notify every subscribed device when a new OPA publication is published.
+ * Publication notices intentionally ignore per-squadron score preferences.
+ */
+function sendNotificationForPublication(string $description = ''): array {
+    $description = trim($description);
+    $body = 'OPA publishing scores have been updated.';
+    if ($description !== '') $body .= ' ' . $description;
+    $payload = [
+        'title' => 'Publishing Scores Updated',
+        'body' => $body,
+        'icon' => '/assets/pwa-icon-192.png',
+        'badge' => '/assets/pwa-icon-192.png',
+        'tag' => 'opa-publication-update-' . bin2hex(random_bytes(8)),
+        'data' => [
+            'type' => 'publication_update',
+            'squadron_id' => 0,
+            'url' => '/score-history.php',
+        ],
+    ];
+    if (!isValidNotificationPayload($payload)) return [];
+
+    $notifications = [];
+    foreach (loadSubscriptions()['subscriptions'] as $sub) {
+        $notifications[] = [
+            'endpoint' => $sub['endpoint'],
+            'auth' => $sub['auth'],
+            'p256dh' => $sub['p256dh'],
+            'payload' => $payload,
+        ];
+    }
+    return $notifications;
+}
+
 function isValidNotificationPayload(array $payload): bool {
     if (!is_string($payload['title']??null) || trim($payload['title'])==='') return false;
     if (!is_string($payload['body']??null) || trim($payload['body'])==='') return false;
