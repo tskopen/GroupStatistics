@@ -456,6 +456,93 @@ if (class_exists('ZipArchive') && function_exists('simplexml_load_string')) {
     check(false, 'PHP ZipArchive and SimpleXML extensions are installed for XLSX reader tests');
 }
 
+// Published publication correction tests: edits recalculate dependent records in later
+// publications, retain an audit trail, and re-enable immutable snapshot triggers.
+$firstPublicationId = (int)$firstPublication['publication_id'];
+$secondPublicationId = (int)$secondPublication['publication_id'];
+$thirdPublicationId = (int)$thirdPublication['publication_id'];
+$correctionData = opaGetPublicationEditData($db, $firstPublicationId);
+$correctionSubmitted = [];
+$expectedCorrectedOpa = 0.0;
+$correctionCategoryCount = count($correctionData['categories'] ?? []);
+foreach (($correctionData['categories'] ?? []) as $correctionCategory) {
+    $key = $correctionCategory['category_key'];
+    foreach ($correctionCategory['rows'] as $sid => $row) {
+        $correctionSubmitted[$key][$sid] = [
+            'rank' => (int)$row['category_rank'],
+            'score' => (float)$row['category_score'],
+        ];
+    }
+    if ($key === 'ami') {
+        $rankOne = $correctionSubmitted[$key][1]['rank'];
+        $rankTwo = $correctionSubmitted[$key][2]['rank'];
+        $correctionSubmitted[$key][1]['rank'] = $rankTwo;
+        $correctionSubmitted[$key][2]['rank'] = $rankOne;
+        $correctionSubmitted[$key][1]['score'] += 0.25;
+    }
+}
+for ($sid = 1; $sid <= 10; $sid++) {
+    $scoreTotal = 0.0;
+    foreach ($correctionSubmitted as $categoryValues) $scoreTotal += (float)$categoryValues[$sid]['score'];
+    $expectedCorrectedOpa = $sid === 1 ? $scoreTotal / max(1, $correctionCategoryCount) : $expectedCorrectedOpa;
+}
+$correctionReason = 'Corrected a transcription error in the first publication.';
+opaCorrectPublication($db, $firstPublicationId, $correctionSubmitted, 'Corrected first publication', $correctionReason, 'test-admin');
+$correctedAmiStmt = $db->prepare('SELECT category_rank,category_score,category_points FROM scoring_publication_scores WHERE publication_id=? AND category_key=? AND squadron_id=1');
+$correctedAmiStmt->execute([$firstPublicationId, 'ami']);
+$correctedAmi = $correctedAmiStmt->fetch(PDO::FETCH_ASSOC);
+$correctedOpaStmt = $db->prepare('SELECT opa FROM scoring_publication_squadrons WHERE publication_id=? AND squadron_id=1');
+$correctedOpaStmt->execute([$firstPublicationId]);
+$correctedOpa = (float)$correctedOpaStmt->fetchColumn();
+$nextPreviousOpaStmt = $db->prepare('SELECT previous_opa FROM scoring_publication_squadrons WHERE publication_id=? AND squadron_id=1');
+$nextPreviousOpaStmt->execute([$secondPublicationId]);
+$secondPublicationPreviousOpa = (float)$nextPreviousOpaStmt->fetchColumn();
+check((int)$correctedAmi['category_rank'] === (int)$correctionSubmitted['ami'][1]['rank']
+    && abs((float)$correctedAmi['category_score'] - (float)$correctionSubmitted['ami'][1]['score']) < 0.000001
+    && (float)$correctedAmi['category_points'] === 11.0 - (float)$correctionSubmitted['ami'][1]['rank'],
+    'published correction updates category rank, score, and points');
+check(abs($correctedOpa - $expectedCorrectedOpa) < 0.000001
+    && abs($secondPublicationPreviousOpa - $correctedOpa) < 0.000001,
+    'published correction recalculates OPA and later publication movement baselines');
+$auditEditStmt = $db->prepare("SELECT operation,reason,performed_by FROM scoring_publication_corrections WHERE publication_id=? ORDER BY id DESC LIMIT 1");
+$auditEditStmt->execute([$firstPublicationId]);
+$auditEdit = $auditEditStmt->fetch(PDO::FETCH_ASSOC);
+check($auditEdit && $auditEdit['operation'] === 'edit'
+    && $auditEdit['reason'] === $correctionReason
+    && $auditEdit['performed_by'] === 'test-admin',
+    'published correction records who changed the snapshot and why');
+$immutabilityRestored = false;
+try {
+    $db->prepare('UPDATE scoring_publications SET published_by=? WHERE id=?')->execute(['blocked', $firstPublicationId]);
+} catch (PDOException $e) {
+    $immutabilityRestored = str_contains($e->getMessage(), 'immutable');
+}
+check($immutabilityRestored, 'publication immutability triggers are restored after a correction');
+
+$deleteReason = 'This publication was duplicated and should be removed.';
+opaDeletePublication($db, $secondPublicationId, $deleteReason, 'test-admin');
+$remainingPublicationIds = $db->query('SELECT id FROM scoring_publications ORDER BY id')->fetchAll(PDO::FETCH_COLUMN);
+$thirdPreviousOpaStmt = $db->prepare('SELECT previous_opa FROM scoring_publication_squadrons WHERE publication_id=? AND squadron_id=1');
+$thirdPreviousOpaStmt->execute([$thirdPublicationId]);
+$thirdPreviousOpa = (float)$thirdPreviousOpaStmt->fetchColumn();
+$auditDeleteStmt = $db->prepare("SELECT operation,reason FROM scoring_publication_corrections WHERE publication_id=? ORDER BY id DESC LIMIT 1");
+$auditDeleteStmt->execute([$secondPublicationId]);
+$auditDelete = $auditDeleteStmt->fetch(PDO::FETCH_ASSOC);
+check(!in_array($secondPublicationId, array_map('intval', $remainingPublicationIds), true)
+    && count($remainingPublicationIds) === 3,
+    'deleting a publication removes the snapshot and keeps the remaining history');
+check(abs($thirdPreviousOpa - $correctedOpa) < 0.000001,
+    'later publications are recalculated against the preceding surviving publication after deletion');
+check($auditDelete && $auditDelete['operation'] === 'delete' && $auditDelete['reason'] === $deleteReason,
+    'publication deletion remains recorded in the administrator audit trail');
+$deleteImmutabilityRestored = false;
+try {
+    $db->prepare('DELETE FROM scoring_publications WHERE id=?')->execute([$firstPublicationId]);
+} catch (PDOException $e) {
+    $deleteImmutabilityRestored = str_contains($e->getMessage(), 'immutable');
+}
+check($deleteImmutabilityRestored, 'publication delete protection is restored after a controlled deletion');
+
 // Web Push configuration regression checks. These use synthetic format fixtures
 // only; they do not contain or access production credentials.
 require_once __DIR__ . '/../vapid-config.php';
