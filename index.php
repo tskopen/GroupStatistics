@@ -281,8 +281,9 @@ usort(
     .movement-new { color: #003366; font-weight: bold; background: #e3f2fd; padding: 2px 6px; border-radius: 3px; font-size: 0.85em; }
     .opa-history { margin-top: 4px; color: var(--muted-color); font-size: .72rem; font-weight: 500; line-height: 1.35; white-space: normal; }
     .movement-cell { min-width: 132px; line-height: 1.25; }
-    .movement-opa { display: block; white-space: nowrap; }
-    .movement-rank-meta { display: block; margin-top: 4px; color: var(--muted-color); font-size: .72rem; font-weight: 500; }
+    .movement-opa,
+    .movement-rank-meta { display: block; white-space: nowrap; font-size: 1rem; font-weight: 700; }
+    .movement-rank-meta { margin-top: 4px; }
 
     .details-btn { padding: 6px 12px; background: var(--primary-color); color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 0.85em; }
     .details-btn:hover { background: var(--secondary-color); }
@@ -723,6 +724,9 @@ if ('serviceWorker' in navigator) {
         var opaClass = opaChange > 0 ? 'movement-up' : (opaChange < 0 ? 'movement-down' : 'movement-same');
         var opaPrefix = opaChange > 0 ? '↑ +' : (opaChange < 0 ? '↓ ' : '');
         var rankChange = entry.rank_change === null || entry.rank_change === undefined ? null : Number(entry.rank_change);
+        var rankClass = rankChange === null || !Number.isFinite(rankChange) || rankChange === 0
+            ? 'movement-same'
+            : (rankChange > 0 ? 'movement-up' : 'movement-down');
         var rankText = 'No rank change';
         if (rankChange !== null && Number.isFinite(rankChange)) {
             rankText = rankChange > 0
@@ -735,7 +739,7 @@ if ('serviceWorker' in navigator) {
         cell.className = 'movement-cell';
         cell.innerHTML = '<span class="movement-opa ' + opaClass + '">' +
             opaPrefix + opaChange.toFixed(2) + ' pp</span>' +
-            '<small class="movement-rank-meta">' + rankText + '</small>';
+            '<span class="movement-rank-meta ' + rankClass + '">' + rankText + '</span>';
     }
 
     function renderOpaHistory(element, history) {
