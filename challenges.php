@@ -1,7 +1,7 @@
 <?php
 require __DIR__.'/config.php';require __DIR__.'/theme-loader.php';$theme=loadTheme();$db=getDb();
 function publicChallengeEscape($v):string{return htmlspecialchars((string)($v??''),ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8');}
-$challenges=$db->query("SELECT * FROM challenges WHERE status='published' ORDER BY COALESCE(starts_at,created_at) DESC,id DESC")->fetchAll(PDO::FETCH_ASSOC);
+$challenges=$db->query("SELECT * FROM challenges WHERE status IN ('published','closed') ORDER BY COALESCE(starts_at,created_at) DESC,id DESC")->fetchAll(PDO::FETCH_ASSOC);
 $submissions=[];$awards=[];
 foreach($challenges as $c){$id=(int)$c['id'];$s=$db->prepare("SELECT s.*,q.name squadron_name FROM challenge_submissions s LEFT JOIN squadrons q ON q.id=s.squadron_id WHERE s.challenge_id=? AND s.status='published' ORDER BY s.created_at");$s->execute([$id]);$submissions[$id]=$s->fetchAll(PDO::FETCH_ASSOC);$s=$db->prepare("SELECT * FROM engagement_awards WHERE challenge_id=? AND status='published' ORDER BY created_at DESC,id DESC");$s->execute([$id]);$awards[$id]=$s->fetchAll(PDO::FETCH_ASSOC);}
 ?>
