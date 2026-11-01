@@ -312,6 +312,10 @@ usort(
     .breakdown-category-value { margin: 4px 0; font-size: .86em; overflow-wrap: anywhere; }
     .breakdown-category-source { color: var(--muted-color,#667085); font-size: .76em; margin-top: 8px; line-height: 1.45; overflow-wrap: anywhere; }
     .breakdown-category-change { background: var(--soft-primary-color,#f7f9fc); border-radius: 6px; padding: 8px; }
+    .breakdown-category-change-metrics { display: grid; grid-template-columns: 1fr; gap: 8px; }
+    .breakdown-change-metric { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; padding: 8px 10px; border: 1px solid var(--border-color,#d8dee8); border-radius: 6px; background: var(--surface-color,#fff); min-width: 0; }
+    .breakdown-change-metric-label { color: var(--muted-color,#667085); font-size: .78em; font-weight: 700; }
+    .breakdown-change-metric-value { font-size: 1.08em; line-height: 1.3; font-weight: 800; overflow-wrap: anywhere; }
     .breakdown-positive { color: #18713b; font-weight: 800; }
     .breakdown-negative { color: #a51f35; font-weight: 800; }
     .breakdown-neutral { color: var(--muted-color,#667085); font-weight: 700; }
@@ -860,9 +864,11 @@ if ('serviceWorker' in navigator) {
             return html;
         }
         var rankDelta = change.rank_movement;
-        var changeHtml = '<div class="breakdown-category-value">Rank movement: <strong class="' + movementClass(rankDelta) + '">' + escapeHtml(rankMovement(rankDelta)) + '</strong></div>' +
-            '<div class="breakdown-category-value">Score change: <strong class="' + movementClass(change.score) + '">' + escapeHtml(signedValue(change.score, 2, ' pp')) + '</strong></div>' +
-            '<div class="breakdown-category-value">Points change: <strong class="' + movementClass(change.points) + '">' + escapeHtml(signedValue(change.points, 0, ' pts')) + '</strong></div>';
+        var changeHtml = '<div class="breakdown-category-change-metrics">' +
+            '<div class="breakdown-change-metric"><span class="breakdown-change-metric-label">Rank movement</span><strong class="breakdown-change-metric-value ' + movementClass(rankDelta) + '">' + escapeHtml(rankMovement(rankDelta)) + '</strong></div>' +
+            '<div class="breakdown-change-metric"><span class="breakdown-change-metric-label">Score change</span><strong class="breakdown-change-metric-value ' + movementClass(change.score) + '">' + escapeHtml(signedValue(change.score, 2, ' pp')) + '</strong></div>' +
+            '<div class="breakdown-change-metric"><span class="breakdown-change-metric-label">Points change</span><strong class="breakdown-change-metric-value ' + movementClass(change.points) + '">' + escapeHtml(signedValue(change.points, 0, ' pts')) + '</strong></div>' +
+            '</div>';
         if (!a || !b) changeHtml = '<div class="breakdown-category-value">This category is present in only one selected publication.</div>';
         return '<article class="breakdown-category-card">' +
             '<h5>' + escapeHtml(category.name) + '</h5>' +
