@@ -24,7 +24,7 @@ function awardStorePhoto(array $file, string $dir): ?string {
     if (!$saved) { if(is_file($path)) @unlink($path); throw new RuntimeException('Could not safely re-encode this photo.'); }
     @chmod($path,0640); return $name;
 }
-$form=['id'=>null,'title'=>'','description'=>'','award_type'=>'description','points_awarded'=>'','teams_url'=>'','status'=>'published'];
+$form=['id'=>null,'title'=>'','description'=>'','award_type'=>'description','points_awarded'=>'','teams_url'=>'','challenge_id'=>0,'status'=>'published'];
 $selected=[];
 $photos=[];
 if ($_SERVER['REQUEST_METHOD']==='POST') {
@@ -41,7 +41,7 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
         $old=$id?awardFind($db,$id):null; if($id&&!$old) throw new RuntimeException('Award not found.');
         $title=trim((string)($_POST['title']??'')); $description=trim((string)($_POST['description']??''));
         $type=(string)($_POST['award_type']??'description'); $status=(string)($_POST['save_status']??'draft');
-        $url=trim((string)($_POST['teams_url']??'')); $points=null;
+        $url=trim((string)($_POST['teams_url']??'')); $challengeId=(int)($_POST['challenge_id']??0); if($challengeId&&!$db->query('SELECT 1 FROM challenges WHERE id='.(int)$challengeId)->fetchColumn())throw new RuntimeException('Invalid challenge selected.'); $points=null;
         if(in_array($type,['points','both'],true)){ $raw=trim((string)($_POST['points_awarded']??'')); if($raw===''||!is_numeric($raw)||!is_finite((float)$raw)||abs((float)$raw)>1000000)throw new RuntimeException('Enter a valid points value.');$points=(float)$raw; }
         if($title===''||strlen($title)>160)throw new RuntimeException('Title is required (160 characters maximum).');
         if($description===''||strlen($description)>5000)throw new RuntimeException('Description is required (5,000 characters maximum).');
@@ -63,8 +63,8 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
         $removePhotoIds=array_values(array_unique(array_filter(array_map('intval',(array)($_POST['remove_photo_ids']??[])))));
         $filesToDelete=[];
         $now=date('c'); $db->beginTransaction();
-        if($old){$s=$db->prepare('UPDATE engagement_awards SET title=?,description=?,award_type=?,points_awarded=?,teams_url=?,status=?,updated_at=? WHERE id=?');$s->execute([$title,$description,$type,$points,$url?:null,$status,$now,$id]);$awardId=$id;}
-        else{$s=$db->prepare('INSERT INTO engagement_awards(title,description,award_type,points_awarded,teams_url,status,created_by,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)');$s->execute([$title,$description,$type,$points,$url?:null,$status,(string)($_SESSION['username']??'admin'),$now,$now]);$awardId=(int)$db->lastInsertId();}
+        if($old){$s=$db->prepare('UPDATE engagement_awards SET title=?,description=?,award_type=?,points_awarded=?,teams_url=?,challenge_id=?,status=?,updated_at=? WHERE id=?');$s->execute([$title,$description,$type,$points,$url?:null,$challengeId?:null,$status,$now,$id]);$awardId=$id;}
+        else{$s=$db->prepare('INSERT INTO engagement_awards(title,description,award_type,points_awarded,teams_url,challenge_id,status,created_by,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)');$s->execute([$title,$description,$type,$points,$url?:null,$challengeId?:null,$status,(string)($_SESSION['username']??'admin'),$now,$now]);$awardId=(int)$db->lastInsertId();}
         $s=$db->prepare('DELETE FROM engagement_award_recipients WHERE award_id=?');$s->execute([$awardId]);
         $s=$db->prepare('INSERT INTO engagement_award_recipients(award_id,squadron_id,points_awarded,created_at) VALUES(?,?,?,?)');foreach($selected as $sid)$s->execute([$awardId,$sid,$points,$now]);
         if($removePhotoIds){
@@ -84,13 +84,13 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
         if($db->inTransaction())$db->rollBack();
         foreach(($uploadPaths??[]) as $p)if(is_file($p))@unlink($p);
         $errors[]=$e->getMessage();
-        $form=['id'=>$id?:null,'title'=>trim((string)($_POST['title']??'')),'description'=>trim((string)($_POST['description']??'')),'award_type'=>(string)($_POST['award_type']??'description'),'points_awarded'=>(string)($_POST['points_awarded']??''),'teams_url'=>trim((string)($_POST['teams_url']??'')),'status'=>(string)($_POST['save_status']??'draft')];
+        $form=['id'=>$id?:null,'title'=>trim((string)($_POST['title']??'')),'description'=>trim((string)($_POST['description']??'')),'award_type'=>(string)($_POST['award_type']??'description'),'points_awarded'=>(string)($_POST['points_awarded']??''),'teams_url'=>trim((string)($_POST['teams_url']??'')),'challenge_id'=>(int)($_POST['challenge_id']??0),'status'=>(string)($_POST['save_status']??'draft')];
         $selected=array_values(array_unique(array_filter(array_map('intval',(array)($_POST['squadron_ids']??[])))));
     }
 }
 $editId=(int)($_GET['edit']??0);$editing=$editId?awardFind($db,$editId):null;
-if($editing&&!$form['id']){$form=['id'=>$editing['id'],'title'=>$editing['title'],'description'=>$editing['description'],'award_type'=>$editing['award_type'],'points_awarded'=>$editing['points_awarded']??'','teams_url'=>$editing['teams_url']??'','status'=>$editing['status']];$s=$db->prepare('SELECT squadron_id FROM engagement_award_recipients WHERE award_id=?');$s->execute([$editId]);$selected=array_map('intval',$s->fetchAll(PDO::FETCH_COLUMN));$s=$db->prepare('SELECT * FROM engagement_award_photos WHERE award_id=? ORDER BY id');$s->execute([$editId]);$photos=$s->fetchAll(PDO::FETCH_ASSOC);}
-$squadrons=$db->query('SELECT id,name FROM squadrons ORDER BY id')->fetchAll(PDO::FETCH_ASSOC);
+if($editing&&!$form['id']){$form=['id'=>$editing['id'],'title'=>$editing['title'],'description'=>$editing['description'],'award_type'=>$editing['award_type'],'points_awarded'=>$editing['points_awarded']??'','teams_url'=>$editing['teams_url']??'','challenge_id'=>(int)($editing['challenge_id']??0),'status'=>$editing['status']];$s=$db->prepare('SELECT squadron_id FROM engagement_award_recipients WHERE award_id=?');$s->execute([$editId]);$selected=array_map('intval',$s->fetchAll(PDO::FETCH_COLUMN));$s=$db->prepare('SELECT * FROM engagement_award_photos WHERE award_id=? ORDER BY id');$s->execute([$editId]);$photos=$s->fetchAll(PDO::FETCH_ASSOC);}
+$squadrons=$db->query('SELECT id,name FROM squadrons ORDER BY id')->fetchAll(PDO::FETCH_ASSOC); $challenges=$db->query('SELECT id,title FROM challenges ORDER BY created_at DESC')->fetchAll(PDO::FETCH_ASSOC);
 $awards=$db->query("SELECT a.*,(SELECT COUNT(*) FROM engagement_award_recipients r WHERE r.award_id=a.id) recipient_count,(SELECT COUNT(*) FROM engagement_award_photos p WHERE p.award_id=a.id) photo_count FROM engagement_awards a ORDER BY CASE a.status WHEN 'draft' THEN 0 ELSE 1 END,a.updated_at DESC")->fetchAll(PDO::FETCH_ASSOC);
 ?>
 <!doctype html><html lang="en"><head>
@@ -106,7 +106,7 @@ $awards=$db->query("SELECT a.*,(SELECT COUNT(*) FROM engagement_award_recipients
 <form method="post" enctype="multipart/form-data" action="admin-awards.php<?php echo $form['id']?'?edit='.(int)$form['id'].'#editor':'';?>"><input type="hidden" name="action" value="save"><?php if($form['id']):?><input type="hidden" name="award_id" value="<?php echo (int)$form['id'];?>"><?php endif;?>
 <label for="title">Award title</label><input id="title" type="text" name="title" maxlength="160" required value="<?php echo awardEscape($form['title']);?>">
 <label for="description">Description</label><textarea id="description" name="description" maxlength="5000" required><?php echo awardEscape($form['description']);?></textarea>
-<label for="award_type">Award type</label><select id="award_type" name="award_type"><option value="description" <?php echo $form['award_type']==='description'?'selected':'';?>>Description only</option><option value="points" <?php echo $form['award_type']==='points'?'selected':'';?>>Points only</option><option value="both" <?php echo $form['award_type']==='both'?'selected':'';?>>Points and description</option><option value="completion" <?php echo $form['award_type']==='completion'?'selected':'';?>>Completion, no points</option></select>
+<label for="challenge_id">Attach to challenge (optional)</label><select id="challenge_id" name="challenge_id"><option value="0">Standalone award</option><?php foreach($challenges as $challenge):?><option value="<?php echo (int)$challenge['id'];?>" <?php echo (int)$form['challenge_id']===(int)$challenge['id']?'selected':'';?>><?php echo awardEscape($challenge['title']);?></option><?php endforeach;?></select>\n<label for="award_type">Award type</label><select id="award_type" name="award_type"><option value="description" <?php echo $form['award_type']==='description'?'selected':'';?>>Description only</option><option value="points" <?php echo $form['award_type']==='points'?'selected':'';?>>Points only</option><option value="both" <?php echo $form['award_type']==='both'?'selected':'';?>>Points and description</option><option value="completion" <?php echo $form['award_type']==='completion'?'selected':'';?>>Completion, no points</option></select>
 <div id="points-wrap"><label for="points">Points per squadron</label><input id="points" type="number" step="any" name="points_awarded" value="<?php echo awardEscape($form['points_awarded']);?>"></div>
 <label>Recipient squadrons <span class="hint">— select multiple</span></label><div class="sqs"><?php foreach($squadrons as $sq):?><label><input type="checkbox" name="squadron_ids[]" value="<?php echo (int)$sq['id'];?>" <?php echo in_array((int)$sq['id'],$selected,true)?'checked':'';?>> <?php echo awardEscape($sq['name']);?></label><?php endforeach;?></div>
 <label for="teams_url">Teams evidence channel/post (optional)</label><input id="teams_url" type="url" name="teams_url" placeholder="https://teams.microsoft.com/..." value="<?php echo awardEscape($form['teams_url']);?>">
