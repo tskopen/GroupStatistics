@@ -835,33 +835,6 @@ if ('serviceWorker' in navigator) {
             year: 'numeric', month: 'short', day: 'numeric'
         });
     });
-})();
-</script>
-<script>
-// Offer native installation when supported, otherwise link to device-specific instructions.
-(function () {
-    var installPrompt = null;
-    var installButton = document.getElementById('pwa-install-button');
-    var installHelp = document.getElementById('pwa-install-help');
-    if (!installButton) return;
-
-    var userAgent = window.navigator.userAgent || '';
-    var isIOS = /iPad|iPhone|iPod/.test(userAgent) ||
-        (window.navigator.platform === 'MacIntel' && window.navigator.maxTouchPoints > 1);
-    var isAndroid = /Android/i.test(userAgent);
-    var guideUrl = 'https://support.google.com/chrome/answer/9658361?co=GENIE.Platform%3DAndroid&hl=en-0';
-
-    if (isIOS) {
-        guideUrl = 'https://support.apple.com/guide/iphone/bookmark-a-website-iph42ab2f3a7/ios';
-        installButton.textContent = '＋ Add to Home Screen';
-        installHelp.textContent = 'For iPhone and iPad, open this page in Safari, tap Share, then choose Add to Home Screen.';
-    } else if (isAndroid) {
-        installButton.textContent = '＋ Add to Home Screen';
-        installHelp.textContent = 'If the install prompt does not appear, follow the Chrome instructions to add this site to your home screen.';
-    } else {
-        guideUrl = 'https://developer.chrome.com/blog/how_chrome_helps_users_install_the_apps_they_value';
-        installButton.textContent = '⬇ Install App';
-        installHelp.textContent = '';
     }
 
     function publicationOptionLabel(publication) {
@@ -947,9 +920,6 @@ if ('serviceWorker' in navigator) {
                 (Number(publication.id) === Number(b.id) ? ' selected' : '') + '>' +
                 escapeHtml(publicationOptionLabel(publication)) + '</option>';
         }).join('');
-    // Show the install action immediately; only show help text when one is available.
-    installButton.hidden = false;
-    installHelp.hidden = !installHelp.textContent;
 
         var html = '<div class="breakdown-comparison-controls">' +
             '<label class="breakdown-control">Compare from (A)' +
