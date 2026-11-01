@@ -3,6 +3,8 @@ require __DIR__.'/config.php';
 if(empty($_SESSION['admin'])){header('Location: admin-login.php');exit;}
 $db=getDb();$errors=[];$notice=(string)($_GET['notice']??'');
 function challengeEscape($v):string{return htmlspecialchars((string)($v??''),ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8');}
+function challengeDateInput(?string $value):string{if(!$value)return '';try{return (new DateTimeImmutable($value,new DateTimeZone('America/Denver')))->setTimezone(new DateTimeZone('America/Denver'))->format('Y-m-d\\TH:i');}catch(Throwable $e){return '';}}
+function challengeParseLocalInput(string $value):?DateTimeImmutable{if($value==='')return null;$date=DateTimeImmutable::createFromFormat('!Y-m-d\\TH:i',$value,new DateTimeZone('America/Denver'));$errors=DateTimeImmutable::getLastErrors();if(!$date||($errors&&($errors['warning_count']||$errors['error_count']))||$date->format('Y-m-d\\TH:i')!==$value)throw new RuntimeException('Enter a valid Mountain Time date and time.');return $date;}
 function challengeFind(PDO $db,int $id):?array{$s=$db->prepare('SELECT * FROM challenges WHERE id=?');$s->execute([$id]);return $s->fetch(PDO::FETCH_ASSOC)?:null;}
 if($_SERVER['REQUEST_METHOD']==='POST'){
  $action=(string)($_POST['action']??'');$id=(int)($_POST['id']??0);
@@ -11,9 +13,9 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
    $title=trim((string)($_POST['title']??''));$description=trim((string)($_POST['description']??''));$instructions=trim((string)($_POST['instructions']??''));$status=(string)($_POST['status']??'draft');
    if($title===''||strlen($title)>160||$description===''||strlen($description)>5000||strlen($instructions)>5000||!in_array($status,['draft','published','closed'],true))throw new RuntimeException('Enter a valid title, description, instructions, and status.');
    $now=date('c');$start=trim((string)($_POST['starts_at']??''));$end=trim((string)($_POST['ends_at']??''));
-   if($start!==''&&strtotime($start)===false)throw new RuntimeException('Invalid start date.');
-   if($end!==''&&strtotime($end)===false)throw new RuntimeException('Invalid end date.');
-   if($start!==''&&$end!==''&&strtotime($end)<strtotime($start))throw new RuntimeException('End date must be after start date.');
+   $startDate=challengeParseLocalInput($start);$endDate=challengeParseLocalInput($end);
+   if($startDate&&$endDate&&$endDate<$startDate)throw new RuntimeException('End date and time must be after the start date and time.');
+   $start=$startDate?$startDate->format('Y-m-d H:i:s'):'';$end=$endDate?$endDate->format('Y-m-d H:i:s'):'';
    if($id){if(!challengeFind($db,$id))throw new RuntimeException('Challenge not found.');$s=$db->prepare('UPDATE challenges SET title=?,description=?,instructions=?,starts_at=?,ends_at=?,status=?,updated_at=? WHERE id=?');$s->execute([$title,$description,$instructions,$start?:null,$end?:null,$status,$now,$id]);}
    else{$s=$db->prepare('INSERT INTO challenges(title,description,instructions,starts_at,ends_at,status,created_by,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)');$s->execute([$title,$description,$instructions,$start?:null,$end?:null,$status,(string)($_SESSION['username']??'admin'),$now,$now]);}
    header('Location: admin-challenges.php?notice=saved');exit;
