@@ -758,6 +758,11 @@ function opaReadXlsxWorkbook(string $filePath): array {
             if ($shared) {
                 $shared->registerXPathNamespace('m', $mainNs);
                 foreach (($shared->xpath('//m:si') ?: []) as $item) {
+                    // SimpleXML XPath namespace registrations are node-local.
+                    // Register the prefix on each shared-string item before
+                    // querying its rich-text nodes; otherwise Excel's shared
+                    // string headers can be read as empty strings.
+                    $item->registerXPathNamespace('m', $mainNs);
                     $parts = $item->xpath('.//m:t') ?: [];
                     $value = '';
                     foreach ($parts as $part) $value .= (string)$part;
@@ -786,8 +791,12 @@ function opaReadXlsxWorkbook(string $filePath): array {
             $xml->registerXPathNamespace('m', $mainNs);
             $rows = [];
             foreach (($xml->xpath('//m:sheetData/m:row') ?: []) as $row) {
+                // Namespace registrations on the worksheet root do not carry
+                // over to SimpleXML child nodes used for their own XPath calls.
+                $row->registerXPathNamespace('m', $mainNs);
                 $rowValues = [];
                 foreach (($row->xpath('./m:c') ?: []) as $cell) {
+                    $cell->registerXPathNamespace('m', $mainNs);
                     $reference = (string)$cell['r'];
                     if (!preg_match('/^([A-Z]+)/i', $reference, $match)) continue;
                     $column = 0;
@@ -877,11 +886,11 @@ function opaMatchWideCategory(string $label, array $categories): ?array {
     $needle = opaNormalizeHeader($label);
     if ($needle === '') return null;
 
-    // The Group 1 source workbook uses abbreviations in some headers and full
-    // names in others. Match against active category keys/display names without
-    // allowing short aliases (for example AMI) to collide with longer names
-    // (for example SAMI).
-    $aliases = [
+    // Normalize both spreadsheet labels and configured database categories
+    // through the same alias groups. This is deliberately symmetric so the
+    // workbook's "MAE Ranking" and "Major Assessment Event Avg" columns map
+    // to the same category even when its configured key is simply "mae".
+    $aliasGroups = [
         'mae' => ['mae', 'majorassessmentevent'],
         'marching' => ['marching'],
         'sami' => ['sami'],
@@ -894,38 +903,30 @@ function opaMatchWideCategory(string $label, array $categories): ?array {
         'groupcommander' => ['groupcommander'],
         'spotdiscrepancies' => ['spotdiscrepancies'],
     ];
+    $canonicalize = static function (string $value) use ($aliasGroups): string {
+        foreach ($aliasGroups as $canonical => $aliases) {
+            if ($value === $canonical || in_array($value, $aliases, true)) return $canonical;
+        }
+        return $value;
+    };
 
+    $canonicalNeedle = $canonicalize($needle);
     $matches = [];
     foreach ($categories as $category) {
         $key = opaNormalizeHeader((string)($category['category_key'] ?? ''));
         $name = opaNormalizeHeader((string)($category['display_name'] ?? ''));
-        $candidateValues = [$key, $name];
-        $matched = in_array($needle, $candidateValues, true);
+        $candidateValues = array_values(array_filter([$key, $name], static fn($value) => $value !== ''));
+        $canonicalCandidates = array_map($canonicalize, $candidateValues);
+        $matched = in_array($canonicalNeedle, $canonicalCandidates, true);
 
-        // Allow a source header's full category name to match a longer
-        // configured key/name, but only when the match starts at the beginning.
+        // Retain safe prefix matching for long, custom category labels. Short
+        // abbreviations are resolved only through the explicit alias groups,
+        // so AMI cannot accidentally collide with SAMI.
         if (!$matched && strlen($needle) >= 4) {
             foreach ($candidateValues as $candidate) {
-                if ($candidate !== '' && strpos($candidate, $needle) === 0) {
+                if (strpos($candidate, $needle) === 0) {
                     $matched = true;
                     break;
-                }
-            }
-        }
-
-        // Explicit source aliases. Short abbreviations require an exact
-        // category-key/name match so AMI cannot accidentally match SAMI.
-        foreach ($aliases[$needle] ?? [] as $alias) {
-            if (in_array($alias, $candidateValues, true)) {
-                $matched = true;
-                break;
-            }
-            if (strlen($alias) >= 4) {
-                foreach ($candidateValues as $candidate) {
-                    if ($candidate !== '' && strpos($candidate, $alias) === 0) {
-                        $matched = true;
-                        break 2;
-                    }
                 }
             }
         }
@@ -933,6 +934,7 @@ function opaMatchWideCategory(string $label, array $categories): ?array {
         if ($matched) $matches[] = $category;
     }
 
+    // Do not guess when two active categories resolve to the same source label.
     return count($matches) === 1 ? $matches[0] : null;
 }
 /**
