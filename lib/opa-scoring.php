@@ -1171,3 +1171,342 @@ function opaApplyImportPreview(PDO $db, int $draftId, array $preview, string $fi
         throw $e;
     }
 }
+
+
+/**
+ * Read a published snapshot in the shape needed by the administrator correction
+ * screen. Historical category values come from the snapshot itself, not current
+ * active category settings.
+ */
+function opaGetPublicationEditData(PDO $db, int $publicationId): ?array {
+    $publicationStmt = $db->prepare('SELECT * FROM scoring_publications WHERE id=? LIMIT 1');
+    $publicationStmt->execute([$publicationId]);
+    $publication = $publicationStmt->fetch(PDO::FETCH_ASSOC);
+    if (!$publication) return null;
+
+    $rowsStmt = $db->prepare('SELECT ps.*,s.name AS squadron_name
+        FROM scoring_publication_scores ps
+        JOIN squadrons s ON s.id=ps.squadron_id
+        WHERE ps.publication_id=?
+        ORDER BY ps.category_name,ps.squadron_id');
+    $rowsStmt->execute([$publicationId]);
+    $categories = [];
+    foreach ($rowsStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $key = (string)$row['category_key'];
+        if (!isset($categories[$key])) {
+            $categories[$key] = [
+                'category_key' => $key,
+                'category_name' => (string)$row['category_name'],
+                'rows' => [],
+            ];
+        }
+        $categories[$key]['rows'][(int)$row['squadron_id']] = $row;
+    }
+    return ['publication' => $publication, 'categories' => array_values($categories)];
+}
+
+/** Return the administrator audit trail, including corrections to deleted publications. */
+function opaGetPublicationCorrectionHistory(PDO $db, int $limit = 50): array {
+    $limit = max(1, min(200, $limit));
+    $stmt = $db->query('SELECT * FROM scoring_publication_corrections ORDER BY id DESC LIMIT ' . $limit);
+    return $stmt->fetchAll(PDO::FETCH_ASSOC);
+}
+
+/**
+ * Snapshot all publication records so a correction audit entry can explain
+ * exactly what was changed or removed.
+ */
+function opaGetPublicationAuditSnapshot(PDO $db, int $publicationId): array {
+    $publicationStmt = $db->prepare('SELECT * FROM scoring_publications WHERE id=?');
+    $publicationStmt->execute([$publicationId]);
+    $publication = $publicationStmt->fetch(PDO::FETCH_ASSOC);
+    if (!$publication) throw new RuntimeException('The selected publication no longer exists.');
+
+    $scoresStmt = $db->prepare('SELECT * FROM scoring_publication_scores WHERE publication_id=? ORDER BY category_key,squadron_id');
+    $scoresStmt->execute([$publicationId]);
+    $squadronsStmt = $db->prepare('SELECT * FROM scoring_publication_squadrons WHERE publication_id=? ORDER BY squadron_id');
+    $squadronsStmt->execute([$publicationId]);
+    return [
+        'publication' => $publication,
+        'scores' => $scoresStmt->fetchAll(PDO::FETCH_ASSOC),
+        'squadrons' => $squadronsStmt->fetchAll(PDO::FETCH_ASSOC),
+    ];
+}
+
+/**
+ * Publication rows remain protected by SQLite immutability triggers at rest.
+ * The correction functions drop those triggers only inside a transaction and
+ * restore them before commit. A failure rolls the transaction back, restoring
+ * the original triggers and every affected row.
+ */
+function opaDisablePublicationImmutability(PDO $db): void {
+    foreach (['scoringpublications', 'scoringpublicationscores', 'scoringpublicationsquadrons'] as $tableKey) {
+        $db->exec('DROP TRIGGER IF EXISTS trg_' . $tableKey . '_no_update');
+        $db->exec('DROP TRIGGER IF EXISTS trg_' . $tableKey . '_no_delete');
+    }
+}
+
+function opaEnablePublicationImmutability(PDO $db): void {
+    $tables = [
+        'scoringpublications' => 'scoring_publications',
+        'scoringpublicationscores' => 'scoring_publication_scores',
+        'scoringpublicationsquadrons' => 'scoring_publication_squadrons',
+    ];
+    foreach ($tables as $triggerKey => $table) {
+        $db->exec("CREATE TRIGGER IF NOT EXISTS trg_{$triggerKey}_no_update
+            BEFORE UPDATE ON {$table}
+            BEGIN SELECT RAISE(ABORT, 'Published scoring snapshots are immutable'); END");
+        $db->exec("CREATE TRIGGER IF NOT EXISTS trg_{$triggerKey}_no_delete
+            BEFORE DELETE ON {$table}
+            BEGIN SELECT RAISE(ABORT, 'Published scoring snapshots are immutable'); END");
+    }
+}
+
+/**
+ * Rebuild derived points, OPA, overall ranks, and period-over-period movement
+ * for every surviving publication. This is necessary when an older publication
+ * is corrected or removed, because every later snapshot references its
+ * immediately preceding publication.
+ *
+ * The caller must have started a transaction and temporarily disabled the
+ * snapshot immutability triggers.
+ */
+function opaRecalculatePublicationSnapshots(PDO $db): void {
+    $publicationIds = $db->query('SELECT id FROM scoring_publications ORDER BY id ASC')->fetchAll(PDO::FETCH_COLUMN);
+    $previousCategoryRows = [];
+    $previousSquadronRows = [];
+
+    $updateScore = $db->prepare('UPDATE scoring_publication_scores
+        SET category_points=?,previous_rank=?,rank_change=?,previous_score=?,score_change=?
+        WHERE id=?');
+    $updateSquadron = $db->prepare('UPDATE scoring_publication_squadrons
+        SET opa=?,overall_rank=?,previous_opa=?,opa_change=?,previous_rank=?,rank_change=?
+        WHERE id=?');
+
+    foreach ($publicationIds as $publicationIdValue) {
+        $publicationId = (int)$publicationIdValue;
+        $scoreStmt = $db->prepare('SELECT * FROM scoring_publication_scores WHERE publication_id=? ORDER BY category_key,squadron_id');
+        $scoreStmt->execute([$publicationId]);
+        $scoreRows = $scoreStmt->fetchAll(PDO::FETCH_ASSOC);
+        if (!$scoreRows) throw new RuntimeException('Publication #' . $publicationId . ' has no category records and cannot be recalculated safely.');
+
+        $categories = [];
+        $scoresBySquadron = [];
+        $currentCategoryRows = [];
+        foreach ($scoreRows as $row) {
+            $categoryKey = (string)$row['category_key'];
+            $squadronId = (int)$row['squadron_id'];
+            $rank = (int)$row['category_rank'];
+            $score = (float)$row['category_score'];
+            if ($squadronId < 1 || $squadronId > 10 || $rank < 1 || $rank > 10 || !is_finite($score) || $score < 0 || $score > 100) {
+                throw new RuntimeException('Publication #' . $publicationId . ' contains invalid values and cannot be recalculated safely.');
+            }
+            if (isset($categories[$categoryKey]['ranks'][$rank])) {
+                throw new RuntimeException('Publication #' . $publicationId . ', category ' . $row['category_name'] . ' has duplicate ranks.');
+            }
+            $categories[$categoryKey]['ranks'][$rank] = true;
+            $categories[$categoryKey]['rows'][$squadronId] = $row;
+            $scoresBySquadron[$squadronId][] = $score;
+            $currentCategoryRows[$categoryKey][$squadronId] = ['rank' => $rank, 'score' => $score];
+        }
+
+        $categoryCount = count($categories);
+        if ($categoryCount < 1) throw new RuntimeException('Publication #' . $publicationId . ' has no scoring categories.');
+        foreach ($categories as $categoryKey => $category) {
+            if (count($category['rows']) !== 10) {
+                throw new RuntimeException('Publication #' . $publicationId . ' category ' . $categoryKey . ' must contain all ten Group 1 squadrons.');
+            }
+            for ($sid = 1; $sid <= 10; $sid++) {
+                if (!isset($category['rows'][$sid])) {
+                    throw new RuntimeException('Publication #' . $publicationId . ' category ' . $categoryKey . ' is missing Squadron ' . $sid . '.');
+                }
+            }
+        }
+
+        $opaRows = [];
+        for ($sid = 1; $sid <= 10; $sid++) {
+            if (!isset($scoresBySquadron[$sid]) || count($scoresBySquadron[$sid]) !== $categoryCount) {
+                throw new RuntimeException('Publication #' . $publicationId . ' must contain the same complete category set for Squadrons 1–10.');
+            }
+            $opaRows[] = ['squadron_id' => $sid, 'opa' => array_sum($scoresBySquadron[$sid]) / $categoryCount];
+        }
+        usort($opaRows, static function (array $a, array $b): int {
+            $difference = (float)$b['opa'] - (float)$a['opa'];
+            return abs($difference) < 0.0000001
+                ? ((int)$a['squadron_id'] <=> (int)$b['squadron_id'])
+                : ($difference < 0 ? -1 : 1);
+        });
+
+        $rankBySquadron = [];
+        $lastOpa = null;
+        $rank = 0;
+        foreach ($opaRows as $index => $row) {
+            if ($lastOpa === null || abs((float)$row['opa'] - (float)$lastOpa) >= 0.0000001) {
+                $rank = $index + 1;
+                $lastOpa = (float)$row['opa'];
+            }
+            $rankBySquadron[(int)$row['squadron_id']] = $rank;
+        }
+
+        foreach ($scoreRows as $row) {
+            $categoryKey = (string)$row['category_key'];
+            $squadronId = (int)$row['squadron_id'];
+            $rank = (int)$row['category_rank'];
+            $score = (float)$row['category_score'];
+            $previous = $previousCategoryRows[$categoryKey][$squadronId] ?? null;
+            $updateScore->execute([
+                11 - $rank,
+                $previous['rank'] ?? null,
+                $previous !== null ? (int)$previous['rank'] - $rank : null,
+                $previous['score'] ?? null,
+                $previous !== null ? $score - (float)$previous['score'] : null,
+                (int)$row['id'],
+            ]);
+        }
+
+        $squadronStmt = $db->prepare('SELECT * FROM scoring_publication_squadrons WHERE publication_id=? ORDER BY squadron_id');
+        $squadronStmt->execute([$publicationId]);
+        $squadronRows = $squadronStmt->fetchAll(PDO::FETCH_ASSOC);
+        if (count($squadronRows) !== 10) {
+            throw new RuntimeException('Publication #' . $publicationId . ' must contain all ten Group 1 overall standings records.');
+        }
+        $currentSquadronRows = [];
+        foreach ($squadronRows as $row) {
+            $sid = (int)$row['squadron_id'];
+            if (!isset($rankBySquadron[$sid])) {
+                throw new RuntimeException('Publication #' . $publicationId . ' is missing an overall result for Squadron ' . $sid . '.');
+            }
+            $opa = (float)$scoresBySquadron[$sid] ? (array_sum($scoresBySquadron[$sid]) / $categoryCount) : 0.0;
+            $previous = $previousSquadronRows[$sid] ?? null;
+            $updateSquadron->execute([
+                $opa,
+                $rankBySquadron[$sid],
+                $previous['opa'] ?? null,
+                $previous !== null ? $opa - (float)$previous['opa'] : null,
+                $previous['rank'] ?? null,
+                $previous !== null ? (int)$previous['rank'] - (int)$rankBySquadron[$sid] : null,
+                (int)$row['id'],
+            ]);
+            $currentSquadronRows[$sid] = ['opa' => $opa, 'rank' => (int)$rankBySquadron[$sid]];
+        }
+
+        $previousCategoryRows = $currentCategoryRows;
+        $previousSquadronRows = $currentSquadronRows;
+    }
+}
+
+/** Correct the scores/ranks/description of an existing published snapshot. */
+function opaCorrectPublication(PDO $db, int $publicationId, array $submitted, string $description, string $reason, string $username): void {
+    $reason = trim($reason);
+    $reasonLength = function_exists('mb_strlen') ? mb_strlen($reason, 'UTF-8') : strlen($reason);
+    if ($reasonLength < 3 || $reasonLength > 240) {
+        throw new RuntimeException('Enter a correction reason between 3 and 240 characters.');
+    }
+    $description = trim($description);
+    $descriptionLength = function_exists('mb_strlen') ? mb_strlen($description, 'UTF-8') : strlen($description);
+    if ($descriptionLength > 240) throw new RuntimeException('Publication descriptions must be 240 characters or fewer.');
+
+    $db->beginTransaction();
+    try {
+        $before = opaGetPublicationAuditSnapshot($db, $publicationId);
+        $editData = opaGetPublicationEditData($db, $publicationId);
+        if (!$editData) throw new RuntimeException('The selected publication no longer exists.');
+
+        $updates = [];
+        $afterRows = [];
+        foreach ($editData['categories'] as $category) {
+            $key = $category['category_key'];
+            $ranks = [];
+            foreach ($category['rows'] as $squadronId => $existing) {
+                $input = $submitted[$key][$squadronId] ?? [];
+                $rankRaw = trim((string)($input['rank'] ?? ''));
+                $scoreRaw = trim((string)($input['score'] ?? ''));
+                $rank = $rankRaw === '' ? false : filter_var($rankRaw, FILTER_VALIDATE_INT);
+                $score = $scoreRaw === '' ? false : filter_var($scoreRaw, FILTER_VALIDATE_FLOAT);
+                if ($rank === false || $rank < 1 || $rank > 10) {
+                    throw new RuntimeException($category['category_name'] . ': Squadron ' . $squadronId . ' rank must be an integer from 1–10.');
+                }
+                if ($score === false || !is_finite((float)$score) || $score < 0 || $score > 100) {
+                    throw new RuntimeException($category['category_name'] . ': Squadron ' . $squadronId . ' score must be between 0–100%.');
+                }
+                if (isset($ranks[$rank])) {
+                    throw new RuntimeException($category['category_name'] . ': each squadron must have a unique rank from 1–10.');
+                }
+                $ranks[$rank] = true;
+                $updates[] = [
+                    'id' => (int)$existing['id'],
+                    'rank' => (int)$rank,
+                    'score' => (float)$score,
+                ];
+                $afterRows[] = [
+                    'category_key' => $key,
+                    'squadron_id' => (int)$squadronId,
+                    'category_rank' => (int)$rank,
+                    'category_score' => (float)$score,
+                ];
+            }
+            if (count($category['rows']) !== 10 || count($ranks) !== 10) {
+                throw new RuntimeException($category['category_name'] . ': all ten Group 1 squadrons need unique ranks and scores.');
+            }
+        }
+        if (!$updates) throw new RuntimeException('The publication has no editable category records.');
+
+        opaDisablePublicationImmutability($db);
+        $updateStmt = $db->prepare('UPDATE scoring_publication_scores
+            SET category_rank=?,category_score=? WHERE id=?');
+        foreach ($updates as $update) {
+            $updateStmt->execute([$update['rank'], $update['score'], $update['id']]);
+        }
+        $descriptionStmt = $db->prepare('UPDATE scoring_publications SET description=? WHERE id=?');
+        $descriptionStmt->execute([$description, $publicationId]);
+        opaRecalculatePublicationSnapshots($db);
+        opaEnablePublicationImmutability($db);
+
+        $after = opaGetPublicationAuditSnapshot($db, $publicationId);
+        $audit = $db->prepare("INSERT INTO scoring_publication_corrections
+            (publication_id,operation,reason,performed_by,performed_at,before_json,after_json)
+            VALUES(?,'edit',?,?,?,?,?)");
+        $audit->execute([
+            $publicationId, $reason, $username, opaNow(),
+            json_encode($before, JSON_THROW_ON_ERROR),
+            json_encode($after, JSON_THROW_ON_ERROR),
+        ]);
+        $db->commit();
+    } catch (Throwable $e) {
+        if ($db->inTransaction()) $db->rollBack();
+        throw $e;
+    }
+}
+
+/** Permanently remove a published snapshot while preserving an audit record. */
+function opaDeletePublication(PDO $db, int $publicationId, string $reason, string $username): void {
+    $reason = trim($reason);
+    $reasonLength = function_exists('mb_strlen') ? mb_strlen($reason, 'UTF-8') : strlen($reason);
+    if ($reasonLength < 3 || $reasonLength > 240) {
+        throw new RuntimeException('Enter a deletion reason between 3 and 240 characters.');
+    }
+
+    $db->beginTransaction();
+    try {
+        $before = opaGetPublicationAuditSnapshot($db, $publicationId);
+        opaDisablePublicationImmutability($db);
+        $db->prepare('DELETE FROM scoring_publication_scores WHERE publication_id=?')->execute([$publicationId]);
+        $db->prepare('DELETE FROM scoring_publication_squadrons WHERE publication_id=?')->execute([$publicationId]);
+        $db->prepare('DELETE FROM scoring_publications WHERE id=?')->execute([$publicationId]);
+        opaRecalculatePublicationSnapshots($db);
+        opaEnablePublicationImmutability($db);
+
+        $audit = $db->prepare("INSERT INTO scoring_publication_corrections
+            (publication_id,operation,reason,performed_by,performed_at,before_json,after_json)
+            VALUES(?,'delete',?,?,?,?,?)");
+        $audit->execute([
+            $publicationId, $reason, $username, opaNow(),
+            json_encode($before, JSON_THROW_ON_ERROR),
+            json_encode(['deleted' => true], JSON_THROW_ON_ERROR),
+        ]);
+        $db->commit();
+    } catch (Throwable $e) {
+        if ($db->inTransaction()) $db->rollBack();
+        throw $e;
+    }
+}
