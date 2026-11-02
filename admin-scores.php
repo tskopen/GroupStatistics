@@ -104,14 +104,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             try {
                 $db->beginTransaction();
 
-                // points_awarded must always be set explicitly (defaults to
-                // the submitted value) so non-intramural events are never
-                // silently excluded from getSquadronRankings().
+                // Keep the legacy event fields aligned for the public results cards
+                // and historical event-ledger readers. Official OPA is separate.
                 $pointsAwarded = $value;
-                if ($pointsAwarded === null) {
-                    error_log('[SCORE-DIAG] points_awarded was NULL for squadron ' . $squadronId . ', event_type ' . $eventType . ' - defaulting to 0');
-                    $pointsAwarded = 0;
-                }
 
                 $eventTimestamp = date('c');
                 $displayEventName = $eventName !== '' ? $eventName : ucfirst($eventType);
