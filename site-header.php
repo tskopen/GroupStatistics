@@ -42,7 +42,7 @@ if (!function_exists('renderGroupSiteHeader')) {
             </div>
             <?php if ($showNavigation): ?>
             <nav class="site-header-nav" aria-label="Primary page navigation">
-                <a href="index.php"<?php echo $currentPage === 'index.php' ? ' aria-current="page"' : ''; ?>>Home</a>
+                <a href="index.php" class="site-header-install-button"<?php echo $currentPage === 'index.php' ? ' aria-current="page"' : ''; ?>>Home</a>
                 <a href="meet-the-group.php"<?php echo $currentPage === 'meet-the-group.php' ? ' aria-current="page"' : ''; ?>>Meet the Group</a>
                 <a href="announcements.php"<?php echo $currentPage === 'announcements.php' ? ' aria-current="page"' : ''; ?>>📣 Group Announcements</a>
                 <a href="intramural-standings.php"<?php echo $currentPage === 'intramural-standings.php' ? ' aria-current="page"' : ''; ?>>Intramurals</a>
