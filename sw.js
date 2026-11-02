@@ -5,7 +5,8 @@
  * are always network-only and are never written to Cache Storage.
  */
 
-const CACHE_VERSION = 'v5';
+// Bump this version whenever a deployment changes cached app assets.
+const CACHE_VERSION = 'v6';
 const CACHE_NAME = `squadron-tracker-${CACHE_VERSION}`;
 
 const PRECACHE_URLS = [
@@ -61,12 +62,15 @@ function isCacheablePublicResponse(response, path) {
     return true;
 }
 
-async function networkFirst(request) {
+async function networkFirst(request, revalidate = false) {
     const url = new URL(request.url);
     const cache = await caches.open(CACHE_NAME);
 
     try {
-        const response = await fetch(request);
+        // Revalidate HTML/CSS/JS with the origin so a deployment cannot leave
+        // an installed PWA stuck on an older asset at the same URL.
+        const networkRequest = revalidate ? new Request(request, { cache: 'no-cache' }) : request;
+        const response = await fetch(networkRequest);
         if (isCacheablePublicResponse(response, url.pathname)) {
             try { await cache.put(request, response.clone()); }
             catch (err) { console.warn('Could not cache response:', url.pathname, err); }
@@ -129,7 +133,10 @@ self.addEventListener('fetch', event => {
         url.pathname.endsWith('manifest.json');
 
     if (isStaticAsset) {
-        event.respondWith(cacheFirst(request));
+        // CSS and JavaScript change between deployments; refresh them online,
+        // but keep the latest successful copy available when the device is offline.
+        const isCodeAsset = /\.(css|js)$/i.test(url.pathname);
+        event.respondWith(isCodeAsset ? networkFirst(request, true) : cacheFirst(request));
         return;
     }
 
