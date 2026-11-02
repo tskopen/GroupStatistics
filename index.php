@@ -594,7 +594,7 @@ if ('serviceWorker' in navigator) {
 
         cell.className = 'movement-cell';
         cell.innerHTML = '<span class="movement-opa ' + opaClass + '">' +
-            opaPrefix + opaChange.toFixed(2) + ' pp</span>' +
+            opaPrefix + opaChange.toFixed(2) + ' pts</span>' +
             '<span class="movement-rank-meta ' + rankClass + '">' + rankText + '</span>';
     }
 
