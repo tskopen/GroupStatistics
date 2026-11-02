@@ -24,6 +24,7 @@ foreach(glob(__DIR__.'/../migrations/[0-9][0-9][0-9]_*.php') as $file){
 
 require_once __DIR__ . '/../lib/opa-scoring.php';
 require_once __DIR__ . '/../lib/scoring.php';
+function getDb(): PDO { global $db; return $db; }
 $squadronSeed = $db->prepare('INSERT OR IGNORE INTO squadrons(id,name,created_at) VALUES(?,?,?)');
 for ($sid = 1; $sid <= 10; $sid++) $squadronSeed->execute([$sid, 'Test Squadron ' . $sid, date('c')]);
 
@@ -77,6 +78,7 @@ foreach ($firstBoard as $entry) {
     ];
 }
 $eventsCountBeforeLivePost = (int)$db->query('SELECT COUNT(*) FROM events')->fetchColumn();
+$legacyLeaderboardBeforeLivePost = getSquadronRankings();
 $liveAwardInsert = $db->prepare('INSERT INTO live_event_results(squadron_id,event_type,event_name,description,value,timestamp,created_at,created_by) VALUES(?,?,?,?,?,?,?,?)');
 $liveAwardInsert->execute([1,'award','Display-only award','Recognized for outstanding participation.',999999,date('c'),date('c'),'test-admin']);
 $liveAwardRow = $db->query('SELECT event_type,description,value FROM live_event_results WHERE event_name=\'Display-only award\'')->fetch(PDO::FETCH_ASSOC);
@@ -93,6 +95,18 @@ foreach ($afterLivePostBoard as $entry) {
 check($opaUnaffectedByLiveBoard, 'posting a high-value live event does not change any published OPA score or rank');
 check((int)$db->query('SELECT COUNT(*) FROM events')->fetchColumn() === $eventsCountBeforeLivePost,
     'live event posts never insert points into the scoring events ledger');
+$legacyLeaderboardAfterLivePost = getSquadronRankings();
+$legacyRanksUnchanged = count($legacyLeaderboardBeforeLivePost) === count($legacyLeaderboardAfterLivePost);
+foreach ($legacyLeaderboardBeforeLivePost as $position => $beforeRow) {
+    $afterRow = $legacyLeaderboardAfterLivePost[$position] ?? null;
+    if (!$afterRow
+        || (int)$afterRow['squadron_id'] !== (int)$beforeRow['squadron_id']
+        || abs((float)$afterRow['total'] - (float)$beforeRow['total']) > 0.000001
+        || (int)$afterRow['rank'] !== (int)$beforeRow['rank']) {
+        $legacyRanksUnchanged = false;
+    }
+}
+check($legacyRanksUnchanged, 'display-only live event points do not change legacy aggregate leaderboard totals or ranks');
 check($liveAwardRow !== false
     && $liveAwardRow['event_type'] === 'award'
     && $liveAwardRow['description'] === 'Recognized for outstanding participation.'
