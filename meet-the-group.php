@@ -53,6 +53,9 @@ header p{margin:0;max-width:650px;color:#e4edf7}
 <h1>👥 Meet the Group</h1>
 <p>Get to know the people and roles that support USAFA Group 1. Role information is maintained by site administrators and only published entries appear here.</p>
 </div></header>
+<section class="squadron-pages-callout" style="max-width:1080px;margin:18px auto 0;padding:0 18px">
+<a href="squadron-pages.php" style="display:block;background:#fff;border:1px solid var(--line);border-left:5px solid var(--primary);border-radius:9px;padding:15px 18px;color:var(--primary);font-weight:700;text-decoration:none">🏅 Explore Squadron Pages · View each squadron's flights and Flight vs Flight standings →</a>
+</section>
 <main class="container">
 <?php if (!$sections): ?>
 <div class="empty">The directory is being updated. Please check back later.</div>

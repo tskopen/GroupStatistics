@@ -652,6 +652,8 @@ check($challengePublicSource !== false
     && str_contains($challengePublicSource, 'id="challenge-<?php echo $id;?>'),
     'public challenge entries provide direct anchors from the homepage board');
 
+require_once __DIR__ . '/flight-competition.php';
+
 // Web Push configuration regression checks. These use synthetic format fixtures
 // only; they do not contain or access production credentials.
 require_once __DIR__ . '/../vapid-config.php';

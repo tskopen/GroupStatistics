@@ -29,3 +29,9 @@ Migrations are transactional. A failed migration is rolled back and is retried o
 - `009_opa_scoring.php` — category-based OPA drafts, scoring imports, and immutable publication snapshots.
 - `010_scoring_immutability.php` — database triggers enforcing append-only published scoring snapshots.
 - `011_publication_descriptions.php` — optional short descriptions attached to OPA publications.
+
+- `012_publication_corrections.php` — controlled corrections and deletion audit for published OPA records.
+- `013_challenges.php` — challenge posts and manually published submissions.
+- `014_live_event_results.php` — temporary display-only event results, retired by migration 015.
+- `015_retire_legacy_event_board.php` — removes retired generic event-board data and table.
+- `016_flight_competitions.php` — squadron-scoped flights, competitions, and separately published results; composite foreign keys prevent cross-squadron result assignment.
