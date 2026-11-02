@@ -577,11 +577,12 @@ function opaH($value): string {
 <script>
 (function () {
     const categoryIds = <?php echo json_encode(array_map(static fn($category) => (int)$category['id'], $categories)); ?>;
+    const categoryWeights = <?php echo json_encode(array_reduce($categories, static function ($weights, $category) { $weights[(int)$category['id']] = (float)($category['military_weight'] ?? 0); return $weights; }, [])); ?>;
     const inputs = Array.from(document.querySelectorAll('.category-rank-input,.category-score-input'));
     const tableBody = document.querySelector('#projected-table tbody');
     function calculate() {
         const bySquadron = {};
-        for (let id = 1; id <= 10; id++) bySquadron[id] = { scores: [], complete: true };
+        for (let id = 1; id <= 10; id++) bySquadron[id] = { weightedTotal: 0, weightTotal: 0, complete: true };
         categoryIds.forEach(function (categoryId) {
             for (let id = 1; id <= 10; id++) {
                 const rankInput = document.querySelector('.category-rank-input[data-category-id="' + categoryId + '"][data-squadron-id="' + id + '"]');
@@ -591,15 +592,18 @@ function opaH($value): string {
                 const points = Number.isInteger(rank) && rank >= 1 && rank <= 10 ? 11 - rank : null;
                 const pointCell = document.querySelector('[data-points-for="' + categoryId + '-' + id + '"]');
                 if (pointCell) pointCell.textContent = points === null ? '—' : String(points);
-                if (score === null || !Number.isFinite(score) || score < 0 || score > 100) bySquadron[id].complete = false;
-                else bySquadron[id].scores.push(score);
+                const weight = Number(categoryWeights[categoryId] || 0);
+                if (weight > 0) {
+                    if (score === null || !Number.isFinite(score) || score < 0 || score > 100) bySquadron[id].complete = false;
+                    else { bySquadron[id].weightedTotal += score * weight; bySquadron[id].weightTotal += weight; }
+                }
             }
         });
         const rows = [];
         for (let id = 1; id <= 10; id++) {
             const item = bySquadron[id];
-            const complete = item.complete && item.scores.length === categoryIds.length && categoryIds.length > 0;
-            rows.push({ id: id, opa: complete ? item.scores.reduce((a,b)=>a+b,0) / item.scores.length : null, complete: complete });
+            const complete = item.complete && item.weightTotal > 0;
+            rows.push({ id: id, opa: complete ? item.weightedTotal : null, complete: complete });
         }
         rows.sort(function (a,b) {
             if (a.opa === null && b.opa === null) return a.id-b.id;

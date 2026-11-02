@@ -139,19 +139,23 @@ function opaGetDraftPreview(PDO $db, int $draftId): array {
     $squadrons = $db->query('SELECT id,name FROM squadrons WHERE id BETWEEN 1 AND 10 ORDER BY id')->fetchAll(PDO::FETCH_ASSOC);
     $preview = [];
     foreach ($squadrons as $squadron) {
-        $scores = [];
+        $weightedTotal = 0.0;
+        $weightTotal = 0.0;
         $points = [];
-        $complete = count($categories) > 0;
+        $complete = true;
         foreach ($categories as $category) {
             $categoryId = (int)$category['id'];
             $record = $rows[$categoryId][(int)$squadron['id']] ?? [];
             $rank = isset($record['category_rank']) ? (int)$record['category_rank'] : null;
             $score = ($record['category_score'] ?? null) !== null ? (float)$record['category_score'] : null;
             $points[$categoryId] = opaCategoryPoints($rank);
-            if ($score === null) $complete = false;
-            $scores[] = $score;
+            $weight = (float)($category['military_weight'] ?? 0);
+            if ($weight > 0) {
+                if ($score === null) $complete = false;
+                else { $weightedTotal += $score * $weight; $weightTotal += $weight; }
+            }
         }
-        $opa = ($complete && $scores) ? array_sum($scores) / count($scores) : null;
+        $opa = ($complete && $weightTotal > 0) ? $weightedTotal : null;
         $preview[] = [
             'squadron_id' => (int)$squadron['id'],
             'name' => $squadron['name'],
@@ -202,12 +206,13 @@ function opaValidateDraft(PDO $db, int $draftId): array {
             $row = $rows[$categoryId][$sid] ?? null;
             $rank = $row && $row['category_rank'] !== null ? (int)$row['category_rank'] : null;
             $score = $row && $row['category_score'] !== null ? (float)$row['category_score'] : null;
-            if ($rank === null) $errors[] = $category['display_name'] . ': Squadron ' . $sid . ' is missing a rank.';
-            elseif ($rank < 1 || $rank > 10) $errors[] = $category['display_name'] . ': Squadron ' . $sid . ' rank must be between 1 and 10.';
-            elseif (isset($seenRanks[$rank])) $errors[] = $category['display_name'] . ': rank ' . $rank . ' is assigned to more than one squadron.';
-            else $seenRanks[$rank] = $sid;
-            if ($score === null || $score < 0 || $score > 100) $errors[] = $category['display_name'] . ': Squadron ' . $sid . ' needs a percentage score from 0–100.';
-            if ($score !== null && $rank !== null) $rankScoreRows[] = ['rank' => $rank, 'score' => $score];
+            $weighted = (float)($category['military_weight'] ?? 0) > 0;
+            if ($weighted && $rank === null) $errors[] = $category['display_name'] . ': Squadron ' . $sid . ' is missing a rank.';
+            elseif ($rank !== null && ($rank < 1 || $rank > 10)) $errors[] = $category['display_name'] . ': Squadron ' . $sid . ' rank must be between 1 and 10.';
+            elseif ($weighted && isset($seenRanks[$rank])) $errors[] = $category['display_name'] . ': rank ' . $rank . ' is assigned to more than one squadron.';
+            elseif ($rank !== null) $seenRanks[$rank] = $sid;
+            if ($weighted && ($score === null || $score < 0 || $score > 100)) $errors[] = $category['display_name'] . ': Squadron ' . $sid . ' needs a percentage score from 0–100.';
+            if ($weighted && $score !== null && $rank !== null) $rankScoreRows[] = ['rank' => $rank, 'score' => $score];
         }
         if (count($rankScoreRows) === 10 && in_array($category['ranking_direction'], ['higher', 'lower'], true)) {
             usort($rankScoreRows, static fn($a, $b) => $a['rank'] <=> $b['rank']);
@@ -291,9 +296,17 @@ function opaPublishDraft(PDO $db, int $draftId, string $username, string $descri
     $opaRows = [];
     foreach ($squadrons as $squadron) {
         $sid = (int)$squadron['id'];
-        $values = [];
-        foreach ($categories as $category) $values[] = (float)$rows[(int)$category['id']][$sid]['category_score'];
-        $opaRows[] = ['squadron_id' => $sid, 'opa' => array_sum($values) / count($values)];
+        $weightedTotal = 0.0;
+        $weightTotal = 0.0;
+        foreach ($categories as $category) {
+            $weight = (float)($category['military_weight'] ?? 0);
+            if ($weight <= 0) continue;
+            $score = (float)$rows[(int)$category['id']][$sid]['category_score'];
+            $weightedTotal += $score * $weight;
+            $weightTotal += $weight;
+        }
+        if ($weightTotal <= 0) throw new RuntimeException('Military scoring weights are not configured.');
+        $opaRows[] = ['squadron_id' => $sid, 'opa' => $weightedTotal];
     }
     usort($opaRows, static function (array $a, array $b): int {
         $diff = $b['opa'] - $a['opa'];
@@ -326,7 +339,8 @@ function opaPublishDraft(PDO $db, int $draftId, string $username, string $descri
     $filenameStmt = $db->prepare('SELECT file_name FROM scoring_imports WHERE draft_id=? ORDER BY id DESC LIMIT 1');
     $filenameStmt->execute([$draftId]);
     $filename = $filenameStmt->fetchColumn();
-    $categoryNames = array_map(static fn($c) => $c['display_name'], $categories);
+    $militaryCategories = array_values(array_filter($categories, static fn($category) => (float)($category['military_weight'] ?? 0) > 0));
+    $categoryNames = array_map(static fn($category) => $category['display_name'], $militaryCategories);
     $now = opaNow();
 
     $db->beginTransaction();
@@ -334,7 +348,7 @@ function opaPublishDraft(PDO $db, int $draftId, string $username, string $descri
         $insertPub = $db->prepare("INSERT INTO scoring_publications
             (source_draft_id,published_at,published_by,description,data_entry_method,source_filename,records_processed,categories_json)
             VALUES(?,?,?,?,?,?,?,?)");
-        $insertPub->execute([$draftId, $now, $username, $description, $method, $filename ?: null, count($squadrons) * count($categories), json_encode($categoryNames)]);
+        $insertPub->execute([$draftId, $now, $username, $description, $method, $filename ?: null, count($squadrons) * count($categories), json_encode(array_map(static fn($category) => $category['display_name'], $categories))]);
         $publicationId = (int)$db->lastInsertId();
 
         $previousSquadronStmt = $previousId ? $db->prepare('SELECT opa,overall_rank FROM scoring_publication_squadrons WHERE publication_id=? AND squadron_id=?') : null;
@@ -598,7 +612,7 @@ function opaGetSquadronBreakdown(PDO $db, int $squadronId): ?array {
         $latestStmt->execute([$previousId, $squadronId]);
         $previous = $latestStmt->fetch(PDO::FETCH_ASSOC) ?: null;
     }
-    $categoryStmt = $db->prepare('SELECT * FROM scoring_publication_scores WHERE publication_id=? AND squadron_id=? ORDER BY category_name');
+    $categoryStmt = $db->prepare('SELECT s.* FROM scoring_publication_scores s JOIN scoring_categories c ON c.category_key=s.category_key WHERE s.publication_id=? AND s.squadron_id=? AND COALESCE(c.military_weight,0)>0 ORDER BY s.category_name');
     $categoryStmt->execute([$latestId, $squadronId]);
     $categories = $categoryStmt->fetchAll(PDO::FETCH_ASSOC);
     $historyStmt = $db->prepare('SELECT p.id,p.published_at,ps.opa,ps.overall_rank
