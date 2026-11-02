@@ -37,7 +37,7 @@ if (isset($_GET['logout'])) {
         <h1>Admin Panel</h1>
         <a class="button" href="admin-scores.php">🗂️ Manage Live Events Board</a>
         <a class="button" href="admin-bulk-scores.php">➕ Post Event for Multiple Squadrons</a>
-        <a class="button" href="admin-score-management.php">📊 Score Management (OPA)</a>
+        <a class="button" href="admin-score-management.php">📊 Manage OPA Scores &amp; Publications</a>
         <a class="button" href="admin-brackets.php">🏆 Manage Brackets</a>
         <a class="button" href="admin-squadrons.php">Manage Squadrons</a>
         <a class="button" href="admin-directory.php">👥 Manage Meet the Group</a>

@@ -4,8 +4,6 @@ require __DIR__ . '/theme-loader.php';
 $theme = loadTheme();
 $db = getDb();
 $publications = $db->query('SELECT * FROM scoring_publications ORDER BY id DESC')->fetchAll(PDO::FETCH_ASSOC);
-$isAdmin = !empty($_SESSION['admin']);
-$correctionHistory = $isAdmin ? opaGetPublicationCorrectionHistory($db, 50) : [];
 
 $publicationLabels = [];
 foreach (array_reverse($publications) as $index => $publication) {
@@ -325,73 +323,12 @@ body {
     </div>
 </header>
 <main class="history-page">
-    <?php if (isset($_GET['updated'])): ?>
-        <div class="history-card" style="border-top-color:#19703a;margin-bottom:16px"><strong>Publication corrected.</strong> Historical values and all later comparison calculations have been refreshed.</div>
-    <?php elseif (isset($_GET['deleted'])): ?>
-        <div class="history-card" style="border-top-color:#19703a;margin-bottom:16px"><strong>Publication deleted.</strong> Remaining publication history has been recalculated.</div>
-    <?php endif; ?>
-
-    <?php if ($isAdmin && $correctionHistory): ?>
-        <section class="history-section" aria-labelledby="correction-audit-title">
-            <div class="section-heading">
-                <h2 id="correction-audit-title">Administrator Correction Audit</h2>
-                <p>Recent edits and deletions of published OPA snapshots.</p>
-            </div>
-            <div class="history-card">
-                <div class="history-table-wrap">
-                    <table class="history-table">
-                        <thead><tr><th>Publication ID</th><th>Action</th><th>Reason</th><th>Performed by</th><th>Date</th></tr></thead>
-                        <tbody>
-                        <?php foreach ($correctionHistory as $audit): ?>
-                            <tr>
-                                <td>#<?php echo (int)$audit['publication_id']; ?></td>
-                                <td><?php echo strtoupper(historyH($audit['operation'])); ?></td>
-                                <td><?php echo historyH($audit['reason']); ?></td>
-                                <td><?php echo historyH($audit['performed_by']); ?></td>
-                                <td><?php echo historyH((new DateTimeImmutable($audit['performed_at']))->format('M j, Y · g:i A')); ?></td>
-                            </tr>
-                        <?php endforeach; ?>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </section>
-    <?php endif; ?>
-
     <?php if (!$publications): ?>
         <div class="history-empty">
             <strong>No publications yet</strong>
             Official OPA scoring has not been published. Once a publication is released, its standings and category results will appear here.
         </div>
     <?php else: ?>
-        <?php if ($isAdmin): ?>
-        <section class="history-section" aria-labelledby="manage-publications-title">
-            <div class="section-heading">
-                <h2 id="manage-publications-title">Manage Published Publications</h2>
-                <p>Correct publication values or remove an erroneous snapshot. Every action requires an audit reason.</p>
-            </div>
-            <div class="history-card">
-                <div class="history-table-wrap">
-                    <table class="history-table">
-                        <thead><tr><th>Publication</th><th>Published</th><th>Published by</th><th>Description</th><th>Actions</th></tr></thead>
-                        <tbody>
-                        <?php foreach ($publications as $publication): ?>
-                            <tr>
-                                <td><strong><?php echo historyH($publicationLabels[(int)$publication['id']]); ?></strong> · #<?php echo (int)$publication['id']; ?></td>
-                                <td><?php echo historyH((new DateTimeImmutable($publication['published_at']))->format('M j, Y · g:i A')); ?></td>
-                                <td><?php echo historyH($publication['published_by']); ?></td>
-                                <td><?php echo historyH($publication['description'] ?? ''); ?></td>
-                                <td><a class="publication-option" href="admin-publication-edit.php?publication_id=<?php echo (int)$publication['id']; ?>">Edit / Delete</a></td>
-                            </tr>
-                        <?php endforeach; ?>
-                        </tbody>
-                    </table>
-                </div>
-                <p class="history-muted" style="margin:12px 0 0">Correcting an older publication also recalculates all later period-to-period changes. Deleting a publication removes its results and renumbers the remaining history labels.</p>
-            </div>
-        </section>
-        <?php endif; ?>
-
         <?php if ($publicationComparison): ?>
         <section class="history-section" aria-labelledby="publication-comparison-title">
             <div class="section-heading">

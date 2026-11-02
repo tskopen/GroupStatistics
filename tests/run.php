@@ -621,6 +621,23 @@ try {
 }
 check($deleteImmutabilityRestored, 'publication delete protection is restored after a controlled deletion');
 
+// Route-level regression checks: publication corrections belong in the admin area only.
+$publicHistorySource = file_get_contents(__DIR__ . '/../score-history.php');
+$adminScoreSource = file_get_contents(__DIR__ . '/../admin-score-management.php');
+$publicationEditSource = file_get_contents(__DIR__ . '/../admin-publication-edit.php');
+check($publicHistorySource !== false
+    && !str_contains($publicHistorySource, 'admin-publication-edit.php')
+    && !str_contains($publicHistorySource, 'Manage Published Publications')
+    && !str_contains($publicHistorySource, '$isAdmin'),
+    'public OPA history remains read-only and exposes no publication edit/delete controls');
+check($adminScoreSource !== false
+    && str_contains($adminScoreSource, 'Manage Published OPA Publications')
+    && str_contains($adminScoreSource, 'admin-publication-edit.php?publication_id='),
+    'published OPA edit/delete management is available from the admin score-management page');
+check($publicationEditSource !== false
+    && str_contains($publicationEditSource, "if (empty(\$_SESSION['admin']))"),
+    'OPA publication editor requires an authenticated admin session');
+
 // Web Push configuration regression checks. These use synthetic format fixtures
 // only; they do not contain or access production credentials.
 require_once __DIR__ . '/../vapid-config.php';

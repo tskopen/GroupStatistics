@@ -217,6 +217,8 @@ if (isset($_GET['notice'])) {
         'imported' => 'Workbook values were added to the draft and remain editable.',
         'discarded' => 'The previous draft was discarded. A new draft is ready.',
     ];
+    $notices['publication_updated'] = 'Published OPA publication corrected. Later comparisons have been recalculated.';
+    $notices['publication_deleted'] = 'Published OPA publication deleted. Remaining history has been recalculated.';
     $success = $notices[(string)$_GET['notice']] ?? '';
 }
 
@@ -245,6 +247,12 @@ if ($latestPublicationId !== null) {
     $stmt->execute([$latestPublicationId]);
     $latestPublication = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
 }
+$publications = $db->query('SELECT * FROM scoring_publications ORDER BY id DESC')->fetchAll(PDO::FETCH_ASSOC);
+$publicationLabels = [];
+foreach (array_reverse($publications) as $index => $publication) {
+    $publicationLabels[(int)$publication['id']] = 'P' . ($index + 1);
+}
+$correctionHistory = opaGetPublicationCorrectionHistory($db, 50);
 
 function opaH($value): string {
     return htmlspecialchars((string)$value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
@@ -300,6 +308,7 @@ function opaH($value): string {
 <body>
 <?php require_once __DIR__ . '/site-header.php'; renderGroupSiteHeader(); ?>
 <main class="score-admin">
+    <p><a class="score-history-link" href="admin-panel.php">← Back to Admin Panel</a></p>
     <h1>Score Management</h1>
     <p class="score-intro">Manage category rankings and percentage scores in one editable draft. New drafts inherit the latest publication automatically, so you only need to update categories that changed. Only publishing updates the public OPA leaderboard.</p>
 
@@ -498,6 +507,59 @@ function opaH($value): string {
             <button class="score-btn" type="submit">Add Category to Draft</button>
         </form>
     </section>
+
+    <section class="score-card" id="published-publications">
+        <div class="score-section-head">
+            <div>
+                <h2>Manage Published OPA Publications</h2>
+                <p class="score-note">Correct or remove a published snapshot here. Every correction and deletion requires an audit reason and recalculates later publication comparisons.</p>
+            </div>
+            <a class="score-btn secondary" href="score-history.php">View Public History</a>
+        </div>
+        <?php if ($publications): ?>
+        <div class="score-table-wrap">
+            <table class="score-table">
+                <thead><tr><th>Publication</th><th>Published</th><th>Published by</th><th>Description</th><th>Actions</th></tr></thead>
+                <tbody>
+                <?php foreach ($publications as $publication): ?>
+                    <tr>
+                        <td><strong><?php echo opaH($publicationLabels[(int)$publication['id']]); ?></strong> · #<?php echo (int)$publication['id']; ?></td>
+                        <td><?php echo opaH((new DateTimeImmutable($publication['published_at']))->format('M j, Y · g:i A')); ?></td>
+                        <td><?php echo opaH($publication['published_by']); ?></td>
+                        <td><?php echo opaH($publication['description'] ?? ''); ?></td>
+                        <td><a class="score-btn secondary" href="admin-publication-edit.php?publication_id=<?php echo (int)$publication['id']; ?>">Edit / Delete</a></td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+        <?php else: ?>
+            <p class="score-note">No OPA publications have been published yet.</p>
+        <?php endif; ?>
+    </section>
+
+    <?php if ($correctionHistory): ?>
+    <section class="score-card">
+        <h2>Publication Correction Audit</h2>
+        <p class="score-note">Recent administrator edits and deletions of published OPA snapshots.</p>
+        <div class="score-table-wrap">
+            <table class="score-table">
+                <thead><tr><th>Publication ID</th><th>Action</th><th>Reason</th><th>Performed by</th><th>Date</th></tr></thead>
+                <tbody>
+                <?php foreach ($correctionHistory as $audit): ?>
+                    <tr>
+                        <td>#<?php echo (int)$audit['publication_id']; ?></td>
+                        <td><?php echo strtoupper(opaH($audit['operation'])); ?></td>
+                        <td><?php echo opaH($audit['reason']); ?></td>
+                        <td><?php echo opaH($audit['performed_by']); ?></td>
+                        <td><?php echo opaH((new DateTimeImmutable($audit['performed_at']))->format('M j, Y · g:i A')); ?></td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+    </section>
+    <?php endif; ?>
 
     <?php if ($draftList): ?>
     <section class="score-card">
