@@ -125,7 +125,7 @@ check($comparison12 !== null && (int)$comparison12['publication_a']['publication
 check(abs($comparison12['overall']['change']['opa'] + 18.45) < 0.000001 && (int)$comparison12['overall']['change']['rank_movement'] === -9, 'P1 versus P2 calculates OPA and rank movement directly between selected periods');
 $amiComparison12 = null;
 foreach ($comparison12['categories'] as $categoryComparison) if ($categoryComparison['key'] === 'ami') $amiComparison12 = $categoryComparison;
-check($amiComparison12 !== null && (int)$amiComparison12['a']['rank'] === 1 && (int)$amiComparison12['b']['rank'] === 10 && abs($amiComparison12['change']['score'] + 9.0) < 0.000001 && (int)$amiComparison12['change']['points'] === -9, 'category details compare Group 1 rank, percentage score, and category points');
+check($amiComparison12 !== null && (int)$amiComparison12['a']['rank'] === 1 && (int)$amiComparison12['b']['rank'] === 10 && abs($amiComparison12['change']['score'] + 9.0) < 0.000001 && abs($amiComparison12['a']['weight'] - 0.25) < 0.000001 && abs($amiComparison12['b']['weight'] - 0.25) < 0.000001 && abs($amiComparison12['change']['opa_points'] + 2.25) < 0.000001, 'category details compare rank, percentage score, configured weight, and weighted OPA points');
 
 $thirdDraft = opaCreateDraft($db, 'test-admin', 'Third OPA test draft');
 foreach ($categoryRows as $category) {

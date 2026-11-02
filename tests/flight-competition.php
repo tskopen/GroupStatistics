@@ -91,4 +91,4 @@ check($homepageFlightSource !== false && !str_contains($homepageFlightSource, 'F
     && !str_contains($homepageFlightSource, 'squadron-pages.php'),
     'Flight vs Flight remains out of the homepage and general group event board');
 
-$flightDb->exec('PRAGMA foreign_keys=' . ($foreignKeysBeforeFlightTests ? 'ON' : 'OFF'));
+$flightDb->exec('PRAGMA foreign_keys=' . ($foreignKeysBefore ? 'ON' : 'OFF'));
