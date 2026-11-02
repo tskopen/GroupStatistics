@@ -139,7 +139,7 @@ if ($challengeAwards) {
 <title>USAFA Group 1 Squadron Tracker</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="<?php echo htmlspecialchars($theme['primary_color'] ?? '#002147', ENT_QUOTES, 'UTF-8'); ?>">
-<meta name="description" content="Track USAFA Group 1 squadron competition scores and tournament brackets">
+<meta name="description" content="Track USAFA Group 1 squadron OPA standings, group challenges, awards, and intramural results">
 
 <!-- iOS PWA support -->
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -311,6 +311,7 @@ if ($challengeAwards) {
     .group-challenges-heading { display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;margin:0 0 16px; }
     .group-challenges-heading h2 { margin:0 0 5px; }
     .group-challenges-heading p { margin:0;color:var(--muted-color); }
+    .group-challenges-links { display:flex;gap:8px;flex-wrap:wrap; }
     .challenge-board-meta { display:flex;flex-direction:column;gap:4px;color:var(--muted-color);font-size:.82rem;margin:6px 0 10px; }
     .challenge-board-card .event-body { min-height:190px; }
     .events-toggle-wrap { text-align: center; margin: 10px 0 30px; }
@@ -488,7 +489,7 @@ if ($challengeAwards) {
                 <h2>🎯 Group Challenges &amp; Awards</h2>
                 <p>Follow current group challenges, posted submissions, and squadron recognition.</p>
             </div>
-            <a class="announcement-preview-link" href="challenges.php">View all challenges &amp; awards</a>
+            <div class="group-challenges-links"><a class="announcement-preview-link" href="challenges.php">View challenges</a><a class="announcement-preview-link" href="awards.php">View all awards</a></div>
         </div>
         <?php if ($homepageChallenges || $challengeAwards): ?>
         <div class="events-grid challenge-board-grid">
