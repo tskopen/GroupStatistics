@@ -50,7 +50,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     EXISTS(SELECT 1 FROM cadet_of_month_awards WHERE event_id = ?) AS cotm_managed");
                 $managedStmt->execute([$eventId, $eventId]);
                 $managed = $managedStmt->fetch(PDO::FETCH_ASSOC) ?: [];
-                if (!empty($managed['bracket_managed']) || !empty($managed['cotm_managed'])) {
+                $managedEventType = normalizeEventType($event['event_type'] ?? '');
+                if (
+                    in_array($managedEventType, ['bracket', 'cadet_of_month'], true) ||
+                    !empty($managed['bracket_managed']) ||
+                    !empty($managed['cotm_managed'])
+                ) {
                     throw new Exception('This result is managed by the Bracket or Cadet of the Month page.');
                 }
 
