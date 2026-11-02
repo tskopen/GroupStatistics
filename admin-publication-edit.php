@@ -123,7 +123,7 @@ body { margin:0; background:var(--pub-page); color:var(--pub-ink); font-family:A
         <section class="pub-card">
             <h2>This publication is no longer available</h2>
             <p class="pub-muted">It may have been deleted. Any correction or deletion history recorded for publication #<?php echo $publicationId; ?> is shown below.</p>
-            <a class="pub-btn secondary" href="admin-score-management.php#published-publications">← Back to Publication History</a>
+            <a class="pub-btn secondary" href="admin-score-management.php#published-publications">← Back to OPA Management</a>
         </section>
     <?php else: ?>
         <section class="pub-card">
@@ -215,7 +215,7 @@ body { margin:0; background:var(--pub-page); color:var(--pub-ink); font-family:A
         <?php endforeach; ?>
     </section>
     <?php endif; ?>
-    <p><a class="pub-btn secondary" href="admin-score-management.php#published-publications">← Back to OPA Publication History</a></p>
+    <p><a class="pub-btn secondary" href="admin-score-management.php#published-publications">← Back to OPA Management</a></p>
 </main>
 </body>
 </html>
