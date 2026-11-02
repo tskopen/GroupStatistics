@@ -612,7 +612,7 @@ function opaGetSquadronBreakdown(PDO $db, int $squadronId): ?array {
         $latestStmt->execute([$previousId, $squadronId]);
         $previous = $latestStmt->fetch(PDO::FETCH_ASSOC) ?: null;
     }
-    $categoryStmt = $db->prepare('SELECT * FROM scoring_publication_scores WHERE publication_id=? AND squadron_id=? ORDER BY category_name');
+    $categoryStmt = $db->prepare('SELECT s.* FROM scoring_publication_scores s JOIN scoring_categories c ON c.category_key=s.category_key WHERE s.publication_id=? AND s.squadron_id=? AND COALESCE(c.military_weight,0)>0 ORDER BY s.category_name');
     $categoryStmt->execute([$latestId, $squadronId]);
     $categories = $categoryStmt->fetchAll(PDO::FETCH_ASSOC);
     $historyStmt = $db->prepare('SELECT p.id,p.published_at,ps.opa,ps.overall_rank
