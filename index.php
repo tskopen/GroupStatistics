@@ -39,10 +39,34 @@ $themeSquadron = !empty($theme['selected_squadron_id'])
 $groupIconSettings = readJson(DATA_DIR . '/group-icon.json');
 $groupIconFilename = $groupIconSettings['filename'] ?? null;
 
-// Fetch scores (all events)
-$stmt = $db->prepare("SELECT * FROM events ORDER BY timestamp DESC");
-$stmt->execute();
-$scores = $stmt->fetchAll();
+// Public event results come from their own display-only ledger. The legacy
+// events table is retained only for bracket/Cadet of the Month system records;
+// generic event-board scores are never read by OPA or leaderboard calculations.
+$scores = $db->query("
+    SELECT
+        id,
+        'legacy-' || id AS board_id,
+        squadron_id,
+        event_type,
+        event_name,
+        '' AS description,
+        COALESCE(value,points_awarded,0) AS value,
+        timestamp
+    FROM events
+    WHERE LOWER(COALESCE(TRIM(event_type),'')) NOT IN ('bracket','cadet_of_month')
+    UNION ALL
+    SELECT
+        id,
+        'live-' || id AS board_id,
+        squadron_id,
+        event_type,
+        event_name,
+        description,
+        value,
+        timestamp
+    FROM live_event_results
+    ORDER BY timestamp DESC, board_id DESC
+")->fetchAll(PDO::FETCH_ASSOC);
 
 foreach ($scores as &$scoreRow) {
     $scoreRow['event_type'] = normalizeEventType($scoreRow['event_type'] ?? 'other');
@@ -99,7 +123,7 @@ foreach ($bracketRows as $bracketRow) {
     if (!empty($tournament['matches'])) $bracketsByTournament[] = $tournament;
 }
 
-// Regular events still come from scores.json, newest first.
+// Regular events come from the isolated public event-results ledger, newest first.
 $regularEvents = array_values(array_filter(
     $scores,
     fn($event) => !in_array($event['event_type'] ?? 'other', ['bracket', 'cadet_of_month'], true)
@@ -116,6 +140,7 @@ foreach ($regularEvents as $event) {
     if (!isset($samisGroups[$eventName])) {
         $samisGroups[$eventName] = [
             'event_name' => $eventName,
+            'description' => trim((string)($event['description'] ?? '')),
             'results' => [],
             'latest_timestamp' => 0,
         ];
@@ -144,6 +169,7 @@ foreach ($regularEvents as $event) {
         $pftGroups[$eventName] = [
             'event_name' => $eventName,
             'event_type' => 'pft',
+            'description' => trim((string)($event['description'] ?? '')),
             'results' => [],
             'latest_timestamp' => 0,
         ];
@@ -172,6 +198,7 @@ foreach ($regularEvents as $event) {
         $otherGroups[$eventName] = [
             'event_name' => $eventName,
             'event_type' => 'other',
+            'description' => trim((string)($event['description'] ?? '')),
             'results' => [],
             'latest_timestamp' => 0,
         ];
@@ -401,7 +428,9 @@ if ($challengeAwards) {
     /* Regular event card */
     .challenge-award-recipients{margin-top:12px;padding-top:10px;border-top:1px solid var(--border-color)}.challenge-award-recipient{display:flex;justify-content:space-between;gap:10px;padding:5px 0;border-bottom:1px solid var(--border-color);font-size:.9rem}.challenge-award-recipient:last-child{border-bottom:0}.regular-event { text-align: center; }
     .regular-event-icon { width: 60px; height: 60px; margin: 0 auto 10px; border-radius: 4px; object-fit: cover; }
+    .regular-event-title { font-weight: 800; color: var(--primary-color); margin: 3px 0 7px; overflow-wrap: anywhere; }
     .regular-event-name { font-weight: bold; margin: 5px 0; }
+    .regular-event-description { margin: 8px 0; color: var(--muted-color); font-size: .88rem; line-height: 1.45; white-space: pre-line; overflow-wrap: anywhere; }
     .regular-event-type { display: inline-block; background: var(--soft-accent-color); color: var(--primary-color); padding: 4px 8px; border-radius: 3px; font-size: 0.75em; margin-bottom: 8px; }
     .regular-event-score { font-size: 1.5em; font-weight: bold; color: var(--accent-color); }
     
@@ -590,6 +619,7 @@ if ($challengeAwards) {
         <div class="sami-card" style="order: <?php echo -((int) ($sami['latest_timestamp'] ?? 0)); ?>;">
             <div class="sami-header">🏅 <?php echo htmlspecialchars($sami['event_name']); ?></div>
             <div class="sami-body">
+                <?php if (!empty($sami['description'])): ?><p class="regular-event-description"><?php echo htmlspecialchars($sami['description'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?></p><?php endif; ?>
                 <?php foreach ($sami['results'] as $result):
                     $squad = $squadronMap[$result['squadron_id']] ?? null;
                 ?>
@@ -617,6 +647,7 @@ if ($challengeAwards) {
         <div class="sami-card" style="order: <?php echo -((int) ($pft['latest_timestamp'] ?? 0)); ?>;">
             <div class="sami-header">💪 <?php echo htmlspecialchars($pft['event_name']); ?></div>
             <div class="sami-body">
+                <?php if (!empty($pft['description'])): ?><p class="regular-event-description"><?php echo htmlspecialchars($pft['description'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?></p><?php endif; ?>
                 <?php foreach ($pft['results'] as $result):
                     $squad = $squadronMap[$result['squadron_id']] ?? null;
                 ?>
@@ -644,6 +675,7 @@ if ($challengeAwards) {
         <div class="sami-card" style="order: <?php echo -((int) ($other['latest_timestamp'] ?? 0)); ?>;">
             <div class="sami-header">📌 <?php echo htmlspecialchars($other['event_name']); ?></div>
             <div class="sami-body">
+                <?php if (!empty($other['description'])): ?><p class="regular-event-description"><?php echo htmlspecialchars($other['description'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?></p><?php endif; ?>
                 <?php foreach ($other['results'] as $result):
                     $squad = $squadronMap[$result['squadron_id']] ?? null;
                 ?>
@@ -703,9 +735,11 @@ if ($challengeAwards) {
                 <?php else: ?>
                     <div class="regular-event-icon" style="background:#ccc;"></div>
                 <?php endif; ?>
+                <div class="regular-event-title"><?php echo htmlspecialchars($event['event_name'] ?? ucfirst($event['event_type'] ?? 'Event'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?></div>
                 <div class="regular-event-name"><?php echo htmlspecialchars($squad['name'] ?? 'Unknown'); ?></div>
                 <div class="regular-event-type"><?php echo ucfirst($event['event_type'] ?? 'Other'); ?></div>
-                <div class="regular-event-score"><?php echo $event['value'] ?? 'N/A'; ?></div>
+                <?php if (!empty($event['description'])): ?><p class="regular-event-description"><?php echo htmlspecialchars($event['description'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?></p><?php endif; ?>
+                <div class="regular-event-score"><?php echo htmlspecialchars((string)($event['value'] ?? 'N/A'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?></div>
             </div>
         </div>
         <?php endforeach; ?>
