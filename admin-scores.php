@@ -186,7 +186,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     .panel { max-width: 500px; margin: 40px auto; background: #fff; padding: 30px; border-radius: 6px; box-shadow: 0 1px 4px rgba(0,0,0,0.15); }
     h1 { color: #002147; text-align: center; }
     label { display: block; margin-top: 12px; font-weight: bold; }
-    select, input[type="text"], input[type="number"] { width: 100%; padding: 8px; margin-top: 4px; box-sizing: border-box; border: 1px solid #ddd; border-radius: 4px; }
+    select, input[type="text"], input[type="number"], textarea { width: 100%; padding: 8px; margin-top: 4px; box-sizing: border-box; border: 1px solid #ddd; border-radius: 4px; font: inherit; }
     button { margin-top: 18px; width: 100%; padding: 10px; background: #002147; color: #fff; border: none; border-radius: 4px; cursor: pointer; }
     button:hover { background: #003366; }
     .success { color: #1a7a1a; text-align: center; font-weight: bold; }
@@ -206,7 +206,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <h1>Manage Live Events Board</h1>
         <p style="text-align:center;color:#64748b;margin-top:-8px;">Display-only event results and award announcements. Scores and descriptions here are completely separate from OPA and leaderboard calculations.</p>
         <?php if ($success): ?>
-            <p class="success">Score saved successfully.</p>
+            <p class="success">Event result saved to the public board. OPA and leaderboard standings were not changed.</p>
         <?php endif; ?>
         <?php if ($error): ?>
             <p class="error"><?php echo htmlspecialchars($error); ?></p>
@@ -280,15 +280,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <td style="padding: 12px; text-align: center;"><?php echo htmlspecialchars((string)$event['value']); ?></td>
                     <td style="padding: 12px;"><?php echo htmlspecialchars(date('M j, Y', strtotime($event['timestamp']))); ?></td>
                     <td style="padding: 12px; text-align: center;">
-                        <?php if (!empty($event['bracket_managed']) || !empty($event['cotm_managed'])): ?>
-                            <span title="Managed from its dedicated admin page">Managed separately</span>
-                        <?php else: ?>
-                            <form method="post" action="admin-scores.php" style="display: inline;">
-                                <input type="hidden" name="action" value="delete_event">
-                                <input type="hidden" name="event_id" value="<?php echo htmlspecialchars((string)$event['id']); ?>">
-                                <button type="submit" style="background: #b00020; color: #fff; padding: 6px 10px; border: none; border-radius: 3px; cursor: pointer; font-size: 0.85em;" onclick="return confirm('Remove this result from the live events board? This cannot be undone.');">Delete</button>
-                            </form>
-                        <?php endif; ?>
+                        <form method="post" action="admin-scores.php" style="display: inline;">
+                            <input type="hidden" name="action" value="delete_event">
+                            <input type="hidden" name="event_id" value="<?php echo htmlspecialchars((string)$event['id']); ?>">
+                            <button type="submit" style="background: #b00020; color: #fff; padding: 6px 10px; border: none; border-radius: 3px; cursor: pointer; font-size: 0.85em;" onclick="return confirm('Remove this display-only result from the live events board? This will not change OPA or leaderboard standings.');">Delete</button>
+                        </form>
                     </td>
                 </tr>
                 <?php endforeach; ?>
