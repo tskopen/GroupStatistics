@@ -635,7 +635,7 @@ check($adminScoreSource !== false
     && str_contains($adminScoreSource, 'admin-publication-edit.php?publication_id='),
     'published OPA edit/delete management is available from the admin score-management page');
 check($publicationEditSource !== false
-    && str_contains($publicationEditSource, "if (empty($_SESSION['admin']))"),
+    && str_contains($publicationEditSource, 'if (empty($_SESSION[\\'admin\\']))'),
     'OPA publication editor requires an authenticated admin session');
 
 // Web Push configuration regression checks. These use synthetic format fixtures
