@@ -621,6 +621,14 @@ check($publicationEditSource !== false
     && str_contains($publicationEditSource, "if (empty(\$_SESSION['admin']))"),
     'OPA publication editor requires an authenticated admin session');
 
+// Homepage bracket section is distinct from the removed empty intramural standings section.
+$homeIndexSource = file_get_contents(__DIR__ . '/../index.php');
+check($homeIndexSource !== false
+    && !str_contains($homeIndexSource, 'Intramural Standings')
+    && !str_contains($homeIndexSource, 'intramural_wl_records')
+    && str_contains($homeIndexSource, 'id="brackets">🏆 Brackets'),
+    'homepage removes the empty intramural standings heading and labels bracket cards Brackets');
+
 // Route-level regression checks for the challenges-and-awards event board.
 $homeSource = file_get_contents(__DIR__ . '/../index.php');
 $adminPanelSource = file_get_contents(__DIR__ . '/../admin-panel.php');

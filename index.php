@@ -392,20 +392,8 @@ if ($challengeAwards) {
     </div>
     
     
-<?php
-    // Check if any intramural records exist
-    $stmt = $db->prepare("SELECT COUNT(*) as cnt FROM intramural_wl_records");
-    $stmt->execute();
-    $result = $stmt->fetch();
-    $hasIntramurals = $result['cnt'] > 0;
-    ?>
-    
-    <?php if ($hasIntramurals): ?>
-    <h2>🏅 Intramural Standings</h2>
-    <?php endif; ?>
-
-    <?php if ($bracketsByTournament): ?>
-    <h2 id="intramural-results">🏆 Intramural Tournament Results</h2>
+<?php if ($bracketsByTournament): ?>
+    <h2 id="brackets">🏆 Brackets</h2>
     <div class="events-grid intramural-results-grid">
         <?php foreach ($bracketsByTournament as $tournament): ?>
         <div class="tournament-card" style="order: <?php echo -((int) (strtotime($tournament['latest_timestamp'] ?? '') ?: 0)); ?>;">
