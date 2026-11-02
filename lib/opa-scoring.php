@@ -348,7 +348,7 @@ function opaPublishDraft(PDO $db, int $draftId, string $username, string $descri
         $insertPub = $db->prepare("INSERT INTO scoring_publications
             (source_draft_id,published_at,published_by,description,data_entry_method,source_filename,records_processed,categories_json)
             VALUES(?,?,?,?,?,?,?,?)");
-        $insertPub->execute([$draftId, $now, $username, $description, $method, $filename ?: null, count($squadrons) * count($militaryCategories), json_encode($categoryNames)]);
+        $insertPub->execute([$draftId, $now, $username, $description, $method, $filename ?: null, count($squadrons) * count($categories), json_encode(array_map(static fn($category) => $category['display_name'], $categories))]);
         $publicationId = (int)$db->lastInsertId();
 
         $previousSquadronStmt = $previousId ? $db->prepare('SELECT opa,overall_rank FROM scoring_publication_squadrons WHERE publication_id=? AND squadron_id=?') : null;
@@ -379,7 +379,6 @@ function opaPublishDraft(PDO $db, int $draftId, string $username, string $descri
             (publication_id,category_id,category_key,category_name,squadron_id,category_rank,category_score,category_points,source_rank,source_measurement,previous_rank,rank_change,previous_score,score_change)
             VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
         foreach ($categories as $category) {
-            if ((float)($category['military_weight'] ?? 0) <= 0) continue;
             $categoryId = (int)$category['id'];
             foreach ($squadrons as $squadron) {
                 $sid = (int)$squadron['id'];
