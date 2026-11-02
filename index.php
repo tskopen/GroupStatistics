@@ -39,40 +39,6 @@ $themeSquadron = !empty($theme['selected_squadron_id'])
 $groupIconSettings = readJson(DATA_DIR . '/group-icon.json');
 $groupIconFilename = $groupIconSettings['filename'] ?? null;
 
-// Public event results come from their own display-only ledger. The legacy
-// events table is retained only for bracket/Cadet of the Month system records;
-// generic event-board scores are never read by OPA or leaderboard calculations.
-$scores = $db->query("
-    SELECT
-        id,
-        'legacy-' || id AS board_id,
-        squadron_id,
-        event_type,
-        event_name,
-        '' AS description,
-        COALESCE(value,points_awarded,0) AS value,
-        timestamp
-    FROM events
-    WHERE LOWER(COALESCE(TRIM(event_type),'')) NOT IN ('bracket','cadet_of_month')
-    UNION ALL
-    SELECT
-        id,
-        'live-' || id AS board_id,
-        squadron_id,
-        event_type,
-        event_name,
-        description,
-        value,
-        timestamp
-    FROM live_event_results
-    ORDER BY timestamp DESC, board_id DESC
-")->fetchAll(PDO::FETCH_ASSOC);
-
-foreach ($scores as &$scoreRow) {
-    $scoreRow['event_type'] = normalizeEventType($scoreRow['event_type'] ?? 'other');
-}
-unset($scoreRow);
-
 // Restore the leaderboard data model used by the PR #61 homepage.
 // Keep the SQLite scoring helper as the single source of truth.
 $rankingRows = opaGetPublishedLeaderboard($db);
@@ -123,148 +89,45 @@ foreach ($bracketRows as $bracketRow) {
     if (!empty($tournament['matches'])) $bracketsByTournament[] = $tournament;
 }
 
-// Regular events come from the isolated public event-results ledger, newest first.
-$regularEvents = array_values(array_filter(
-    $scores,
-    fn($event) => !in_array($event['event_type'] ?? 'other', ['bracket', 'cadet_of_month'], true)
-));
-
-// Group SAMI events by event_name into a single card per round.
-$samisByEvent = [];
-$samisGroups = [];
-foreach ($regularEvents as $event) {
-    if (($event['event_type'] ?? '') !== 'samis') {
-        continue;
-    }
-    $eventName = $event['event_name'] ?? 'Samis';
-    if (!isset($samisGroups[$eventName])) {
-        $samisGroups[$eventName] = [
-            'event_name' => $eventName,
-            'description' => trim((string)($event['description'] ?? '')),
-            'results' => [],
-            'latest_timestamp' => 0,
-        ];
-    }
-    $samisGroups[$eventName]['results'][] = [
-        'squadron_id' => $event['squadron_id'] ?? null,
-        'value' => $event['value'] ?? null,
-        'timestamp' => $event['timestamp'] ?? null,
-    ];
-    $ts = strtotime($event['timestamp'] ?? '') ?: 0;
-    if ($ts > $samisGroups[$eventName]['latest_timestamp']) {
-        $samisGroups[$eventName]['latest_timestamp'] = $ts;
+// The homepage event board is dedicated to Group Challenges and Awards.
+// Intramural tournaments remain in their own separate results section below.
+function homepageChallengeDateTime(?string $value): string {
+    if (!$value) return '';
+    try {
+        return (new DateTimeImmutable($value, new DateTimeZone('America/Denver')))
+            ->setTimezone(new DateTimeZone('America/Denver'))
+            ->format('M j, Y · g:i A T');
+    } catch (Throwable $e) {
+        return '';
     }
 }
-$samisByEvent = array_values($samisGroups);
+$homepageChallenges = $db->query("
+    SELECT id,title,description,starts_at,ends_at,created_at
+    FROM challenges
+    WHERE status='published'
+    ORDER BY COALESCE(starts_at,created_at) DESC,id DESC
+    LIMIT 4
+")->fetchAll(PDO::FETCH_ASSOC);
 
-// Group PFT events by event_name into a single card per PFT round
-$pftByEvent = [];
-$pftGroups = [];
-foreach ($regularEvents as $event) {
-    if (($event['event_type'] ?? '') !== 'pft') {
-        continue;
-    }
-    $eventName = $event['event_name'] ?? 'PFT';
-    if (!isset($pftGroups[$eventName])) {
-        $pftGroups[$eventName] = [
-            'event_name' => $eventName,
-            'event_type' => 'pft',
-            'description' => trim((string)($event['description'] ?? '')),
-            'results' => [],
-            'latest_timestamp' => 0,
-        ];
-    }
-    $pftGroups[$eventName]['results'][] = [
-        'squadron_id' => $event['squadron_id'] ?? null,
-        'value' => $event['value'] ?? null,
-        'timestamp' => $event['timestamp'] ?? null,
-    ];
-    $ts = strtotime($event['timestamp'] ?? '') ?: 0;
-    if ($ts > $pftGroups[$eventName]['latest_timestamp']) {
-        $pftGroups[$eventName]['latest_timestamp'] = $ts;
-    }
-}
-$pftByEvent = array_values($pftGroups);
-
-// Group other events by event_name into a single card per event
-$otherByEvent = [];
-$otherGroups = [];
-foreach ($regularEvents as $event) {
-    if (($event['event_type'] ?? '') !== 'other') {
-        continue;
-    }
-    $eventName = $event['event_name'] ?? 'Other Event';
-    if (!isset($otherGroups[$eventName])) {
-        $otherGroups[$eventName] = [
-            'event_name' => $eventName,
-            'event_type' => 'other',
-            'description' => trim((string)($event['description'] ?? '')),
-            'results' => [],
-            'latest_timestamp' => 0,
-        ];
-    }
-    $otherGroups[$eventName]['results'][] = [
-        'squadron_id' => $event['squadron_id'] ?? null,
-        'value' => $event['value'] ?? null,
-        'timestamp' => $event['timestamp'] ?? null,
-    ];
-    $ts = strtotime($event['timestamp'] ?? '') ?: 0;
-    if ($ts > $otherGroups[$eventName]['latest_timestamp']) {
-        $otherGroups[$eventName]['latest_timestamp'] = $ts;
-    }
-}
-$otherByEvent = array_values($otherGroups);
-
-// Rank squadrons within each grouped event card by points awarded, highest first.
-$sortEventResults = function (&$eventGroups) {
-    foreach ($eventGroups as &$eventGroup) {
-        usort($eventGroup['results'], function ($a, $b) {
-            return (float) ($b['value'] ?? 0) <=> (float) ($a['value'] ?? 0);
-        });
-    }
-    unset($eventGroup);
-};
-$sortEventResults($samisByEvent);
-$sortEventResults($pftByEvent);
-$sortEventResults($otherByEvent);
-unset($sortEventResults);
-
-// Non-SAMI/PFT/other regular events stay in regularEvents (no change to their display).
-$regularEvents = array_values(array_filter(
-    $regularEvents,
-    fn($event) => !in_array($event['event_type'] ?? '', ['pft', 'other', 'samis'])
-));
-
-// Sort tournaments by most recent first
-usort(
-    $bracketsByTournament,
-    fn($a, $b) => ($b['latest_timestamp'] ?? 0) <=> ($a['latest_timestamp'] ?? 0)
-);
-
-// Sort samis groups by most recent first
-usort(
-    $samisByEvent,
-    fn($a, $b) => ($b['latest_timestamp'] ?? 0) <=> ($a['latest_timestamp'] ?? 0)
-);
-
-// Sort PFT groups by most recent first
-usort(
-    $pftByEvent,
-    fn($a, $b) => ($b['latest_timestamp'] ?? 0) <=> ($a['latest_timestamp'] ?? 0)
-);
-
-// Sort other groups by most recent first
-usort(
-    $otherByEvent,
-    fn($a, $b) => ($b['latest_timestamp'] ?? 0) <=> ($a['latest_timestamp'] ?? 0)
-);
-
-// Challenge awards are also published in the homepage Results feed.
-$challengeAwards = $db->query("SELECT a.*, c.title AS challenge_title FROM engagement_awards a LEFT JOIN challenges c ON c.id=a.challenge_id WHERE a.status='published' AND a.challenge_id IS NOT NULL ORDER BY a.created_at DESC, a.id DESC")->fetchAll(PDO::FETCH_ASSOC);
+$challengeAwards = $db->query("
+    SELECT a.*, c.title AS challenge_title
+    FROM engagement_awards a
+    LEFT JOIN challenges c ON c.id=a.challenge_id
+    WHERE a.status='published'
+    ORDER BY a.created_at DESC,a.id DESC
+    LIMIT 6
+")->fetchAll(PDO::FETCH_ASSOC);
 $challengeAwardRecipients = [];
 if ($challengeAwards) {
-    $recipientRows = $db->query("SELECT r.award_id, r.points_awarded, q.name AS squadron_name FROM engagement_award_recipients r JOIN squadrons q ON q.id=r.squadron_id ORDER BY q.id")->fetchAll(PDO::FETCH_ASSOC);
-    foreach ($recipientRows as $recipientRow) $challengeAwardRecipients[(int)$recipientRow['award_id']][] = $recipientRow;
+    $recipientRows = $db->query("
+        SELECT r.award_id,r.points_awarded,q.name AS squadron_name
+        FROM engagement_award_recipients r
+        JOIN squadrons q ON q.id=r.squadron_id
+        ORDER BY q.id
+    ")->fetchAll(PDO::FETCH_ASSOC);
+    foreach ($recipientRows as $recipientRow) {
+        $challengeAwardRecipients[(int)$recipientRow['award_id']][] = $recipientRow;
+    }
 }
 
 ?>
@@ -276,7 +139,7 @@ if ($challengeAwards) {
 <title>USAFA Group 1 Squadron Tracker</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="<?php echo htmlspecialchars($theme['primary_color'] ?? '#002147', ENT_QUOTES, 'UTF-8'); ?>">
-<meta name="description" content="Track USAFA Group 1 squadron competition scores and tournament brackets">
+<meta name="description" content="Track USAFA Group 1 squadron OPA standings, group challenges, awards, and intramural results">
 
 <!-- iOS PWA support -->
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -444,7 +307,14 @@ if ($challengeAwards) {
     .announcement-preview-item { padding:12px; background:var(--soft-primary-color); border-radius:7px; border:1px solid var(--border-color); min-width:0; }
     .announcement-preview-item strong { display:block; color:var(--primary-color); overflow-wrap:anywhere; }
     .announcement-preview-item small { display:block; color:#596579; margin-top:4px; }
-    .events-toggle-wrap { text-align: center; margin: -10px 0 30px; }
+    .group-challenges-board { margin-top: 34px; }
+    .group-challenges-heading { display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;margin:0 0 16px; }
+    .group-challenges-heading h2 { margin:0 0 5px; }
+    .group-challenges-heading p { margin:0;color:var(--muted-color); }
+    .group-challenges-links { display:flex;gap:8px;flex-wrap:wrap; }
+    .challenge-board-meta { display:flex;flex-direction:column;gap:4px;color:var(--muted-color);font-size:.82rem;margin:6px 0 10px; }
+    .challenge-board-card .event-body { min-height:190px; }
+    .events-toggle-wrap { text-align: center; margin: 10px 0 30px; }
     .events-toggle-button { padding: 10px 18px; border: 0; border-radius: 6px; background: var(--primary-color); color: #fff; font-weight: bold; cursor: pointer; }
     .events-toggle-button:hover, .events-toggle-button:focus-visible { background: var(--secondary-color); }
     .footer { text-align: center; margin-top: 40px; }
@@ -534,12 +404,9 @@ if ($challengeAwards) {
     <h2>🏅 Intramural Standings</h2>
     <?php endif; ?>
 
-    <?php if ($bracketsByTournament || $samisByEvent || $pftByEvent || $otherByEvent || $regularEvents || $challengeAwards): ?>
-    <h2 id="results">🔥 Recent Events &amp; Results</h2>
-    <div class="events-grid">
-        <?php /* Tournaments are shown first (most recent competitions), followed by
-                 regular events. Both lists are pre-sorted newest-first above, so within
-                 each section the most recent activity always appears first. */ ?>
+    <?php if ($bracketsByTournament): ?>
+    <h2 id="intramural-results">🏆 Intramural Tournament Results</h2>
+    <div class="events-grid intramural-results-grid">
         <?php foreach ($bracketsByTournament as $tournament): ?>
         <div class="tournament-card" style="order: <?php echo -((int) (strtotime($tournament['latest_timestamp'] ?? '') ?: 0)); ?>;">
             <div class="tournament-header">🏆 <?php echo htmlspecialchars($tournament['tournament_name']); ?></div>
@@ -613,144 +480,77 @@ if ($challengeAwards) {
             </div>
         </div>
         <?php endforeach; ?>
-
-        <?php foreach ($samisByEvent as $sami): ?>
-        <!-- SAMI events (all squadrons for one round, newest first) -->
-        <div class="sami-card" style="order: <?php echo -((int) ($sami['latest_timestamp'] ?? 0)); ?>;">
-            <div class="sami-header">🏅 <?php echo htmlspecialchars($sami['event_name']); ?></div>
-            <div class="sami-body">
-                <?php if (!empty($sami['description'])): ?><p class="regular-event-description"><?php echo htmlspecialchars($sami['description'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?></p><?php endif; ?>
-                <?php foreach ($sami['results'] as $result):
-                    $squad = $squadronMap[$result['squadron_id']] ?? null;
-                ?>
-                <div class="sami-result">
-                    <div class="sami-result-info">
-                        <?php if ($squad && !empty($squad['icon_filename'])): ?>
-                            <img src="<?php echo htmlspecialchars(iconUrl($squad['icon_filename'])); ?>" alt="icon" class="sami-result-icon">
-                        <?php else: ?>
-                            <div class="sami-result-icon" style="background:#ccc;"></div>
-                        <?php endif; ?>
-                        <span class="sami-result-name"><?php echo htmlspecialchars($squad['name'] ?? 'Unknown'); ?></span>
-                    </div>
-                    <div class="sami-result-score"><?php echo htmlspecialchars((string)($result['value'] ?? 'N/A')); ?></div>
-                </div>
-                <?php endforeach; ?>
-                <?php if ($sami['latest_timestamp']): ?>
-                <div class="sami-timestamp">Recorded <?php echo htmlspecialchars(date('M j, Y g:i A', $sami['latest_timestamp'])); ?></div>
-                <?php endif; ?>
-            </div>
-        </div>
-        <?php endforeach; ?>
-
-        <?php foreach ($pftByEvent as $pft): ?>
-        <!-- PFT events (all squadrons for one round, newest first) -->
-        <div class="sami-card" style="order: <?php echo -((int) ($pft['latest_timestamp'] ?? 0)); ?>;">
-            <div class="sami-header">💪 <?php echo htmlspecialchars($pft['event_name']); ?></div>
-            <div class="sami-body">
-                <?php if (!empty($pft['description'])): ?><p class="regular-event-description"><?php echo htmlspecialchars($pft['description'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?></p><?php endif; ?>
-                <?php foreach ($pft['results'] as $result):
-                    $squad = $squadronMap[$result['squadron_id']] ?? null;
-                ?>
-                <div class="sami-result">
-                    <div class="sami-result-info">
-                        <?php if ($squad && !empty($squad['icon_filename'])): ?>
-                            <img src="<?php echo htmlspecialchars(iconUrl($squad['icon_filename'])); ?>" alt="icon" class="sami-result-icon">
-                        <?php else: ?>
-                            <div class="sami-result-icon" style="background:#ccc;"></div>
-                        <?php endif; ?>
-                        <span class="sami-result-name"><?php echo htmlspecialchars($squad['name'] ?? 'Unknown'); ?></span>
-                    </div>
-                    <div class="sami-result-score"><?php echo htmlspecialchars((string)($result['value'] ?? 'N/A')); ?></div>
-                </div>
-                <?php endforeach; ?>
-                <?php if ($pft['latest_timestamp']): ?>
-                <div class="sami-timestamp">Recorded <?php echo htmlspecialchars(date('M j, Y g:i A', $pft['latest_timestamp'])); ?></div>
-                <?php endif; ?>
-            </div>
-        </div>
-        <?php endforeach; ?>
-
-        <?php foreach ($otherByEvent as $other): ?>
-        <!-- Other events (all squadrons for one event, newest first) -->
-        <div class="sami-card" style="order: <?php echo -((int) ($other['latest_timestamp'] ?? 0)); ?>;">
-            <div class="sami-header">📌 <?php echo htmlspecialchars($other['event_name']); ?></div>
-            <div class="sami-body">
-                <?php if (!empty($other['description'])): ?><p class="regular-event-description"><?php echo htmlspecialchars($other['description'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?></p><?php endif; ?>
-                <?php foreach ($other['results'] as $result):
-                    $squad = $squadronMap[$result['squadron_id']] ?? null;
-                ?>
-                <div class="sami-result">
-                    <div class="sami-result-info">
-                        <?php if ($squad && !empty($squad['icon_filename'])): ?>
-                            <img src="<?php echo htmlspecialchars(iconUrl($squad['icon_filename'])); ?>" alt="icon" class="sami-result-icon">
-                        <?php else: ?>
-                            <div class="sami-result-icon" style="background:#ccc;"></div>
-                        <?php endif; ?>
-                        <span class="sami-result-name"><?php echo htmlspecialchars($squad['name'] ?? 'Unknown'); ?></span>
-                    </div>
-                    <div class="sami-result-score"><?php echo htmlspecialchars((string)($result['value'] ?? 'N/A')); ?></div>
-                </div>
-                <?php endforeach; ?>
-                <?php if ($other['latest_timestamp']): ?>
-                <div class="sami-timestamp">Recorded <?php echo htmlspecialchars(date('M j, Y g:i A', $other['latest_timestamp'])); ?></div>
-                <?php endif; ?>
-            </div>
-        </div>
-        <?php endforeach; ?>
-
-        <?php foreach ($challengeAwards as $challengeAward): ?>
-        <?php $awardTimestamp = strtotime($challengeAward['created_at'] ?? '') ?: 0; $awardRecipients = $challengeAwardRecipients[(int)$challengeAward['id']] ?? []; ?>
-        <article class="event-card challenge-award-card" style="order: <?php echo -$awardTimestamp; ?>;">
-            <div class="event-header">🏅 CHALLENGE AWARD</div>
-            <div class="event-body">
-                <h3 style="margin:0 0 6px;color:var(--primary-color);"><?php echo htmlspecialchars($challengeAward['title'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?></h3>
-                <div class="regular-event-type"><?php echo htmlspecialchars($challengeAward['challenge_title'] ?? 'Group Challenge', ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?></div>
-                <p style="white-space:pre-line;margin:8px 0;"><?php echo htmlspecialchars($challengeAward['description'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?></p>
-                <?php if ($awardRecipients): ?>
-                <div class="challenge-award-recipients"><strong>Recipients</strong>
-                    <?php foreach ($awardRecipients as $awardRecipient): ?>
-                    <div class="challenge-award-recipient">
-                        <span><?php echo htmlspecialchars($awardRecipient['squadron_name'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?></span>
-                        <?php if ($awardRecipient['points_awarded'] !== null): ?><strong><?php echo rtrim(rtrim(number_format((float)$awardRecipient['points_awarded'], 2), '0'), '.'); ?> pts</strong><?php endif; ?>
-                    </div>
-                    <?php endforeach; ?>
-                </div>
-                <?php endif; ?>
-                <?php if (in_array($challengeAward['award_type'], ['points','both'], true) && !$awardRecipients): ?><strong><?php echo htmlspecialchars((string)$challengeAward['points_awarded'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?> points</strong><?php endif; ?>
-                <?php if (!empty($challengeAward['teams_url'])): ?><p><a href="<?php echo htmlspecialchars($challengeAward['teams_url'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?>" target="_blank" rel="noopener noreferrer">View award details ↗</a></p><?php endif; ?>
-                <div class="sami-timestamp">Published <?php echo $awardTimestamp ? htmlspecialchars(date('M j, Y', $awardTimestamp), ENT_QUOTES, 'UTF-8') : ''; ?></div>
-            </div>
-        </article>
-        <?php endforeach; ?>
-
-        <?php foreach ($regularEvents as $event): ?>
-        <?php $eventCardTimestamp = strtotime($event['timestamp'] ?? '') ?: 0; ?>
-        <!-- Regular events (newest first) -->
-        <div class="event-card" style="order: <?php echo -$eventCardTimestamp; ?>;">
-            <div class="event-header"><?php echo strtoupper($event['event_type'] ?? 'Event'); ?></div>
-            <div class="event-body regular-event">
-                <?php $squad = $squadronMap[$event['squadron_id']] ?? null; ?>
-                <?php if ($squad && !empty($squad['icon_filename'])): ?>
-                    <img src="<?php echo htmlspecialchars(iconUrl($squad['icon_filename'])); ?>" alt="icon" class="regular-event-icon">
-                <?php else: ?>
-                    <div class="regular-event-icon" style="background:#ccc;"></div>
-                <?php endif; ?>
-                <div class="regular-event-title"><?php echo htmlspecialchars($event['event_name'] ?? ucfirst($event['event_type'] ?? 'Event'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?></div>
-                <div class="regular-event-name"><?php echo htmlspecialchars($squad['name'] ?? 'Unknown'); ?></div>
-                <div class="regular-event-type"><?php echo ucfirst($event['event_type'] ?? 'Other'); ?></div>
-                <?php if (!empty($event['description'])): ?><p class="regular-event-description"><?php echo htmlspecialchars($event['description'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?></p><?php endif; ?>
-                <div class="regular-event-score"><?php echo htmlspecialchars((string)($event['value'] ?? 'N/A'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?></div>
-            </div>
-        </div>
-        <?php endforeach; ?>
     </div>
-    <div class="events-toggle-wrap" id="events-toggle-wrap" hidden>
-        <button type="button" class="events-toggle-button" id="events-toggle-button" aria-expanded="false">Show all events</button>
-    </div>
-    <?php else: ?>
-    <p style="text-align: center; color: #999; margin: 20px 0;">No recent events to display yet.</p>
     <?php endif; ?>
-    
+
+    <section id="results" class="group-challenges-board">
+        <div class="group-challenges-heading">
+            <div>
+                <h2>🎯 Group Challenges &amp; Awards</h2>
+                <p>Follow current group challenges, posted submissions, and squadron recognition.</p>
+            </div>
+            <div class="group-challenges-links"><a class="announcement-preview-link" href="challenges.php">View challenges</a><a class="announcement-preview-link" href="awards.php">View all awards</a></div>
+        </div>
+        <?php if ($homepageChallenges || $challengeAwards): ?>
+        <div class="events-grid challenge-board-grid">
+            <?php foreach ($homepageChallenges as $challenge): ?>
+            <article class="event-card challenge-board-card">
+                <div class="event-header">🎯 GROUP CHALLENGE</div>
+                <div class="event-body">
+                    <h3 class="regular-event-title"><?php echo htmlspecialchars($challenge['title'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?></h3>
+                    <div class="challenge-board-meta">
+                        <?php if (!empty($challenge['starts_at'])): ?>
+                            <span>Starts <?php echo htmlspecialchars(homepageChallengeDateTime($challenge['starts_at']), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?></span>
+                        <?php endif; ?>
+                        <?php if (!empty($challenge['ends_at'])): ?>
+                            <span>Ends <?php echo htmlspecialchars(homepageChallengeDateTime($challenge['ends_at']), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?></span>
+                        <?php endif; ?>
+                    </div>
+                    <p class="regular-event-description"><?php echo nl2br(htmlspecialchars($challenge['description'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')); ?></p>
+                    <a href="challenges.php#challenge-<?php echo (int)$challenge['id']; ?>">View challenge and submissions ↗</a>
+                </div>
+            </article>
+            <?php endforeach; ?>
+
+            <?php foreach ($challengeAwards as $challengeAward): ?>
+            <?php $awardTimestamp = strtotime($challengeAward['created_at'] ?? '') ?: 0; $awardRecipients = $challengeAwardRecipients[(int)$challengeAward['id']] ?? []; ?>
+            <article class="event-card challenge-board-card challenge-award-card">
+                <div class="event-header">🏅 GROUP AWARD</div>
+                <div class="event-body">
+                    <h3 class="regular-event-title"><?php echo htmlspecialchars($challengeAward['title'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?></h3>
+                    <div class="regular-event-type"><?php echo htmlspecialchars($challengeAward['challenge_title'] ?? 'Group Recognition', ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?></div>
+                    <p class="regular-event-description"><?php echo nl2br(htmlspecialchars($challengeAward['description'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')); ?></p>
+                    <?php if ($awardRecipients): ?>
+                    <div class="challenge-award-recipients"><strong>Recipients</strong>
+                        <?php foreach ($awardRecipients as $awardRecipient): ?>
+                        <div class="challenge-award-recipient">
+                            <span><?php echo htmlspecialchars($awardRecipient['squadron_name'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?></span>
+                            <?php if ($awardRecipient['points_awarded'] !== null): ?>
+                                <strong><?php echo rtrim(rtrim(number_format((float)$awardRecipient['points_awarded'], 2), '0'), '.'); ?> pts</strong>
+                            <?php endif; ?>
+                        </div>
+                        <?php endforeach; ?>
+                    </div>
+                    <?php endif; ?>
+                    <?php if (in_array($challengeAward['award_type'], ['points','both'], true) && !$awardRecipients): ?>
+                        <strong><?php echo htmlspecialchars((string)$challengeAward['points_awarded'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?> points</strong>
+                    <?php endif; ?>
+                    <?php if (!empty($challengeAward['teams_url'])): ?>
+                        <p><a href="<?php echo htmlspecialchars($challengeAward['teams_url'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?>" target="_blank" rel="noopener noreferrer">View award details ↗</a></p>
+                    <?php endif; ?>
+                    <div class="sami-timestamp">Published <?php echo $awardTimestamp ? htmlspecialchars(date('M j, Y', $awardTimestamp), ENT_QUOTES, 'UTF-8') : ''; ?></div>
+                </div>
+            </article>
+            <?php endforeach; ?>
+        </div>
+        <div class="events-toggle-wrap" id="events-toggle-wrap" hidden>
+            <button type="button" class="events-toggle-button" id="events-toggle-button" aria-expanded="false">Show all challenges and awards</button>
+        </div>
+        <?php else: ?>
+        <p style="text-align:center;color:#64748b;margin:20px 0;">No group challenges or awards have been published yet.</p>
+        <?php endif; ?>
+    </section>
+
     <div class="footer">
         <?php if (!empty($theme['active_preset'])): ?>
             <p style="color: #999; font-size: 0.75em; margin-top: 10px;">Theme: <?php echo htmlspecialchars($theme['active_preset']); ?></p>
@@ -1067,15 +867,15 @@ if ('serviceWorker' in navigator) {
 </script>
 
 <script>
-// Show the six most recent event cards by default, based on their existing visual timestamp order.
+// Show the six most recent challenge and award cards by default.
 (function () {
-    var grid = document.querySelector('.events-grid');
+    var grid = document.querySelector('.challenge-board-grid');
     var toggleWrap = document.getElementById('events-toggle-wrap');
     var toggleButton = document.getElementById('events-toggle-button');
     if (!grid || !toggleWrap || !toggleButton) return;
 
     var cards = Array.prototype.slice.call(
-        grid.querySelectorAll('.tournament-card, .sami-card, .event-card')
+        grid.querySelectorAll('.challenge-board-card')
     );
     cards.sort(function (a, b) {
         return (parseFloat(a.style.order) || 0) - (parseFloat(b.style.order) || 0);
@@ -1088,7 +888,7 @@ if ('serviceWorker' in navigator) {
         cards.forEach(function (card, index) {
             card.hidden = !expanded && index >= 6;
         });
-        toggleButton.textContent = expanded ? 'Show fewer' : 'Show all events';
+        toggleButton.textContent = expanded ? 'Show fewer' : 'Show all challenges and awards';
         toggleButton.setAttribute('aria-expanded', expanded ? 'true' : 'false');
         toggleWrap.hidden = false;
     }
