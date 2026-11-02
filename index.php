@@ -716,7 +716,8 @@ if ('serviceWorker' in navigator) {
             if (!value) return '<div class="breakdown-category-value">No category data</div>';
             var html = '<div class="breakdown-category-value">Group 1 rank: <strong>#' + escapeHtml(value.rank) + '</strong></div>' +
                 '<div class="breakdown-category-value">Percentage score: <strong>' + numberValue(value.score) + '%</strong></div>' +
-                '<div class="breakdown-category-value">Category points: <strong>' + numberValue(value.points, 0) + '</strong></div>';
+                '<div class="breakdown-category-value">OPA weight: <strong>' + numberValue(value.weight, 2) + '</strong></div>' +
+                '<div class="breakdown-category-value">OPA points: <strong>' + numberValue(value.opa_points, 2) + '</strong></div>';
             var source = [];
             if (value.source_rank !== null && value.source_rank !== undefined) source.push('Original source rank: #' + value.source_rank);
             if (value.source_measurement !== null && value.source_measurement !== '') source.push('Raw measurement: ' + value.source_measurement);
@@ -727,7 +728,7 @@ if ('serviceWorker' in navigator) {
         var changeHtml = '<div class="breakdown-category-change-metrics">' +
             '<div class="breakdown-change-metric"><span class="breakdown-change-metric-label">Rank movement</span><strong class="breakdown-change-metric-value ' + movementClass(rankDelta) + '">' + escapeHtml(rankMovement(rankDelta)) + '</strong></div>' +
             '<div class="breakdown-change-metric"><span class="breakdown-change-metric-label">Score change</span><strong class="breakdown-change-metric-value ' + movementClass(change.score) + '">' + escapeHtml(signedValue(change.score, 2, ' pts')) + '</strong></div>' +
-            '<div class="breakdown-change-metric"><span class="breakdown-change-metric-label">Points change</span><strong class="breakdown-change-metric-value ' + movementClass(change.points) + '">' + escapeHtml(signedValue(change.points, 0, ' pts')) + '</strong></div>' +
+            '<div class="breakdown-change-metric"><span class="breakdown-change-metric-label">OPA points change</span><strong class="breakdown-change-metric-value ' + movementClass(change.opa_points) + '">' + escapeHtml(signedValue(change.opa_points, 2, ' pts')) + '</strong></div>' +
             '</div>';
         if (!a || !b) changeHtml = '<div class="breakdown-category-value">This category is present in only one selected publication.</div>';
         return '<article class="breakdown-category-card">' +
@@ -748,7 +749,7 @@ if ('serviceWorker' in navigator) {
                 '<th scope="row">' + escapeHtml(category.name) + '</th>' +
                 '<td class="' + movementClass(rankDelta) + '">' + escapeHtml(rankMovement(rankDelta)) + '</td>' +
                 '<td class="' + movementClass(change.score) + '">' + escapeHtml(signedValue(change.score, 2, ' pp')) + '</td>' +
-                '<td class="' + movementClass(change.points) + '">' + escapeHtml(signedValue(change.points, 0, ' pts')) + '</td>' +
+                '<td class="' + movementClass(change.opa_points) + '">' + escapeHtml(signedValue(change.opa_points, 2, ' pts')) + '</td>' +
                 '</tr>';
         }).join('');
         return '<div class="breakdown-section breakdown-quick-change">' +
@@ -756,7 +757,7 @@ if ('serviceWorker' in navigator) {
             '<p class="breakdown-explanation">Direct comparison: ' + escapeHtml(publicationA.label) +
             ' → ' + escapeHtml(publicationB.label) + '. Positive rank movement means places gained.</p>' +
             '<div class="breakdown-quick-table-wrap"><table class="breakdown-quick-table">' +
-            '<thead><tr><th>Category</th><th>Rank movement</th><th>Score change</th><th>Points change</th></tr></thead>' +
+            '<thead><tr><th>Category</th><th>Rank movement</th><th>Score change</th><th>OPA points change</th></tr></thead>' +
             '<tbody>' + rows + '</tbody></table></div></div>';
     }
 
