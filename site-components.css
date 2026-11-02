@@ -105,11 +105,12 @@
   color: #fff;
   background: var(--ui-secondary);
 }
-:where(.site-header-install-button) {
+.site-header-install-button {
   color: #fff;
   background: var(--ui-primary);
 }
-:where(.site-header-install-button:hover, .site-header-install-button:focus-visible) {
+.site-header-install-button:hover,
+.site-header-install-button:focus-visible {
   color: #fff;
   background: var(--ui-secondary);
   border-color: var(--ui-secondary);
