@@ -13,9 +13,14 @@ mkdir($dataDir,0777,true);
 define('DATA_DIR',$dataDir);
 
 $liveEventMigrationFile = null;
+$legacyEventCleanupMigrationFile = null;
 foreach(glob(__DIR__.'/../migrations/[0-9][0-9][0-9]_*.php') as $file){
     if (basename($file) === '014_live_event_results.php') {
         $liveEventMigrationFile = $file;
+        continue;
+    }
+    if (basename($file) === '015_retire_legacy_event_board.php') {
+        $legacyEventCleanupMigrationFile = $file;
         continue;
     }
     $migration=require $file;
@@ -28,13 +33,17 @@ function getDb(): PDO { global $db; return $db; }
 $squadronSeed = $db->prepare('INSERT OR IGNORE INTO squadrons(id,name,created_at) VALUES(?,?,?)');
 for ($sid = 1; $sid <= 10; $sid++) $squadronSeed->execute([$sid, 'Test Squadron ' . $sid, date('c')]);
 
-// Model an event previously posted through the legacy admin events panel.
-// Migration 014 must preserve it on the public board while removing it from
-// the scoring ledger used by the legacy aggregate leaderboard helper.
+// Migration 014 moved legacy display-only events out of the old scoring ledger.
+// Migration 015 removes those legacy rows and retires the temporary live-event table.
 $legacyEventTimestamp = date('c');
 $legacyEventInsert = $db->prepare('INSERT INTO events(squadron_id,event_type,event_name,value,points_awarded,timestamp,created_at) VALUES(?,?,?,?,?,?,?)');
 $legacyEventInsert->execute([1,'other','Legacy display-only event',875,875,$legacyEventTimestamp,$legacyEventTimestamp]);
 $legacyEventId = (int)$db->lastInsertId();
+$legacyEventInsert->execute([1,'bracket','Bracket system event',0,0,$legacyEventTimestamp,$legacyEventTimestamp]);
+$bracketSystemEventId = (int)$db->lastInsertId();
+$legacyEventInsert->execute([1,'cadet_of_month','Cadet of the Month system event',0,0,$legacyEventTimestamp,$legacyEventTimestamp]);
+$cadetSystemEventId = (int)$db->lastInsertId();
+
 $liveEventMigration = require $liveEventMigrationFile;
 $liveEventMigration($db);
 $legacyBoardRowStmt = $db->prepare('SELECT event_name,description,value,legacy_event_id FROM live_event_results WHERE legacy_event_id=?');
@@ -45,13 +54,21 @@ check($legacyBoardRow !== false
     && $legacyBoardRow['description'] === ''
     && (float)$legacyBoardRow['value'] === 875.0
     && (int)$legacyBoardRow['legacy_event_id'] === $legacyEventId,
-    'migration preserves historical event cards in the isolated live results table');
-$legacySourceCount = $db->prepare('SELECT COUNT(*) FROM events WHERE id=?');
-$legacySourceCount->execute([$legacyEventId]);
-check((int)$legacySourceCount->fetchColumn() === 0,
-    'migration removes migrated display-only points from the leaderboard scoring ledger');
-check((bool)$db->query("SELECT 1 FROM event_type_config WHERE event_type='award'")->fetchColumn(),
-    'isolated live event board supports award-style result cards');
+    'migration 014 correctly identifies the old generic event entry');
+
+$legacyCleanupMigration = require $legacyEventCleanupMigrationFile;
+$legacyCleanupMigration($db);
+$liveEventTableExists = (bool)$db->query("SELECT 1 FROM sqlite_master WHERE type='table' AND name='live_event_results'")->fetchColumn();
+$legacyRemaining = $db->prepare('SELECT COUNT(*) FROM events WHERE id=?');
+$legacyRemaining->execute([$legacyEventId]);
+$systemEventCount = $db->prepare('SELECT COUNT(*) FROM events WHERE id IN (?,?)');
+$systemEventCount->execute([$bracketSystemEventId,$cadetSystemEventId]);
+check(!$liveEventTableExists && (int)$legacyRemaining->fetchColumn() === 0,
+    'migration 015 deletes generic legacy events and drops the retired live results table');
+check((int)$systemEventCount->fetchColumn() === 2,
+    'legacy cleanup preserves bracket and Cadet of the Month system events');
+check(!(bool)$db->query("SELECT 1 FROM event_type_config WHERE event_type='award'")->fetchColumn(),
+    'legacy cleanup removes the obsolete generic event-board award type');
 check((int)$db->query("SELECT COUNT(*) FROM scoring_categories WHERE is_active=1")->fetchColumn() === 3, 'OPA migration seeds AMI, SAMI, and PFT categories');
 
 $categoryRows = opaGetCategories($db);
@@ -77,41 +94,6 @@ foreach ($firstBoard as $entry) {
         'rank' => (int)$entry['rank'],
     ];
 }
-$eventsCountBeforeLivePost = (int)$db->query('SELECT COUNT(*) FROM events')->fetchColumn();
-$legacyLeaderboardBeforeLivePost = getSquadronRankings();
-$liveAwardInsert = $db->prepare('INSERT INTO live_event_results(squadron_id,event_type,event_name,description,value,timestamp,created_at,created_by) VALUES(?,?,?,?,?,?,?,?)');
-$liveAwardInsert->execute([1,'award','Display-only award','Recognized for outstanding participation.',999999,date('c'),date('c'),'test-admin']);
-$liveAwardRow = $db->query('SELECT event_type,description,value FROM live_event_results WHERE event_name=\'Display-only award\'')->fetch(PDO::FETCH_ASSOC);
-$afterLivePostBoard = opaGetPublishedLeaderboard($db);
-$opaUnaffectedByLiveBoard = count($afterLivePostBoard) === count($firstOpaBySquadron);
-foreach ($afterLivePostBoard as $entry) {
-    $sid = (int)$entry['squadron_id'];
-    if (!isset($firstOpaBySquadron[$sid])
-        || abs((float)$entry['total'] - $firstOpaBySquadron[$sid]['total']) > 0.000001
-        || (int)$entry['rank'] !== $firstOpaBySquadron[$sid]['rank']) {
-        $opaUnaffectedByLiveBoard = false;
-    }
-}
-check($opaUnaffectedByLiveBoard, 'posting a high-value live event does not change any published OPA score or rank');
-check((int)$db->query('SELECT COUNT(*) FROM events')->fetchColumn() === $eventsCountBeforeLivePost,
-    'live event posts never insert points into the scoring events ledger');
-$legacyLeaderboardAfterLivePost = getSquadronRankings();
-$legacyRanksUnchanged = count($legacyLeaderboardBeforeLivePost) === count($legacyLeaderboardAfterLivePost);
-foreach ($legacyLeaderboardBeforeLivePost as $position => $beforeRow) {
-    $afterRow = $legacyLeaderboardAfterLivePost[$position] ?? null;
-    if (!$afterRow
-        || (int)$afterRow['squadron_id'] !== (int)$beforeRow['squadron_id']
-        || abs((float)$afterRow['total'] - (float)$beforeRow['total']) > 0.000001
-        || (int)$afterRow['rank'] !== (int)$beforeRow['rank']) {
-        $legacyRanksUnchanged = false;
-    }
-}
-check($legacyRanksUnchanged, 'display-only live event points do not change legacy aggregate leaderboard totals or ranks');
-check($liveAwardRow !== false
-    && $liveAwardRow['event_type'] === 'award'
-    && $liveAwardRow['description'] === 'Recognized for outstanding participation.'
-    && (float)$liveAwardRow['value'] === 999999.0,
-    'award descriptions and display values are stored in the separate live event results table');
 $scorePoints = $db->prepare('SELECT category_points FROM scoring_publication_scores WHERE publication_id=? AND category_key=? AND squadron_id=1');
 $scorePoints->execute([$firstPublication['publication_id'], 'ami']);
 check((float)$scorePoints->fetchColumn() === 10.0, 'category points use the 10-to-1 rank scale');
@@ -637,6 +619,29 @@ check($adminScoreSource !== false
 check($publicationEditSource !== false
     && str_contains($publicationEditSource, "if (empty(\$_SESSION['admin']))"),
     'OPA publication editor requires an authenticated admin session');
+
+// Route-level regression checks for the challenges-and-awards event board.
+$homeSource = file_get_contents(__DIR__ . '/../index.php');
+$adminPanelSource = file_get_contents(__DIR__ . '/../admin-panel.php');
+$challengePublicSource = file_get_contents(__DIR__ . '/../challenges.php');
+check($homeSource !== false
+    && !str_contains($homeSource, 'live_event_results')
+    && !str_contains($homeSource, '$regularEvents')
+    && str_contains($homeSource, 'Group Challenges &amp; Awards')
+    && str_contains($homeSource, 'FROM engagement_awards')
+    && str_contains($homeSource, 'FROM challenges'),
+    'homepage event board uses Group Challenges and Awards instead of generic legacy events');
+check($adminPanelSource !== false
+    && !str_contains($adminPanelSource, 'admin-scores.php')
+    && !str_contains($adminPanelSource, 'admin-bulk-scores.php')
+    && str_contains($adminPanelSource, 'admin-challenges.php'),
+    'admin panel links to challenges and awards without the retired event-entry tools');
+check(!file_exists(__DIR__ . '/../admin-scores.php')
+    && !file_exists(__DIR__ . '/../admin-bulk-scores.php'),
+    'single-event and multi-squadron event administration files are removed');
+check($challengePublicSource !== false
+    && str_contains($challengePublicSource, 'id="challenge-<?php echo $id;?>'),
+    'public challenge entries provide direct anchors from the homepage board');
 
 // Web Push configuration regression checks. These use synthetic format fixtures
 // only; they do not contain or access production credentials.
