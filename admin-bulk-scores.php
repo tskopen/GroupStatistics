@@ -23,13 +23,16 @@ $eventTypesRows = $stmt->fetchAll();
 $eventTypes = array_map(fn($et) => $et['event_type'], $eventTypesRows);
 
 if ($_POST) {
-    $eventName = trim($_POST['event_name'] ?? '');
+    $eventName = trim((string)($_POST['event_name'] ?? ''));
+    $description = trim((string)($_POST['description'] ?? ''));
     $eventType = normalizeEventType($_POST['event_type'] ?? 'other');
 
     if ($eventName === '') {
         $error = 'Event name is required.';
     } elseif (strlen($eventName) > 160) {
         $error = 'Event titles must be 160 characters or fewer.';
+    } elseif (strlen($description) > 3000) {
+        $error = 'Event descriptions must be 3,000 characters or fewer.';
     } elseif (!in_array($eventType, $eventTypes, true)) {
         $error = 'Invalid event type.';
     } else {
@@ -39,9 +42,12 @@ if ($_POST) {
         try {
             $db->beginTransaction();
 
+            // Store display-only scores in the isolated live event results ledger.
+            // This table is not read by OPA or leaderboard aggregation code.
             $insertStmt = $db->prepare("
-                INSERT INTO events (squadron_id, event_type, event_name, value, points_awarded, timestamp, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO live_event_results
+                    (squadron_id,event_type,event_name,description,value,timestamp,created_at,created_by)
+                VALUES (?,?,?,?,?,?,?,?)
             ");
 
             foreach ($squadrons as $s) {
@@ -59,10 +65,11 @@ if ($_POST) {
                     $sid,
                     $eventType,
                     $eventName,
-                    $scoreVal,
+                    $description,
                     $scoreVal,
                     $timestamp,
                     $timestamp,
+                    (string)($_SESSION['username'] ?? 'admin'),
                 ]);
 
                 $newScores[] = [
@@ -82,8 +89,8 @@ if ($_POST) {
             // and compatibility points field before making the transaction visible.
             if (!empty($newScores)) {
                 $verifyStmt = $db->prepare('
-                    SELECT value, points_awarded
-                    FROM events
+                    SELECT value, description, legacy_event_id
+                    FROM live_event_results
                     WHERE squadron_id = ? AND event_name = ? AND event_type = ? AND timestamp = ?
                     ORDER BY id DESC
                     LIMIT 1
@@ -98,7 +105,9 @@ if ($_POST) {
                     $verifyRow = $verifyStmt->fetch();
                     if (
                         $verifyRow === false ||
-                        (float) $verifyRow['value'] !== (float) $verifyRow['points_awarded']
+                        (float) $verifyRow['value'] !== (float) $scoreData['value'] ||
+                        (string) $verifyRow['description'] !== $description ||
+                        $verifyRow['legacy_event_id'] !== null
                     ) {
                         throw new Exception('Bulk event score verification failed.');
                     }
@@ -123,7 +132,7 @@ if ($_POST) {
                 error_log('[EVENT-BOARD] Bulk notification error: ' . $notificationError->getMessage());
             }
 
-            $success = "Event '$eventName' recorded for " . count($newScores) . " squadron(s)!";
+            $success = "Display-only event '$eventName' recorded for " . count($newScores) . " squadron(s). OPA and leaderboard standings were not changed.";
         } catch (Exception $e) {
             if ($db->inTransaction()) {
                 $db->rollBack();
@@ -169,7 +178,7 @@ if ($_POST) {
 <div class="container">
     <div class="form-box">
         <h1>Post Event for Multiple Squadrons</h1>
-        <p style="color:#64748b;text-align:center;margin-top:-8px;">A single event name and timestamp are applied to every score entered below. Results appear in the public Events board, not the official OPA standings.</p>
+        <p style="color:#64748b;text-align:center;margin-top:-8px;">A display-only event for the public Results board. These values never enter OPA or leaderboard calculations.</p>
         <?php if ($success): ?>
         <div class="success">✓ <?php echo htmlspecialchars($success); ?></div>
         <?php endif; ?>
@@ -181,6 +190,9 @@ if ($_POST) {
             <label>Event Name</label>
             <input type="text" name="event_name" placeholder="e.g., PFT Round 1" required>
             
+            <label for="description">Description (optional)</label>
+            <textarea id="description" name="description" rows="4" maxlength="3000" placeholder="Describe the event, award, recognition, or result. This description appears on the public event card."></textarea>
+
             <label>Event Type</label>
             <select id="event_type" name="event_type" required>
                 <option value="">-- Select Event Type --</option>
@@ -191,7 +203,7 @@ if ($_POST) {
                 <?php endforeach; ?>
             </select>
             
-            <label style="margin-top: 25px;">Scores</label>
+            <label style="margin-top: 25px;">Display Scores (not OPA points)</label>
             <div class="score-grid">
                 <?php foreach ($squadrons as $s): ?>
                 <div class="score-input">
