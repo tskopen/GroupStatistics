@@ -13,6 +13,9 @@ $notice = trim((string)($_GET['notice'] ?? ''));
 function flightAdminEscape($value): string {
     return htmlspecialchars((string)($value ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 }
+function flightAdminLength(string $value): int {
+    return function_exists('mb_strlen') ? mb_strlen($value, 'UTF-8') : strlen($value);
+}
 function flightAdminFindSquadron(PDO $db, int $id): ?array {
     $stmt = $db->prepare('SELECT id,name FROM squadrons WHERE id=? LIMIT 1');
     $stmt->execute([$id]);
@@ -53,13 +56,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($action === 'save_flight') {
             $flightId = (int)($_POST['flight_id'] ?? 0);
             $name = trim((string)($_POST['flight_name'] ?? ''));
-            if ($name === '' || mb_strlen($name) > 80) throw new RuntimeException('Enter a flight name up to 80 characters.');
+            if ($name === '' || flightAdminLength($name) > 80) throw new RuntimeException('Enter a flight name up to 80 characters.');
             if ($flightId > 0) {
                 $stmt = $db->prepare('UPDATE flights SET name=?,updated_at=? WHERE id=? AND squadron_id=?');
                 $stmt->execute([$name, $now, $flightId, $squadronId]);
-                if (!$stmt->rowCount() && !$db->prepare('SELECT 1 FROM flights WHERE id=? AND squadron_id=?')->execute([$flightId, $squadronId])) {
-                    throw new RuntimeException('Flight not found for this squadron.');
-                }
+                $exists = $db->prepare('SELECT 1 FROM flights WHERE id=? AND squadron_id=?');
+                $exists->execute([$flightId, $squadronId]);
+                if (!$exists->fetchColumn()) throw new RuntimeException('Flight not found for this squadron.');
             } else {
                 $order = (int)$db->query('SELECT COALESCE(MAX(display_order),0)+1 FROM flights WHERE squadron_id=' . $squadronId)->fetchColumn();
                 $stmt = $db->prepare('INSERT INTO flights(squadron_id,name,display_order,is_active,created_at,updated_at) VALUES(?,?,?,1,?,?)');
@@ -82,8 +85,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $startsAt = flightAdminParseDate((string)($_POST['starts_at'] ?? ''));
             $endsAt = flightAdminParseDate((string)($_POST['ends_at'] ?? ''));
             $status = (string)($_POST['status'] ?? 'draft');
-            if ($title === '' || mb_strlen($title) > 160) throw new RuntimeException('Enter a competition title up to 160 characters.');
-            if (mb_strlen($description) > 2000) throw new RuntimeException('Competition descriptions may not exceed 2,000 characters.');
+            if ($title === '' || flightAdminLength($title) > 160) throw new RuntimeException('Enter a competition title up to 160 characters.');
+            if (flightAdminLength($description) > 2000) throw new RuntimeException('Competition descriptions may not exceed 2,000 characters.');
             if (strtotime($endsAt) < strtotime($startsAt)) throw new RuntimeException('The competition end must be on or after its start.');
             if (!in_array($status, ['draft','published'], true)) throw new RuntimeException('Choose a valid competition status.');
             if ($competitionId > 0) {
@@ -131,8 +134,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $flightActive = $flightCheck->fetchColumn();
             if ($flightActive === false) throw new RuntimeException('Choose a flight belonging to this squadron.');
             if ($resultId === 0 && (int)$flightActive !== 1) throw new RuntimeException('New results can only be assigned to an active flight.');
-            if ($title !== '' && mb_strlen($title) > 160) throw new RuntimeException('Result titles may not exceed 160 characters.');
-            if ($description === '' || mb_strlen($description) > 2000) throw new RuntimeException('Enter a result description up to 2,000 characters.');
+            if ($title !== '' && flightAdminLength($title) > 160) throw new RuntimeException('Result titles may not exceed 160 characters.');
+            if ($description === '' || flightAdminLength($description) > 2000) throw new RuntimeException('Enter a result description up to 2,000 characters.');
             if ($points === false || !is_finite((float)$points)) throw new RuntimeException('Enter a valid points value.');
             if (!in_array($status, ['draft','published'], true)) throw new RuntimeException('Choose a valid result status.');
             if ($resultId > 0) {
