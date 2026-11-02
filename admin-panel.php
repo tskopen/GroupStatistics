@@ -35,6 +35,8 @@ if (isset($_GET['logout'])) {
 <?php require_once __DIR__ . '/site-header.php'; renderGroupSiteHeader(); ?>
     <div class="panel">
         <h1>Admin Panel</h1>
+        <a class="button" href="admin-scores.php">🗂️ Manage Live Events Board</a>
+        <a class="button" href="admin-bulk-scores.php">➕ Post Event for Multiple Squadrons</a>
         <a class="button" href="admin-score-management.php">📊 Score Management (OPA)</a>
         <a class="button" href="admin-brackets.php">🏆 Manage Brackets</a>
         <a class="button" href="admin-squadrons.php">Manage Squadrons</a>
