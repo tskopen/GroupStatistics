@@ -205,16 +205,3 @@
   }
 }
 
-
-/* Keep the Home navigation button visibly branded on the main site. */
-.site-header-nav a[href="index.php"] {
-  color: #fff !important;
-  background: var(--ui-primary) !important;
-  border-color: var(--ui-primary) !important;
-}
-.site-header-nav a[href="index.php"]:hover,
-.site-header-nav a[href="index.php"]:focus-visible {
-  color: #fff !important;
-  background: var(--ui-secondary) !important;
-  border-color: var(--ui-secondary) !important;
-}
