@@ -428,6 +428,7 @@ if ($challengeAwards) {
     /* Regular event card */
     .challenge-award-recipients{margin-top:12px;padding-top:10px;border-top:1px solid var(--border-color)}.challenge-award-recipient{display:flex;justify-content:space-between;gap:10px;padding:5px 0;border-bottom:1px solid var(--border-color);font-size:.9rem}.challenge-award-recipient:last-child{border-bottom:0}.regular-event { text-align: center; }
     .regular-event-icon { width: 60px; height: 60px; margin: 0 auto 10px; border-radius: 4px; object-fit: cover; }
+    .regular-event-title { font-weight: 800; color: var(--primary-color); margin: 3px 0 7px; overflow-wrap: anywhere; }
     .regular-event-name { font-weight: bold; margin: 5px 0; }
     .regular-event-description { margin: 8px 0; color: var(--muted-color); font-size: .88rem; line-height: 1.45; white-space: pre-line; overflow-wrap: anywhere; }
     .regular-event-type { display: inline-block; background: var(--soft-accent-color); color: var(--primary-color); padding: 4px 8px; border-radius: 3px; font-size: 0.75em; margin-bottom: 8px; }
@@ -734,6 +735,7 @@ if ($challengeAwards) {
                 <?php else: ?>
                     <div class="regular-event-icon" style="background:#ccc;"></div>
                 <?php endif; ?>
+                <div class="regular-event-title"><?php echo htmlspecialchars($event['event_name'] ?? ucfirst($event['event_type'] ?? 'Event'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?></div>
                 <div class="regular-event-name"><?php echo htmlspecialchars($squad['name'] ?? 'Unknown'); ?></div>
                 <div class="regular-event-type"><?php echo ucfirst($event['event_type'] ?? 'Other'); ?></div>
                 <?php if (!empty($event['description'])): ?><p class="regular-event-description"><?php echo htmlspecialchars($event['description'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?></p><?php endif; ?>
