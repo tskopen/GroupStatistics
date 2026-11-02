@@ -206,12 +206,13 @@ function opaValidateDraft(PDO $db, int $draftId): array {
             $row = $rows[$categoryId][$sid] ?? null;
             $rank = $row && $row['category_rank'] !== null ? (int)$row['category_rank'] : null;
             $score = $row && $row['category_score'] !== null ? (float)$row['category_score'] : null;
-            if ($rank === null) $errors[] = $category['display_name'] . ': Squadron ' . $sid . ' is missing a rank.';
-            elseif ($rank < 1 || $rank > 10) $errors[] = $category['display_name'] . ': Squadron ' . $sid . ' rank must be between 1 and 10.';
-            elseif (isset($seenRanks[$rank])) $errors[] = $category['display_name'] . ': rank ' . $rank . ' is assigned to more than one squadron.';
-            else $seenRanks[$rank] = $sid;
-            if ($score === null || $score < 0 || $score > 100) $errors[] = $category['display_name'] . ': Squadron ' . $sid . ' needs a percentage score from 0–100.';
-            if ($score !== null && $rank !== null) $rankScoreRows[] = ['rank' => $rank, 'score' => $score];
+            $weighted = (float)($category['military_weight'] ?? 0) > 0;
+            if ($weighted && $rank === null) $errors[] = $category['display_name'] . ': Squadron ' . $sid . ' is missing a rank.';
+            elseif ($rank !== null && ($rank < 1 || $rank > 10)) $errors[] = $category['display_name'] . ': Squadron ' . $sid . ' rank must be between 1 and 10.';
+            elseif ($weighted && isset($seenRanks[$rank])) $errors[] = $category['display_name'] . ': rank ' . $rank . ' is assigned to more than one squadron.';
+            elseif ($rank !== null) $seenRanks[$rank] = $sid;
+            if ($weighted && ($score === null || $score < 0 || $score > 100)) $errors[] = $category['display_name'] . ': Squadron ' . $sid . ' needs a percentage score from 0–100.';
+            if ($weighted && $score !== null && $rank !== null) $rankScoreRows[] = ['rank' => $rank, 'score' => $score];
         }
         if (count($rankScoreRows) === 10 && in_array($category['ranking_direction'], ['higher', 'lower'], true)) {
             usort($rankScoreRows, static fn($a, $b) => $a['rank'] <=> $b['rank']);
@@ -377,6 +378,7 @@ function opaPublishDraft(PDO $db, int $draftId, string $username, string $descri
             (publication_id,category_id,category_key,category_name,squadron_id,category_rank,category_score,category_points,source_rank,source_measurement,previous_rank,rank_change,previous_score,score_change)
             VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
         foreach ($categories as $category) {
+            if ((float)($category['military_weight'] ?? 0) <= 0) continue;
             $categoryId = (int)$category['id'];
             foreach ($squadrons as $squadron) {
                 $sid = (int)$squadron['id'];
