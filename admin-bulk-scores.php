@@ -155,7 +155,7 @@ if ($_POST) {
     .form-box { background: #fff; padding: 30px; border-radius: 6px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
     h1 { color: #002147; text-align: center; }
     label { display: block; margin-top: 15px; font-weight: bold; }
-    input, select { width: 100%; padding: 10px; margin-top: 4px; box-sizing: border-box; border: 1px solid #ddd; border-radius: 3px; }
+    input, select, textarea { width: 100%; padding: 10px; margin-top: 4px; box-sizing: border-box; border: 1px solid #ddd; border-radius: 3px; font: inherit; }
     button { width: 100%; padding: 10px; margin-top: 20px; background: #28a745; color: #fff; border: none; border-radius: 3px; cursor: pointer; font-weight: bold; }
     button:hover { background: #218838; }
     .score-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 20px; }
