@@ -44,6 +44,7 @@ if (!function_exists('renderGroupSiteHeader')) {
             <nav class="site-header-nav" aria-label="Primary page navigation">
                 <a href="index.php" class="site-header-install-button"<?php echo $currentPage === 'index.php' ? ' aria-current="page"' : ''; ?>>Home</a>
                 <a href="meet-the-group.php"<?php echo $currentPage === 'meet-the-group.php' ? ' aria-current="page"' : ''; ?>>Meet the Group</a>
+                <a href="squadron-pages.php"<?php echo $currentPage === 'squadron-pages.php' ? ' aria-current="page"' : ''; ?>>Squadron Pages</a>
                 <a href="announcements.php"<?php echo $currentPage === 'announcements.php' ? ' aria-current="page"' : ''; ?>>📣 Group Announcements</a>
                 <a href="intramural-standings.php"<?php echo $currentPage === 'intramural-standings.php' ? ' aria-current="page"' : ''; ?>>Intramurals</a>
                 <a href="cadet-of-month.php"<?php echo $currentPage === 'cadet-of-month.php' ? ' aria-current="page"' : ''; ?>>⭐ Cadet of the Month</a>
