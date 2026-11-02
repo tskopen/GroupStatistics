@@ -70,7 +70,7 @@ check((int)$systemEventCount->fetchColumn() === 2,
     'legacy cleanup preserves bracket and Cadet of the Month system events');
 check(!(bool)$db->query("SELECT 1 FROM event_type_config WHERE event_type='award'")->fetchColumn(),
     'legacy cleanup removes the obsolete generic event-board award type');
-check((int)$db->query("SELECT COUNT(*) FROM scoring_categories WHERE is_active=1")->fetchColumn() === 3, 'OPA migration seeds AMI, SAMI, and PFT categories');
+check((int)$db->query("SELECT COUNT(*) FROM scoring_categories WHERE military_weight>0 AND is_active=1")->fetchColumn() === 5, 'OPA migration configures five weighted Military categories');
 
 $categoryRows = opaGetCategories($db);
 $draftId = opaCreateDraft($db, 'test-admin', 'OPA test draft');
@@ -83,7 +83,7 @@ foreach ($categoryRows as $category) {
 $draftValidation = opaValidateDraft($db, $draftId);
 check(count($draftValidation['errors']) === 0, 'complete unique 1–10 category rankings and 0–100 scores pass publish validation');
 $draftPreview = opaGetDraftPreview($db, $draftId);
-check($draftPreview[0]['squadron_id'] === 1 && abs($draftPreview[0]['opa'] - 99.0) < 0.000001, 'OPA preview averages percentage scores across all active categories');
+check($draftPreview[0]['squadron_id'] === 1 && abs($draftPreview[0]['opa'] - 202.95) < 0.000001, 'OPA preview applies the reconstructed Military category weights');
 $firstPublication = opaPublishDraft($db, $draftId, 'test-admin');
 $firstBoard = opaGetPublishedLeaderboard($db);
 check(count($firstBoard) === 10 && (int)$firstBoard[0]['squadron_id'] === 1, 'published OPA leaderboard includes only Squadrons 1–10');
@@ -99,7 +99,7 @@ $scorePoints = $db->prepare('SELECT category_points FROM scoring_publication_sco
 $scorePoints->execute([$firstPublication['publication_id'], 'ami']);
 check((float)$scorePoints->fetchColumn() === 10.0, 'category points use the 10-to-1 rank scale');
 $breakdown = opaGetSquadronBreakdown($db, 1);
-check($breakdown !== null && count($breakdown['categories']) === 3, 'published squadron breakdown returns category ranks and scores');
+check($breakdown !== null && count($breakdown['categories']) === 5, 'published squadron breakdown returns weighted Military category ranks and scores');
 
 $secondDraft = opaCreateDraft($db, 'test-admin', 'Second OPA test draft');
 foreach ($categoryRows as $category) {
@@ -111,7 +111,7 @@ $secondPublication = opaPublishDraft($db, $secondDraft, 'test-admin');
 $secondBoard = opaGetPublishedLeaderboard($db);
 $squadronOne = null;
 foreach ($secondBoard as $entry) if ((int)$entry['squadron_id'] === 1) $squadronOne = $entry;
-check($squadronOne !== null && (int)$squadronOne['rank_change'] === -9 && abs((float)$squadronOne['opa_change'] + 9.0) < 0.000001, 'publication snapshots capture OPA and overall rank changes');
+check($squadronOne !== null && (int)$squadronOne['rank_change'] === -9 && abs((float)$squadronOne['opa_change'] + 18.45) < 0.000001, 'publication snapshots capture OPA and overall rank changes');
 $immutableSnapshot = false;
 try {
     $db->prepare('UPDATE scoring_publications SET published_by=? WHERE id=?')->execute(['changed', $firstPublication['publication_id']]);
