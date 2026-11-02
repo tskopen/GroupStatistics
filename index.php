@@ -370,7 +370,7 @@ if ($challengeAwards) {
                 <?php echo htmlspecialchars($s['name']); ?>
             </td>
             <td class="opa-value-cell">
-                <strong><?php echo number_format((float)$entry['total'], 2); ?>%</strong>
+                <strong><?php echo number_format((float)$entry['total'], 2); ?></strong>
                 <div class="opa-history" data-opa-history="<?php echo htmlspecialchars((string) $s['id']); ?>" aria-label="Recent OPA history"></div>
             </td>
             <td class="movement-cell" data-squadron-id="<?php echo htmlspecialchars((string) $s['id']); ?>">—</td>
@@ -605,7 +605,7 @@ if ('serviceWorker' in navigator) {
             return;
         }
         element.textContent = history.map(function (publication) {
-            return publication.label + ' ' + Number(publication.opa).toFixed(1) + '%';
+            return publication.label + ' ' + Number(publication.opa).toFixed(1);
         }).join(' → ');
     }
 
@@ -699,7 +699,7 @@ if ('serviceWorker' in navigator) {
     function renderPublicationCard(title, publication) {
         return '<div class="breakdown-publication-card">' +
             '<h5>' + escapeHtml(title + ' · ' + publication.label) + '</h5>' +
-            '<div class="breakdown-opa">' + numberValue(publication.opa) + '%</div>' +
+            '<div class="breakdown-opa">' + numberValue(publication.opa) + '</div>' +
             '<div>Overall rank: <strong>#' + escapeHtml(publication.overall_rank) + '</strong></div>' +
             '<span class="breakdown-meta">Published ' + escapeHtml(publicationDate(publication)) + '</span>' +
             (publication.description ? '<span class="breakdown-meta breakdown-description">' + escapeHtml(publication.description) + '</span>' : '') +
@@ -726,7 +726,7 @@ if ('serviceWorker' in navigator) {
         var rankDelta = change.rank_movement;
         var changeHtml = '<div class="breakdown-category-change-metrics">' +
             '<div class="breakdown-change-metric"><span class="breakdown-change-metric-label">Rank movement</span><strong class="breakdown-change-metric-value ' + movementClass(rankDelta) + '">' + escapeHtml(rankMovement(rankDelta)) + '</strong></div>' +
-            '<div class="breakdown-change-metric"><span class="breakdown-change-metric-label">Score change</span><strong class="breakdown-change-metric-value ' + movementClass(change.score) + '">' + escapeHtml(signedValue(change.score, 2, ' pp')) + '</strong></div>' +
+            '<div class="breakdown-change-metric"><span class="breakdown-change-metric-label">Score change</span><strong class="breakdown-change-metric-value ' + movementClass(change.score) + '">' + escapeHtml(signedValue(change.score, 2, ' pts')) + '</strong></div>' +
             '<div class="breakdown-change-metric"><span class="breakdown-change-metric-label">Points change</span><strong class="breakdown-change-metric-value ' + movementClass(change.points) + '">' + escapeHtml(signedValue(change.points, 0, ' pts')) + '</strong></div>' +
             '</div>';
         if (!a || !b) changeHtml = '<div class="breakdown-category-value">This category is present in only one selected publication.</div>';
@@ -782,13 +782,13 @@ if ('serviceWorker' in navigator) {
             '<label class="breakdown-control">Compare to (B)' +
             '<select id="breakdown-publication-b">' + optionsB + '</select></label>' +
             '</div>' +
-            '<p class="breakdown-explanation">OPA is the arithmetic average of the category percentage scores shown below. Changes are calculated directly between the two selected publications, not against an automatically chosen previous period. Positive rank movement means the squadron improved its position. Score and OPA changes are shown in percentage points.</p>' +
+            '<p class="breakdown-explanation">OPA is calculated by multiplying each military category percentage score by its configured weight, then adding the weighted values. Changes are calculated directly between the two selected publications. Positive rank movement means the squadron improved its position. OPA changes are shown in score units.</p>' +
             '<div class="breakdown-summary-grid">' +
             renderPublicationCard('Publication A', a) +
             renderPublicationCard('Publication B', b) +
             '<div class="breakdown-publication-card breakdown-change-card">' +
             '<h5>Change (B − A)</h5>' +
-            '<div class="breakdown-opa ' + movementClass(overallChange.opa) + '">' + escapeHtml(signedValue(overallChange.opa, 2, ' pp')) + '</div>' +
+            '<div class="breakdown-opa ' + movementClass(overallChange.opa) + '">' + escapeHtml(signedValue(overallChange.opa, 2, ' pts')) + '</div>' +
             '<div>OPA change</div>' +
             '<div style="margin-top:8px">Overall rank: <strong class="' + movementClass(overallChange.rank_movement) + '">' + escapeHtml(rankMovement(overallChange.rank_movement)) + '</strong></div>' +
             '</div></div>';
@@ -796,7 +796,7 @@ if ('serviceWorker' in navigator) {
         html += renderQuickCategoryChanges(data.categories || [], a, b);
 
         html += '<div class="breakdown-section"><h4>OPA Category Breakdown</h4>' +
-            '<p class="breakdown-explanation">' + escapeHtml(data.category_count) + ' category entries are included in the selected publication comparison. Category points are calculated as 11 minus Group 1 rank (1st = 10 points, 10th = 1 point); OPA itself averages percentage scores, not category points.</p>' +
+            '<p class="breakdown-explanation">' + escapeHtml(data.category_count) + ' category entries are included in the selected publication comparison. Category points are calculated as 11 minus Group 1 rank (1st = 10 points, 10th = 1 point). OPA is the weighted sum of military category percentage scores.</p>' +
             '<div class="breakdown-category-list">';
         if (data.categories && data.categories.length) {
             data.categories.forEach(function (category) {
