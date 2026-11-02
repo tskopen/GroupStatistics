@@ -797,7 +797,7 @@ if ('serviceWorker' in navigator) {
         html += renderQuickCategoryChanges(data.categories || [], a, b);
 
         html += '<div class="breakdown-section"><h4>OPA Category Breakdown</h4>' +
-            '<p class="breakdown-explanation">' + escapeHtml(data.category_count) + ' category entries are included in the selected publication comparison. Each category shows its configured OPA weight and its contribution to the squadron’s OPA points (percentage score × weight). The overall OPA is the sum of these category OPA points.</p>' +
+            '<p class="breakdown-explanation">' + escapeHtml(data.category_count) + ' category entries are included in the selected publication comparison. Each category shows its configured OPA weight and its contribution to the squadron’s OPA points (percentage score × weight). The overall OPA equation is: OPA = (SAMI score × 0.25) + (AMI score × 0.25) + (PAI score × 0.05) + (Commissioning Education score × 0.75) + (Knowledge Testing score × 0.75). The overall OPA is the sum of these category OPA points.</p>' +
             '<div class="breakdown-category-list">';
         if (data.categories && data.categories.length) {
             data.categories.forEach(function (category) {
