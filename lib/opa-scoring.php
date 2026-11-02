@@ -139,19 +139,23 @@ function opaGetDraftPreview(PDO $db, int $draftId): array {
     $squadrons = $db->query('SELECT id,name FROM squadrons WHERE id BETWEEN 1 AND 10 ORDER BY id')->fetchAll(PDO::FETCH_ASSOC);
     $preview = [];
     foreach ($squadrons as $squadron) {
-        $scores = [];
+        $weightedTotal = 0.0;
+        $weightTotal = 0.0;
         $points = [];
-        $complete = count($categories) > 0;
+        $complete = true;
         foreach ($categories as $category) {
             $categoryId = (int)$category['id'];
             $record = $rows[$categoryId][(int)$squadron['id']] ?? [];
             $rank = isset($record['category_rank']) ? (int)$record['category_rank'] : null;
             $score = ($record['category_score'] ?? null) !== null ? (float)$record['category_score'] : null;
             $points[$categoryId] = opaCategoryPoints($rank);
-            if ($score === null) $complete = false;
-            $scores[] = $score;
+            $weight = (float)($category['military_weight'] ?? 0);
+            if ($weight > 0) {
+                if ($score === null) $complete = false;
+                else { $weightedTotal += $score * $weight; $weightTotal += $weight; }
+            }
         }
-        $opa = ($complete && $scores) ? array_sum($scores) / count($scores) : null;
+        $opa = ($complete && $weightTotal > 0) ? $weightedTotal : null;
         $preview[] = [
             'squadron_id' => (int)$squadron['id'],
             'name' => $squadron['name'],
@@ -291,9 +295,17 @@ function opaPublishDraft(PDO $db, int $draftId, string $username, string $descri
     $opaRows = [];
     foreach ($squadrons as $squadron) {
         $sid = (int)$squadron['id'];
-        $values = [];
-        foreach ($categories as $category) $values[] = (float)$rows[(int)$category['id']][$sid]['category_score'];
-        $opaRows[] = ['squadron_id' => $sid, 'opa' => array_sum($values) / count($values)];
+        $weightedTotal = 0.0;
+        $weightTotal = 0.0;
+        foreach ($categories as $category) {
+            $weight = (float)($category['military_weight'] ?? 0);
+            if ($weight <= 0) continue;
+            $score = (float)$rows[(int)$category['id']][$sid]['category_score'];
+            $weightedTotal += $score * $weight;
+            $weightTotal += $weight;
+        }
+        if ($weightTotal <= 0) throw new RuntimeException('Military scoring weights are not configured.');
+        $opaRows[] = ['squadron_id' => $sid, 'opa' => $weightedTotal];
     }
     usort($opaRows, static function (array $a, array $b): int {
         $diff = $b['opa'] - $a['opa'];
