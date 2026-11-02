@@ -664,8 +664,10 @@ function opaGetSquadronPublicationComparison(PDO $db, int $squadronId, ?int $pub
     $overallB = $overallStmt->fetch(PDO::FETCH_ASSOC);
     if (!$overallA || !$overallB) return null;
 
-    $categoryStmt = $db->prepare('SELECT category_key,category_name,category_rank,category_score,category_points,source_rank,source_measurement
-        FROM scoring_publication_scores WHERE publication_id=? AND squadron_id=? ORDER BY category_name');
+    $categoryStmt = $db->prepare('SELECT s.category_key,s.category_name,s.category_rank,s.category_score,s.source_rank,s.source_measurement,
+        COALESCE(c.military_weight,0) AS category_weight
+        FROM scoring_publication_scores s JOIN scoring_categories c ON c.category_key=s.category_key
+        WHERE s.publication_id=? AND s.squadron_id=? ORDER BY s.category_name');
     $categoryStmt->execute([$publicationAId, $squadronId]);
     $categoryA = [];
     foreach ($categoryStmt->fetchAll(PDO::FETCH_ASSOC) as $row) $categoryA[$row['category_key']] = $row;
@@ -684,7 +686,8 @@ function opaGetSquadronPublicationComparison(PDO $db, int $squadronId, ?int $pub
             return [
                 'rank' => (int)$row['category_rank'],
                 'score' => (float)$row['category_score'],
-                'points' => (float)$row['category_points'],
+                'weight' => (float)$row['category_weight'],
+                'opa_points' => (float)$row['category_score'] * (float)$row['category_weight'],
                 'source_rank' => $row['source_rank'] !== null ? (int)$row['source_rank'] : null,
                 'source_measurement' => $row['source_measurement'],
             ];
@@ -699,7 +702,7 @@ function opaGetSquadronPublicationComparison(PDO $db, int $squadronId, ?int $pub
             'change' => [
                 'rank_movement' => ($valueA !== null && $valueB !== null) ? $valueA['rank'] - $valueB['rank'] : null,
                 'score' => ($valueA !== null && $valueB !== null) ? $valueB['score'] - $valueA['score'] : null,
-                'points' => ($valueA !== null && $valueB !== null) ? $valueB['points'] - $valueA['points'] : null,
+                'opa_points' => ($valueA !== null && $valueB !== null) ? $valueB['opa_points'] - $valueA['opa_points'] : null,
             ],
         ];
     }
