@@ -797,7 +797,7 @@ if ('serviceWorker' in navigator) {
         html += renderQuickCategoryChanges(data.categories || [], a, b);
 
         html += '<div class="breakdown-section"><h4>OPA Category Breakdown</h4>' +
-            '<p class="breakdown-explanation">' + escapeHtml(data.category_count) + ' category entries are included in the selected publication comparison. Category points are calculated as 11 minus Group 1 rank (1st = 10 points, 10th = 1 point). OPA is the weighted sum of military category percentage scores.</p>' +
+            '<p class="breakdown-explanation">' + escapeHtml(data.category_count) + ' category entries are included in the selected publication comparison. Each category shows its configured OPA weight and its contribution to the squadron’s OPA points (percentage score × weight). The overall OPA is the sum of these category OPA points.</p>' +
             '<div class="breakdown-category-list">';
         if (data.categories && data.categories.length) {
             data.categories.forEach(function (category) {
