@@ -35,7 +35,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $db->beginTransaction();
 
                 // Get the event first so we can confirm the delete
-                $stmt = $db->prepare("SELECT * FROM events WHERE id = ?");
+                $stmt = $db->prepare("SELECT * FROM live_event_results WHERE id = ?");
                 $stmt->execute([$eventId]);
                 $event = $stmt->fetch();
 
@@ -43,24 +43,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     throw new Exception('Event not found.');
                 }
 
-                // Bracket and Cadet of the Month entries are maintained by their own
-                // admin workflows. Deleting them here would break their source records.
-                $managedStmt = $db->prepare("SELECT
-                    EXISTS(SELECT 1 FROM bracket_score_events WHERE event_id = ?) AS bracket_managed,
-                    EXISTS(SELECT 1 FROM cadet_of_month_awards WHERE event_id = ?) AS cotm_managed");
-                $managedStmt->execute([$eventId, $eventId]);
-                $managed = $managedStmt->fetch(PDO::FETCH_ASSOC) ?: [];
-                $managedEventType = normalizeEventType($event['event_type'] ?? '');
-                if (
-                    in_array($managedEventType, ['bracket', 'cadet_of_month'], true) ||
-                    !empty($managed['bracket_managed']) ||
-                    !empty($managed['cotm_managed'])
-                ) {
-                    throw new Exception('This result is managed by the Bracket or Cadet of the Month page.');
-                }
-
-                // Delete the event from the live results board.
-                $stmt = $db->prepare("DELETE FROM events WHERE id = ?");
+                // Live-board entries are isolated from the scoring ledger.
+                $stmt = $db->prepare("DELETE FROM live_event_results WHERE id = ?");
                 $stmt->execute([$eventId]);
 
                 $db->commit();
@@ -76,6 +60,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $squadronId = isset($_POST['squadron_id']) ? (int) $_POST['squadron_id'] : 0;
         $eventType = normalizeEventType($_POST['event_type'] ?? '');
         $eventName = trim((string)($_POST['event_name'] ?? ''));
+        $description = trim((string)($_POST['description'] ?? ''));
         $valueRaw = trim((string)($_POST['value'] ?? ''));
         $value = $valueRaw === '' ? false : filter_var($valueRaw, FILTER_VALIDATE_FLOAT);
 
@@ -105,27 +90,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $error = 'Enter a valid numeric score.';
         } elseif (strlen($eventName) > 160) {
             $error = 'Event titles must be 160 characters or fewer.';
+        } elseif (strlen($description) > 3000) {
+            $error = 'Event descriptions must be 3,000 characters or fewer.';
         } else {
             try {
                 $db->beginTransaction();
 
-                // Keep the legacy event fields aligned for the public results cards
-                // and historical event-ledger readers. Official OPA is separate.
-                $pointsAwarded = $value;
-
+                // These are display-only results. Do not write to events,
+                // intramural ledgers, or any OPA publication/scoring table.
                 $eventTimestamp = date('c');
                 $displayEventName = $eventName !== '' ? $eventName : ucfirst($eventType);
                 $stmt = $db->prepare("
-                    INSERT INTO events (squadron_id, event_type, event_name, value, points_awarded, timestamp)
-                    VALUES (?, ?, ?, ?, ?, ?)
+                    INSERT INTO live_event_results
+                        (squadron_id,event_type,event_name,description,value,timestamp,created_at,created_by)
+                    VALUES (?,?,?,?,?,?,?,?)
                 ");
                 $insertResult = $stmt->execute([
                     $squadronId,
                     $eventType,
                     $displayEventName,
-                    $value,
-                    $pointsAwarded,
-                    $eventTimestamp
+                    $description,
+                    (float)$value,
+                    $eventTimestamp,
+                    $eventTimestamp,
+                    (string)($_SESSION['username'] ?? 'admin')
                 ]);
 
                 if (!$insertResult) {
@@ -135,26 +123,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 $newEventId = $db->lastInsertId();
 
-                // Confirm points_awarded was actually persisted before committing.
-                $verifyStmt = $db->prepare('SELECT value, points_awarded FROM events WHERE id = ?');
+                // Verify the board-only result was persisted before committing.
+                $verifyStmt = $db->prepare('SELECT value,description,legacy_event_id FROM live_event_results WHERE id = ?');
                 $verifyStmt->execute([$newEventId]);
                 $verifyRow = $verifyStmt->fetch();
-
                 if (
                     $verifyRow === false ||
-                    $verifyRow['value'] === null ||
-                    $verifyRow['points_awarded'] === null ||
-                    (float) $verifyRow['value'] !== (float) $verifyRow['points_awarded']
+                    (float)$verifyRow['value'] !== (float)$value ||
+                    (string)$verifyRow['description'] !== $description ||
+                    $verifyRow['legacy_event_id'] !== null
                 ) {
-                    error_log('[SCORE-DIAG] points_awarded missing after insert for event id ' . $newEventId . ' (squadron ' . $squadronId . ', event_type ' . $eventType . ')');
-                    throw new Exception('points_awarded was not persisted for the new event.');
+                    throw new Exception('Live event result was not saved to the isolated results table.');
                 }
 
                 $db->commit();
 
-                // These legacy event entries feed the public event-results cards;
-                // official OPA standings are managed separately.
-                error_log('[EVENT-BOARD] Saved event #' . $newEventId . ' for squadron ' . $squadronId . '.');
+                // This isolated result is displayed on the public Events board only.
+                error_log('[EVENT-BOARD] Saved display-only result #' . $newEventId . ' for squadron ' . $squadronId . '.');
 
                 $success = true;
 
@@ -219,7 +204,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <?php require_once __DIR__ . '/site-header.php'; renderGroupSiteHeader(); ?>
     <div class="panel">
         <h1>Manage Live Events Board</h1>
-        <p style="text-align:center;color:#64748b;margin-top:-8px;">Add or remove event results shown in the public Results section. These entries do not change official OPA standings.</p>
+        <p style="text-align:center;color:#64748b;margin-top:-8px;">Display-only event results and award announcements. Scores and descriptions here are completely separate from OPA and leaderboard calculations.</p>
         <?php if ($success): ?>
             <p class="success">Score saved successfully.</p>
         <?php endif; ?>
@@ -251,7 +236,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <label for="event_name">Event Title (optional)</label>
             <input type="text" id="event_name" name="event_name" placeholder="e.g., SAMI Round 1, PFT Cycle 2">
 
-            <label for="value">Score Value</label>
+            <label for="description">Description (optional)</label>
+            <textarea id="description" name="description" rows="4" maxlength="3000" placeholder="Describe the event, award, recognition, or result. This text appears on the public event card."></textarea>
+
+            <label for="value">Display Score / Points</label>
+            <p style="margin:4px 0 0;color:#64748b;font-size:.85rem;">Shown on the event card only. These values do not contribute to OPA or leaderboard standings.</p>
             <input type="number" id="value" name="value" step="any" required placeholder="e.g., 10">
 
             <button type="submit">Save Score</button>
@@ -260,15 +249,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <?php
         // Fetch recent events
         $stmt = $db->prepare("
-            SELECT e.id, e.squadron_id, e.event_type, e.event_name, e.value, e.points_awarded, e.timestamp,
-                   s.name AS squadron_name, s.icon_filename,
-                   EXISTS(SELECT 1 FROM bracket_score_events bse WHERE bse.event_id=e.id) AS bracket_managed,
-                   EXISTS(SELECT 1 FROM cadet_of_month_awards cotm WHERE cotm.event_id=e.id) AS cotm_managed
-            FROM events e
+            SELECT e.id, e.squadron_id, e.event_type, e.event_name, e.description, e.value, e.timestamp,
+                   s.name AS squadron_name, s.icon_filename
+            FROM live_event_results e
             LEFT JOIN squadrons s ON e.squadron_id = s.id
-            WHERE e.event_type NOT IN ('bracket', 'cadet_of_month')
-               OR EXISTS(SELECT 1 FROM bracket_score_events bse WHERE bse.event_id=e.id)
-               OR EXISTS(SELECT 1 FROM cadet_of_month_awards cotm WHERE cotm.event_id=e.id)
             ORDER BY e.timestamp DESC, e.id DESC
             LIMIT 50
         ");
@@ -281,15 +265,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <table style="width: 100%; border-collapse: collapse; background: #fff; margin-top: 20px;">
                 <tr style="background: #002147; color: #fff;">
                     <th style="padding: 12px; text-align: left;">Squadron</th>
-                    <th style="padding: 12px; text-align: left;">Event</th>
-                    <th style="padding: 12px; text-align: center;">Score</th>
+                    <th style="padding: 12px; text-align: left;">Event / Description</th>
+                    <th style="padding: 12px; text-align: center;">Display Score</th>
                     <th style="padding: 12px; text-align: left;">Date</th>
                     <th style="padding: 12px; text-align: center;">Action</th>
                 </tr>
                 <?php foreach ($recentEvents as $event): ?>
                 <tr style="border-bottom: 1px solid #ddd;">
                     <td style="padding: 12px;"><?php echo htmlspecialchars($event['squadron_name'] ?? 'Unknown squadron'); ?></td>
-                    <td style="padding: 12px;"><?php echo htmlspecialchars($event['event_name'] ?? $event['event_type']); ?></td>
+                    <td style="padding: 12px;">
+                        <strong><?php echo htmlspecialchars($event['event_name'] ?? $event['event_type']); ?></strong>
+                        <?php if (!empty($event['description'])): ?><div style="margin-top:4px;color:#64748b;white-space:pre-line;"><?php echo htmlspecialchars($event['description'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); ?></div><?php endif; ?>
+                    </td>
                     <td style="padding: 12px; text-align: center;"><?php echo htmlspecialchars((string)$event['value']); ?></td>
                     <td style="padding: 12px;"><?php echo htmlspecialchars(date('M j, Y', strtotime($event['timestamp']))); ?></td>
                     <td style="padding: 12px; text-align: center;">
