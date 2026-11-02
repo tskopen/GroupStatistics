@@ -1138,9 +1138,6 @@ function opaBuildImportPreview(array $sheets, array $categories): array {
     return ['records' => $records, 'warnings' => array_values(array_unique($warnings)), 'identified_sheets' => $identifiedSheets];
 }
 function opaApplyImportPreview(PDO $db, int $draftId, array $preview, string $fileName, string $fileHash, string $username): int {
-    $duplicate = $db->prepare('SELECT id FROM scoring_imports WHERE file_sha256=?');
-    $duplicate->execute([$fileHash]);
-    if ($duplicate->fetchColumn()) throw new RuntimeException('This exact workbook has already been imported. Upload a revised workbook or continue editing the existing draft.');
     $records = $preview['records'] ?? [];
     if (!$records) throw new RuntimeException('The workbook did not contain any importable Group 1 records.');
     $db->beginTransaction();
@@ -1174,7 +1171,7 @@ function opaApplyImportPreview(PDO $db, int $draftId, array $preview, string $fi
             }
         }
         if ($recordCount === 0) throw new RuntimeException('No supported category rows could be applied to this draft.');
-        $insert = $db->prepare('INSERT INTO scoring_imports(draft_id,file_name,file_sha256,records_processed,categories_json,imported_by,imported_at)
+        $insert = $db->prepare('INSERT OR REPLACE INTO scoring_imports(draft_id,file_name,file_sha256,records_processed,categories_json,imported_by,imported_at)
             VALUES(?,?,?,?,?,?,?)');
         $insert->execute([$draftId, basename($fileName), $fileHash, $recordCount, json_encode(array_values(array_unique($categoryNames))), $username, $now]);
         $db->prepare('UPDATE scoring_drafts SET updated_by=?,updated_at=? WHERE id=?')->execute([$username, $now, $draftId]);
