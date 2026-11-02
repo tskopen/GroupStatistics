@@ -118,9 +118,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 throw new RuntimeException('Only valid .xlsx workbooks are supported. Legacy .xls files must be saved as .xlsx first.');
             }
             $hash = hash_file('sha256', $file['tmp_name']);
-            $duplicate = $db->prepare('SELECT id FROM scoring_imports WHERE file_sha256=?');
-            $duplicate->execute([$hash]);
-            if ($duplicate->fetchColumn()) throw new RuntimeException('This exact workbook has already been imported.');
             $sheets = opaReadXlsxWorkbook($file['tmp_name']);
             $preview = opaBuildImportPreview($sheets, opaGetCategories($db));
             if (empty($preview['records'])) {
