@@ -97,14 +97,6 @@
   text-decoration: none;
   transform: translateY(-1px);
 }
-:where(.site-header-nav a[aria-current="page"]) {
-  color: #fff;
-  background: var(--ui-primary);
-}
-:where(.site-header-nav a[aria-current="page"]:hover, .site-header-nav a[aria-current="page"]:focus-visible) {
-  color: #fff;
-  background: var(--ui-secondary);
-}
 .site-header-install-button {
   color: #fff;
   background: var(--ui-primary);
