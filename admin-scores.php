@@ -179,24 +179,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     error_log('[EVENT-BOARD] Notification error: ' . $notificationError->getMessage());
                 }
 
-                // Detailed logging of the notification send result
-                if (!empty($notifications)) {
-                    error_log('[PUSH-DIAG] Admin panel: Score for squadron ' . $squadronId . ' triggered ' . count($notifications) . ' notification(s)');
-                    error_log('[PUSH-DIAG] Delivery result: sent=' . $result['sent'] . ' failed=' . $result['failed']);
 
-                    if ($result['failed'] > 0) {
-                        error_log('[PUSH-DIAG] ⚠ WARNING: ' . $result['failed'] . ' notifications failed to deliver');
-                        if (!empty($result['results'])) {
-                            foreach ($result['results'] as $res) {
-                                if ($res['status'] === 'failed') {
-                                    error_log('[PUSH-DIAG] Failed delivery: ' . $res['endpoint'] . ' reason=' . ($res['reason'] ?? 'see HTTP response'));
-                                }
-                            }
-                        }
-                    }
-                } else {
-                    error_log('[PUSH-DIAG] ⚠ No notifications matched for squadron ' . $squadronId);
-                }
             } catch (Exception $e) {
                 if ($db->inTransaction()) {
                     $db->rollBack();
@@ -212,7 +195,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Enter Scores - Squadron Tracker</title>
+<title>Manage Live Events Board | GroupStatistics</title>
 <style>
     body { font-family: Arial, sans-serif; background: #f4f4f4; margin: 0; padding: 20px; color: #222; }
     .panel { max-width: 500px; margin: 40px auto; background: #fff; padding: 30px; border-radius: 6px; box-shadow: 0 1px 4px rgba(0,0,0,0.15); }
@@ -305,7 +288,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 </tr>
                 <?php foreach ($recentEvents as $event): ?>
                 <tr style="border-bottom: 1px solid #ddd;">
-                    <td style="padding: 12px;"><?php echo htmlspecialchars($event['squadron_name']); ?></td>
+                    <td style="padding: 12px;"><?php echo htmlspecialchars($event['squadron_name'] ?? 'Unknown squadron'); ?></td>
                     <td style="padding: 12px;"><?php echo htmlspecialchars($event['event_name'] ?? $event['event_type']); ?></td>
                     <td style="padding: 12px; text-align: center;"><?php echo htmlspecialchars((string)$event['value']); ?></td>
                     <td style="padding: 12px;"><?php echo htmlspecialchars(date('M j, Y', strtotime($event['timestamp']))); ?></td>
