@@ -49,6 +49,7 @@ $liveEventMigration($db);
 $legacyBoardRowStmt = $db->prepare('SELECT event_name,description,value,legacy_event_id FROM live_event_results WHERE legacy_event_id=?');
 $legacyBoardRowStmt->execute([$legacyEventId]);
 $legacyBoardRow = $legacyBoardRowStmt->fetch(PDO::FETCH_ASSOC);
+$legacyBoardRowStmt->closeCursor();
 check($legacyBoardRow !== false
     && $legacyBoardRow['event_name'] === 'Legacy display-only event'
     && $legacyBoardRow['description'] === ''
