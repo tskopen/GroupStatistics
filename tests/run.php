@@ -12,11 +12,45 @@ $dataDir=sys_get_temp_dir().'/groupstats-test-'.bin2hex(random_bytes(6));
 mkdir($dataDir,0777,true);
 define('DATA_DIR',$dataDir);
 
-foreach(glob(__DIR__.'/../migrations/[0-9][0-9][0-9]_*.php') as $file){$migration=require $file; $migration($db);}
+$liveEventMigrationFile = null;
+foreach(glob(__DIR__.'/../migrations/[0-9][0-9][0-9]_*.php') as $file){
+    if (basename($file) === '014_live_event_results.php') {
+        $liveEventMigrationFile = $file;
+        continue;
+    }
+    $migration=require $file;
+    $migration($db);
+}
 
 require_once __DIR__ . '/../lib/opa-scoring.php';
+require_once __DIR__ . '/../lib/scoring.php';
 $squadronSeed = $db->prepare('INSERT OR IGNORE INTO squadrons(id,name,created_at) VALUES(?,?,?)');
 for ($sid = 1; $sid <= 10; $sid++) $squadronSeed->execute([$sid, 'Test Squadron ' . $sid, date('c')]);
+
+// Model an event previously posted through the legacy admin events panel.
+// Migration 014 must preserve it on the public board while removing it from
+// the scoring ledger used by the legacy aggregate leaderboard helper.
+$legacyEventTimestamp = date('c');
+$legacyEventInsert = $db->prepare('INSERT INTO events(squadron_id,event_type,event_name,value,points_awarded,timestamp,created_at) VALUES(?,?,?,?,?,?,?)');
+$legacyEventInsert->execute([1,'other','Legacy display-only event',875,875,$legacyEventTimestamp,$legacyEventTimestamp]);
+$legacyEventId = (int)$db->lastInsertId();
+$liveEventMigration = require $liveEventMigrationFile;
+$liveEventMigration($db);
+$legacyBoardRowStmt = $db->prepare('SELECT event_name,description,value,legacy_event_id FROM live_event_results WHERE legacy_event_id=?');
+$legacyBoardRowStmt->execute([$legacyEventId]);
+$legacyBoardRow = $legacyBoardRowStmt->fetch(PDO::FETCH_ASSOC);
+check($legacyBoardRow !== false
+    && $legacyBoardRow['event_name'] === 'Legacy display-only event'
+    && $legacyBoardRow['description'] === ''
+    && (float)$legacyBoardRow['value'] === 875.0
+    && (int)$legacyBoardRow['legacy_event_id'] === $legacyEventId,
+    'migration preserves historical event cards in the isolated live results table');
+$legacySourceCount = $db->prepare('SELECT COUNT(*) FROM events WHERE id=?');
+$legacySourceCount->execute([$legacyEventId]);
+check((int)$legacySourceCount->fetchColumn() === 0,
+    'migration removes migrated display-only points from the leaderboard scoring ledger');
+check((bool)$db->query("SELECT 1 FROM event_type_config WHERE event_type='award'")->fetchColumn(),
+    'isolated live event board supports award-style result cards');
 check((int)$db->query("SELECT COUNT(*) FROM scoring_categories WHERE is_active=1")->fetchColumn() === 3, 'OPA migration seeds AMI, SAMI, and PFT categories');
 
 $categoryRows = opaGetCategories($db);
@@ -34,6 +68,36 @@ check($draftPreview[0]['squadron_id'] === 1 && abs($draftPreview[0]['opa'] - 99.
 $firstPublication = opaPublishDraft($db, $draftId, 'test-admin');
 $firstBoard = opaGetPublishedLeaderboard($db);
 check(count($firstBoard) === 10 && (int)$firstBoard[0]['squadron_id'] === 1, 'published OPA leaderboard includes only Squadrons 1–10');
+
+$firstOpaBySquadron = [];
+foreach ($firstBoard as $entry) {
+    $firstOpaBySquadron[(int)$entry['squadron_id']] = [
+        'total' => (float)$entry['total'],
+        'rank' => (int)$entry['rank'],
+    ];
+}
+$eventsCountBeforeLivePost = (int)$db->query('SELECT COUNT(*) FROM events')->fetchColumn();
+$liveAwardInsert = $db->prepare('INSERT INTO live_event_results(squadron_id,event_type,event_name,description,value,timestamp,created_at,created_by) VALUES(?,?,?,?,?,?,?,?)');
+$liveAwardInsert->execute([1,'award','Display-only award','Recognized for outstanding participation.',999999,date('c'),date('c'),'test-admin']);
+$liveAwardRow = $db->query('SELECT event_type,description,value FROM live_event_results WHERE event_name=\'Display-only award\'')->fetch(PDO::FETCH_ASSOC);
+$afterLivePostBoard = opaGetPublishedLeaderboard($db);
+$opaUnaffectedByLiveBoard = count($afterLivePostBoard) === count($firstOpaBySquadron);
+foreach ($afterLivePostBoard as $entry) {
+    $sid = (int)$entry['squadron_id'];
+    if (!isset($firstOpaBySquadron[$sid])
+        || abs((float)$entry['total'] - $firstOpaBySquadron[$sid]['total']) > 0.000001
+        || (int)$entry['rank'] !== $firstOpaBySquadron[$sid]['rank']) {
+        $opaUnaffectedByLiveBoard = false;
+    }
+}
+check($opaUnaffectedByLiveBoard, 'posting a high-value live event does not change any published OPA score or rank');
+check((int)$db->query('SELECT COUNT(*) FROM events')->fetchColumn() === $eventsCountBeforeLivePost,
+    'live event posts never insert points into the scoring events ledger');
+check($liveAwardRow !== false
+    && $liveAwardRow['event_type'] === 'award'
+    && $liveAwardRow['description'] === 'Recognized for outstanding participation.'
+    && (float)$liveAwardRow['value'] === 999999.0,
+    'award descriptions and display values are stored in the separate live event results table');
 $scorePoints = $db->prepare('SELECT category_points FROM scoring_publication_scores WHERE publication_id=? AND category_key=? AND squadron_id=1');
 $scorePoints->execute([$firstPublication['publication_id'], 'ami']);
 check((float)$scorePoints->fetchColumn() === 10.0, 'category points use the 10-to-1 rank scale');
