@@ -52,7 +52,6 @@ if (!function_exists('renderGroupSiteHeader')) {
                 <a href="awards.php"<?php echo $currentPage === 'awards.php' ? ' aria-current="page"' : ''; ?>>🏅 Challenge Awards</a>
                 <a href="score-history.php"<?php echo $currentPage === 'score-history.php' ? ' aria-current="page"' : ''; ?>>OPA History</a>
                 <a href="notification-preferences.php"<?php echo $currentPage === 'notification-preferences.php' ? ' aria-current="page"' : ''; ?>>🔔 Notifications</a>
-                <a href="admin-login.php"<?php echo $currentPage === 'admin-login.php' ? ' aria-current="page"' : ''; ?>>Admin Login</a>
                 <button type="button" id="pwa-install-button" class="site-header-install-button" hidden>⬇ Install App</button>
                 <span id="pwa-install-help" class="site-header-install-help" role="status" hidden></span>
             </nav>
