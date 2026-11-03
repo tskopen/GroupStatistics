@@ -53,7 +53,7 @@ if (!function_exists('renderGroupSiteHeader')) {
                 <a href="score-history.php"<?php echo $currentPage === 'score-history.php' ? ' aria-current="page"' : ''; ?>>OPA History</a>
                 <a href="notification-preferences.php"<?php echo $currentPage === 'notification-preferences.php' ? ' aria-current="page"' : ''; ?>>🔔 Notifications</a>
                 <button type="button" id="pwa-install-button" class="site-header-install-button" hidden>⬇ Install App</button>
-                <span id="pwa-install-help" class="site-header-install-help" role="status" hidden></span>
+                <div id="pwa-install-help" class="site-header-install-help" role="tooltip" hidden></div>
             </nav>
             <script src="pwa-install.js" defer></script>
             <?php endif; ?>
