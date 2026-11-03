@@ -12,9 +12,11 @@
     var guideUrl = 'https://support.google.com/chrome/answer/9658361?co=GENIE.Platform%3DAndroid&hl=en-0';
 
     if (isIOS) {
-        guideUrl = 'https://support.apple.com/guide/iphone/bookmark-a-website-iph42ab2f3a7/ios';
         installButton.textContent = '＋ Add to Home Screen';
-        installHelp.textContent = 'For iPhone and iPad, open this page in Safari, tap Share, then choose Add to Home Screen.';
+        installButton.setAttribute('aria-expanded', 'false');
+        installButton.setAttribute('aria-controls', 'pwa-install-help');
+        installHelp.classList.add('ios-install-help');
+        installHelp.innerHTML = '<strong>How to add this app to your Home Screen</strong><ol><li>Open this website in <strong>Safari</strong>.</li><li>Tap the <strong>Share</strong> button (the square with an arrow).</li><li>Scroll down and tap <strong>Add to Home Screen</strong>.</li><li>Tap <strong>Add</strong> to finish.</li></ol><span>Tip: If you do not see the option, make sure you are using Safari.</span>;
     } else if (isAndroid) {
         installButton.textContent = '＋ Add to Home Screen';
         installHelp.textContent = 'If the install prompt does not appear, follow the Chrome instructions to add this site to your home screen.';
@@ -50,6 +52,12 @@
     });
 
     installButton.addEventListener('click', async function () {
+        if (isIOS) {
+            var isOpen = installHelp.classList.toggle('is-open');
+            installButton.setAttribute('aria-expanded', String(isOpen));
+            return;
+        }
+
         if (!installPrompt) {
             window.open(guideUrl, '_blank', 'noopener,noreferrer');
             return;
