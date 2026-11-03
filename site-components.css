@@ -115,6 +115,42 @@
   line-height: 1.4;
   text-align: center;
 }
+.site-header-nav { position: relative; }
+.site-header-install-help.ios-install-help {
+  display: none;
+  position: absolute;
+  z-index: 1000;
+  top: calc(100% + 8px);
+  right: 12px;
+  width: min(340px, calc(100vw - 32px));
+  flex-basis: auto;
+  padding: 14px 16px;
+  border: 1px solid var(--ui-border);
+  border-radius: 12px;
+  background: var(--ui-surface);
+  color: var(--ui-text);
+  box-shadow: 0 8px 24px rgba(0,0,0,.18);
+  text-align: left;
+  font-size: .9rem;
+}
+.site-header-install-help.ios-install-help ol { margin: 10px 0; padding-left: 22px; }
+.site-header-install-help.ios-install-help li { margin: 6px 0; }
+.site-header-install-help.ios-install-help::before {
+  content: "";
+  position: absolute;
+  top: -7px;
+  right: 28px;
+  width: 12px;
+  height: 12px;
+  border-top: 1px solid var(--ui-border);
+  border-left: 1px solid var(--ui-border);
+  background: var(--ui-surface);
+  transform: rotate(45deg);
+}
+.site-header-install-button:hover + .site-header-install-help.ios-install-help,
+.site-header-install-button:focus-visible + .site-header-install-help.ios-install-help,
+.site-header-install-help.ios-install-help:hover,
+.site-header-install-help.ios-install-help.is-open { display: block; }
 :where(.site-header-mark, .site-header-squadron, .site-header-squadron-placeholder) { max-width: 100%; }
 @media (max-width: 600px) {
   :where(.site-header) { grid-template-columns: 40px minmax(0, 1fr) 40px; gap: 8px; padding: 0 6px; }
