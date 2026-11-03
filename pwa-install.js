@@ -16,7 +16,7 @@
         installButton.setAttribute('aria-expanded', 'false');
         installButton.setAttribute('aria-controls', 'pwa-install-help');
         installHelp.classList.add('ios-install-help');
-        installHelp.innerHTML = '<strong>How to add this app to your Home Screen</strong><ol><li>Open this website in <strong>Safari</strong>.</li><li>Tap the <strong>Share</strong> button (the square with an arrow).</li><li>Scroll down and tap <strong>Add to Home Screen</strong>.</li><li>Tap <strong>Add</strong> to finish.</li></ol><span>Tip: If you do not see the option, make sure you are using Safari.</span>;
+        installHelp.innerHTML = '<strong>How to add this app to your Home Screen</strong><ol><li>Open this website in <strong>Safari</strong>.</li><li>Tap the <strong>Share</strong> button (the square with an arrow).</li><li>Scroll down and tap <strong>Add to Home Screen</strong>.</li><li>Tap <strong>Add</strong> to finish.</li></ol><span>Tip: If you do not see the option, make sure you are using Safari.</span><a class="ios-install-details-link" href="https://support.apple.com/guide/iphone/bookmark-a-website-iph42ab2f3a7/ios" target="_blank" rel="noopener noreferrer">More detailed instructions from Apple</a>';
     } else if (isAndroid) {
         installButton.textContent = '＋ Add to Home Screen';
         installHelp.textContent = 'If the install prompt does not appear, follow the Chrome instructions to add this site to your home screen.';
