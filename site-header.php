@@ -10,16 +10,32 @@ if (!function_exists('renderGroupSiteHeader')) {
         if ($showNavigation === null) {
             $showNavigation = strpos($currentPage, 'admin-') !== 0;
         }
+        // Load theme utilities even on pages (including some admin screens) that
+        // do not include theme-loader.php themselves.
+        if (!function_exists('loadTheme')) {
+            require_once __DIR__ . '/theme-loader.php';
+        }
         $theme = function_exists('loadTheme') ? loadTheme() : [];
         $groupIconSettings = function_exists('readJson') && defined('DATA_DIR')
             ? readJson(DATA_DIR . '/group-icon.json') : [];
         $groupIconFilename = $groupIconSettings['filename'] ?? null;
         $themeSquadron = null;
-        if (!empty($theme['selected_squadron_id']) && function_exists('getDb')) {
+        if (function_exists('getDb')) {
             try {
-                $stmt = getDb()->prepare('SELECT id, name, icon_filename FROM squadrons WHERE id = ? LIMIT 1');
-                $stmt->execute([(int)$theme['selected_squadron_id']]);
-                $themeSquadron = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+                $db = getDb();
+                if (!empty($theme['selected_squadron_id'])) {
+                    $stmt = $db->prepare('SELECT id, name, icon_filename FROM squadrons WHERE id = ? LIMIT 1');
+                    $stmt->execute([(int)$theme['selected_squadron_id']]);
+                    $themeSquadron = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+                }
+                // If no selected squadron exists (or it has no uploaded icon),
+                // use the first squadron with an icon so the right-hand brand
+                // slot remains populated consistently on public and admin pages.
+                if (empty($themeSquadron['icon_filename'])) {
+                    $stmt = $db->query('SELECT id, name, icon_filename FROM squadrons WHERE icon_filename IS NOT NULL AND TRIM(icon_filename) <> \'\' ORDER BY id LIMIT 1');
+                    $fallbackSquadron = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+                    if ($fallbackSquadron) $themeSquadron = $fallbackSquadron;
+                }
             } catch (Throwable $e) {
                 $themeSquadron = null;
             }
