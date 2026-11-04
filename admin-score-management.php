@@ -434,7 +434,7 @@ function opaH($value): string {
                         <tr data-squadron-id="<?php echo (int)$entry['squadron_id']; ?>" data-opa="<?php echo $entry['opa']===null?'':opaH($entry['opa']); ?>">
                             <td class="score-rank projected-rank"><?php echo $entry['rank']===null?'—':'#'.(int)$entry['rank']; ?></td>
                             <td><?php echo (int)$entry['squadron_id']; ?> · <?php echo opaH($entry['name']); ?></td>
-                            <td class="score-opa projected-opa"><?php echo $entry['opa']===null?'Incomplete':number_format((float)$entry['opa'],2).'%'; ?></td>
+                            <td class="score-opa projected-opa"><?php echo $entry['opa']===null?'Incomplete':number_format((float)$entry['opa'],2); ?></td>
                             <td><?php echo $entry['complete']?'Complete':'Needs scores'; ?></td>
                         </tr>
                     <?php endforeach; ?>
