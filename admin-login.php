@@ -67,7 +67,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <?php endif; ?>
         <form method="post" action="admin-login.php">
             <label for="username">Username</label>
-            <input type="text" id="username" name="username" autocomplete="username" autofocus>
+            <input type="text" id="username" name="username" autocomplete="username" required autofocus>
 
             <label for="password">Password</label>
             <input type="password" id="password" name="password" required autocomplete="current-password">
