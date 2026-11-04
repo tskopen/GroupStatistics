@@ -32,7 +32,7 @@ function meetRenderRoleCard(array $role, string $nodeClass = ''): void {
     <article class="command-node <?php echo meetGroupEscape($nodeClass); ?>">
         <h3><?php echo meetGroupEscape($role['title']); ?></h3>
         <div class="rank-label"><?php echo meetGroupEscape($role['display_name']); ?></div>
-        <?php if ($photoUrl): ?><div class="profile"><img src="<?php echo meetGroupEscape($photoUrl); ?>" alt="Photo of <?php echo meetGroupEscape($role['display_name']); ?>"></div><?php endif; ?>
+        <div class="profile"><?php if ($photoUrl): ?><img src="<?php echo meetGroupEscape($photoUrl); ?>" alt="Photo of <?php echo meetGroupEscape($role['display_name']); ?>"><?php else: ?><div class="avatar" aria-hidden="true"><?php echo meetGroupEscape(function_exists('mb_substr') ? mb_substr($initials, 0, 2, 'UTF-8') : substr($initials, 0, 2)); ?></div><?php endif; ?></div>
         <?php if (trim($role['bio']) !== ''): ?><p class="profile-bio"><?php echo meetGroupEscape($role['bio']); ?></p><?php endif; ?>
         <?php if (trim($role['responsibilities']) !== ''): ?><p class="responsibilities"><?php echo meetGroupEscape($role['responsibilities']); ?></p><?php endif; ?>
         <?php if (trim($role['contact']) !== ''): ?><div><span class="contact"><?php echo meetGroupEscape($role['contact']); ?></span></div><?php endif; ?>
