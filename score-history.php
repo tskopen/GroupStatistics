@@ -384,11 +384,11 @@ body {
                         ?>
                         <tr>
                             <td><strong><?php echo historyH($comparisonRow['name']); ?></strong></td>
-                            <td><?php echo number_format((float)$comparisonRow['opa_a'], 2); ?>%</td>
+                            <td><?php echo number_format((float)$comparisonRow['opa_a'], 2); ?></td>
                             <td>#<?php echo $rankDelta === null ? '—' : (int)$comparisonRow['rank_a']; ?></td>
-                            <td><?php echo number_format((float)$comparisonRow['opa_b'], 2); ?>%</td>
+                            <td><?php echo number_format((float)$comparisonRow['opa_b'], 2); ?></td>
                             <td>#<?php echo (int)$comparisonRow['rank_b']; ?></td>
-                            <td class="<?php echo $deltaClass; ?>"><?php echo ($opaDelta > 0 ? '+' : '') . number_format($opaDelta, 2); ?> pp</td>
+                            <td class="<?php echo $deltaClass; ?>"><?php echo ($opaDelta > 0 ? '+' : '') . number_format($opaDelta, 2); ?></td>
                             <td class="<?php echo $rankClass; ?>"><?php echo $rankDelta > 0 ? '+' . $rankDelta . ' places gained' : ($rankDelta < 0 ? $rankDelta . ' places lost' : 'No change'); ?></td>
                         </tr>
                         <?php endforeach; ?>
