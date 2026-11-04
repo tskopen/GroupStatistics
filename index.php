@@ -714,12 +714,12 @@ if ('serviceWorker' in navigator) {
         var change = category.change || {};
         function periodValues(value) {
             if (!value) return '<div class="breakdown-category-value">No category data</div>';
-            var html = '<div class="breakdown-category-value">Group 1 rank: <strong>#' + escapeHtml(value.rank) + '</strong></div>' +
+            var html = '<div class="breakdown-category-value">Group 1 category rank: <strong>#' + escapeHtml(value.rank) + '</strong></div>' +
                 '<div class="breakdown-category-value">Percentage score: <strong>' + numberValue(value.score) + '%</strong></div>' +
                 '<div class="breakdown-category-value">OPA weight: <strong>' + numberValue(value.weight, 2) + '</strong></div>' +
                 '<div class="breakdown-category-value">OPA points: <strong>' + numberValue(value.opa_points, 2) + '</strong></div>';
             var source = [];
-            if (value.source_rank !== null && value.source_rank !== undefined) source.push('Original source rank: #' + value.source_rank);
+            source.push('Wing rank: ' + (value.source_rank !== null && value.source_rank !== undefined ? '#' + value.source_rank : 'Not available'));
             if (value.source_measurement !== null && value.source_measurement !== '') source.push('Raw measurement: ' + value.source_measurement);
             if (source.length) html += '<div class="breakdown-category-source">' + source.map(escapeHtml).join('<br>') + '</div>';
             return html;
