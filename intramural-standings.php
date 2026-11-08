@@ -104,7 +104,7 @@ header p{margin:0;max-width:650px;color:#e4edf7}
 <header><div class="header-inner">
 <div class="eyebrow">USAFA · Group 1</div>
 <h1>🏅 Intramural Standings</h1>
-<p>Track intramural points, squadron records, and game results across Group 1 sports.</p>
+<p>Coming Spring: Intramurals 2027</p>
 </div></header>
 <main class="container">
  <h2>Overall Intramural Points</h2>
