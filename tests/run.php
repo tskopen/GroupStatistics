@@ -544,8 +544,13 @@ foreach (($correctionData['categories'] ?? []) as $correctionCategory) {
 }
 for ($sid = 1; $sid <= 10; $sid++) {
     $scoreTotal = 0.0;
-    foreach ($correctionSubmitted as $categoryValues) $scoreTotal += (float)$categoryValues[$sid]['score'];
-    $expectedCorrectedOpa = $sid === 1 ? $scoreTotal / max(1, $correctionCategoryCount) : $expectedCorrectedOpa;
+    foreach ($correctionSubmitted as $categoryKey => $categoryValues) {
+        $weightStmt = $db->prepare('SELECT military_weight FROM scoring_categories WHERE category_key=?');
+        $weightStmt->execute([$categoryKey]);
+        $weight = (float)$weightStmt->fetchColumn();
+        if ($weight > 0) $scoreTotal += (float)$categoryValues[$sid]['score'] * $weight;
+    }
+    $expectedCorrectedOpa = $sid === 1 ? $scoreTotal : $expectedCorrectedOpa;
 }
 $correctionReason = 'Corrected a transcription error in the first publication.';
 opaCorrectPublication($db, $firstPublicationId, $correctionSubmitted, 'Corrected first publication', $correctionReason, 'test-admin');
