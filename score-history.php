@@ -364,7 +364,7 @@ body {
                     (<?php echo historyH((new DateTimeImmutable($publicationComparison['publication_a']['published_at']))->format('M j, Y')); ?>)
                     to <strong><?php echo historyH($publicationComparison['publication_b']['label']); ?></strong>
                     (<?php echo historyH((new DateTimeImmutable($publicationComparison['publication_b']['published_at']))->format('M j, Y')); ?>).
-                    OPA change is B minus A. Positive rank movement means places gained.
+                    OPA change is B minus A. Positive rank movement means places gained. Each OPA value uses the same weighted formula shown above; each category percentage score is multiplied by its configured weight and those contributions are summed.
                 </p>
                 <div class="history-table-wrap">
                     <table class="history-table">
