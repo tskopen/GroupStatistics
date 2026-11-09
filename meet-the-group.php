@@ -13,7 +13,7 @@ $sections = $db->query(
 )->fetchAll(PDO::FETCH_ASSOC);
 
 $rolesStmt = $db->prepare(
-    "SELECT r.id AS role_id, r.title, r.responsibilities, p.display_name, p.bio, p.contact, p.photo_filename
+    "SELECT r.id AS role_id, r.parent_role_id, r.title, r.responsibilities, p.display_name, p.bio, p.contact, p.photo_filename
      FROM directory_roles r
      JOIN directory_people p ON p.id = r.person_id
      WHERE r.section_id = ? AND r.status = 'published'
@@ -38,6 +38,22 @@ function meetRenderRoleCard(array $role, string $nodeClass = ''): void {
         <?php if (trim($role['contact']) !== ''): ?><div><span class="contact"><?php echo meetGroupEscape($role['contact']); ?></span></div><?php endif; ?>
     </article>
     <?php
+}
+function meetRenderRoleHierarchy(array $roles, array $children, string $nodeClass = ''): void {
+    if (!$roles) return;
+    echo '<div class="command-tier">';
+    foreach ($roles as $role) {
+        echo '<div class="org-unit">';
+        meetRenderRoleCard($role, $nodeClass);
+        $childRoles = $children[(int)$role['role_id']] ?? [];
+        if ($childRoles) {
+            echo '<div class="org-children">';
+            meetRenderRoleHierarchy($childRoles, $children, '');
+            echo '</div>';
+        }
+        echo '</div>';
+    }
+    echo '</div>';
 }
 function meetRoleMatches(array $role, array $patterns): bool {
     $title = strtolower(preg_replace('/[^a-z0-9]+/', '', $role['title']));
@@ -91,37 +107,19 @@ header p{margin:0;max-width:650px;color:#e4edf7}
 $rolesStmt->execute([(int)$section['id']]);
 $roles = $rolesStmt->fetchAll(PDO::FETCH_ASSOC);
 if (strcasecmp(trim($section['name']), 'Group Leadership') === 0):
-    $slotPatterns = [
-        'commander' => ['Group commander', 'Gp/CC', 'group command'],
-        'deputy' => ['Deputy group commander', 'Gp/CD', 'deputy group'],
-        'chief' => ['Group chief of staff', 'Gp/CoS', 'chief of staff'],
-        'exec' => ['Exec', 'Executive officer'],
-        'sel' => ['SEL', 'Senior enlisted leader'],
-        'first_shirt' => ['First Shirt', 'First sergeant'],
-        'superintendent' => ['Gp/Supt', 'Staff superintendent', 'group superintendent']
-    ];
-    $slots = array_fill_keys(array_keys($slotPatterns), null);
-    $extras = [];
+    $children = [];
+    $roots = [];
+    $roleById = [];
+    foreach ($roles as $role) $roleById[(int)$role['role_id']] = $role;
     foreach ($roles as $role) {
-        $assigned = false;
-        foreach ($slotPatterns as $slot => $patterns) {
-            if ($slots[$slot] === null && meetRoleMatches($role, $patterns)) {
-                $slots[$slot] = $role; $assigned = true; break;
-            }
-        }
-        if (!$assigned) $extras[] = $role;
+        $parentId = (int)($role['parent_role_id'] ?? 0);
+        if ($parentId && isset($roleById[$parentId])) $children[$parentId][] = $role;
+        else $roots[] = $role;
     }
 ?>
-<div class="command-chart" aria-label="Group staff chain of command">
-    <?php if ($slots['commander']): ?><div class="command-tier"><?php meetRenderRoleCard($slots['commander'], 'primary-node'); ?></div><?php endif; ?>
-    <?php if ($slots['deputy']): ?><div class="command-tier"><?php meetRenderRoleCard($slots['deputy'], 'primary-node'); ?></div><?php endif; ?>
-    <?php if ($slots['chief']): ?><div class="command-tier"><?php meetRenderRoleCard($slots['chief'], 'primary-node'); ?></div><?php endif; ?>
-    <?php $support = array_filter([$slots['exec'], $slots['sel'], $slots['first_shirt'], $slots['superintendent']]); ?>
-    <?php if ($support): ?><div class="command-tier support">
-        <?php foreach ($support as $role) meetRenderRoleCard($role, 'support-node'); ?>
-    </div><?php endif; ?>
+<div class="command-chart" aria-label="Group staff hierarchy">
+    <?php meetRenderRoleHierarchy($roots, $children, 'primary-node'); ?>
 </div>
-<?php if ($extras): ?><div class="command-extras"><h3>Additional Group Leadership</h3><div class="role-grid"><?php foreach ($extras as $role) meetRenderRoleCard($role); ?></div></div><?php endif; ?>
 <?php else: ?>
 <div class="role-grid"><?php foreach ($roles as $role) meetRenderRoleCard($role); ?></div>
 <?php endif; ?>
