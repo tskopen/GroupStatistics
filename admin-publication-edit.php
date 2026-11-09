@@ -138,7 +138,7 @@ body { margin:0; background:var(--pub-page); color:var(--pub-ink); font-family:A
         </section>
 
         <div class="pub-warning">
-            <strong>Important:</strong> Saving corrections changes this historical publication in place. OPA averages, overall ranks, category points, and period-to-period movement are recalculated for this publication and every later publication. The public leaderboard changes too when the latest publication is corrected.
+            <strong>OPA calculation:</strong> OPA = (SAMI percentage score × 0.25) + (AMI percentage score × 0.25) + (PAI percentage score × 0.05) + (Commissioning Education percentage score × 0.75) + (Knowledge Testing percentage score × 0.75). Each percentage score is multiplied by its configured Military weight; weighted contributions are summed. The displayed OPA is a score, not a percentage. <strong>Correction impact:</strong> Saving changes this historical publication in place. OPA scores, overall ranks, category points, and period-to-period movement are recalculated for this publication and every later publication. The public leaderboard changes too when the latest publication is corrected.
         </div>
 
         <form method="post" action="admin-publication-edit.php?publication_id=<?php echo $publicationId; ?>">
