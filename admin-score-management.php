@@ -425,7 +425,7 @@ function opaH($value): string {
     <div class="score-columns">
         <section class="score-card score-preview">
             <h2>Projected OPA Leaderboard</h2>
-            <p class="score-note">OPA is the sum of each category percentage score multiplied by its configured military weight. Incomplete rows remain unranked until completed.</p>
+            <p class="score-note">OPA formula: (SAMI percentage score × 0.25) + (AMI percentage score × 0.25) + (PAI percentage score × 0.05) + (Commissioning Education percentage score × 0.75) + (Knowledge Testing percentage score × 0.75). Each percentage score is multiplied by its configured Military weight and the weighted contributions are summed. Incomplete rows remain unranked until completed.</p>
             <div class="score-table-wrap">
                 <table class="score-table" id="projected-table">
                     <thead><tr><th>Projected Rank</th><th>Squadron</th><th>Projected OPA</th><th>Completeness</th></tr></thead>
