@@ -48,7 +48,7 @@ foreach ($rankingRows as $row) {
     if (!$squadron) continue;
     $ranked[] = [
         'squadron' => $squadron,
-        'total' => $row['total'],
+        'opa' => $row['opa'],
         'rank' => (int)$row['rank'],
     ];
 }
@@ -371,7 +371,7 @@ if ($challengeAwards) {
                 <?php echo htmlspecialchars($s['name']); ?>
             </td>
             <td class="opa-value-cell">
-                <strong><?php echo number_format((float)$entry['total'], 2); ?></strong>
+                <strong><?php echo number_format((float)$entry['opa'], 2); ?></strong>
                 <div class="opa-history" data-opa-history="<?php echo htmlspecialchars((string) $s['id']); ?>" aria-label="Recent OPA history"></div>
             </td>
             <td class="movement-cell" data-squadron-id="<?php echo htmlspecialchars((string) $s['id']); ?>">—</td>
