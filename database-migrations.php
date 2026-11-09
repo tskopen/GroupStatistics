@@ -6,6 +6,20 @@ function runDatabaseMigrations(PDO $db): void
     $files = glob(__DIR__ . '/migrations/*.php') ?: [];
     sort($files, SORT_STRING);
 
+    // A numeric migration version is the primary key in schema_migrations.
+    // Reject duplicate prefixes instead of silently skipping later files with
+    // the same number (which previously prevented the OPA repair from running).
+    $versions = [];
+    foreach ($files as $file) {
+        $base = basename($file);
+        if (!preg_match('/^(\\d+)_.*\\.php$/', $base, $m)) continue;
+        $version = (int)$m[1];
+        if (isset($versions[$version])) {
+            throw new RuntimeException("Duplicate migration version {$version}: {$versions[$version]} and {$base}");
+        }
+        $versions[$version] = $base;
+    }
+
     foreach ($files as $file) {
         $base = basename($file);
         if (!preg_match('/^(\d+)_.*\.php$/', $base, $m)) continue;
