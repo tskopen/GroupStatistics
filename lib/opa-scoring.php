@@ -1320,12 +1320,21 @@ function opaRecalculatePublicationSnapshots(PDO $db): void {
             }
             $categories[$categoryKey]['ranks'][$rank] = true;
             $categories[$categoryKey]['rows'][$squadronId] = $row;
-            $scoresBySquadron[$squadronId][] = $score;
+             $weight = (float)($militaryWeights[$categoryKey] ?? 0);
+            if ($weight > 0) {
+                $scoresBySquadron[$squadronId]['weighted_total'] = (float)($scoresBySquadron[$squadronId]['weighted_total'] ?? 0) + ($score * $weight);
+                $scoresBySquadron[$squadronId]['weight_total'] = (float)($scoresBySquadron[$squadronId]['weight_total'] ?? 0) + $weight;
+            }
             $currentCategoryRows[$categoryKey][$squadronId] = ['rank' => $rank, 'score' => $score];
         }
 
         $categoryCount = count($categories);
         if ($categoryCount < 1) throw new RuntimeException('Publication #' . $publicationId . ' has no scoring categories.');
+        $weightStmt = $db->query('SELECT category_key,military_weight FROM scoring_categories');
+        $militaryWeights = [];
+        foreach ($weightStmt->fetchAll(PDO::FETCH_ASSOC) as $weightRow) {
+            $militaryWeights[(string)$weightRow['category_key']] = (float)$weightRow['military_weight'];
+        }
         foreach ($categories as $categoryKey => $category) {
             if (count($category['rows']) !== 10) {
                 throw new RuntimeException('Publication #' . $publicationId . ' category ' . $categoryKey . ' must contain all ten Group 1 squadrons.');
@@ -1339,10 +1348,10 @@ function opaRecalculatePublicationSnapshots(PDO $db): void {
 
         $opaRows = [];
         for ($sid = 1; $sid <= 10; $sid++) {
-            if (!isset($scoresBySquadron[$sid]) || count($scoresBySquadron[$sid]) !== $categoryCount) {
-                throw new RuntimeException('Publication #' . $publicationId . ' must contain the same complete category set for Squadrons 1–10.');
+            if (!isset($scoresBySquadron[$sid]['weighted_total']) || (float)($scoresBySquadron[$sid]['weight_total'] ?? 0) <= 0) {
+                throw new RuntimeException('Publication #' . $publicationId . ' has no configured military-weighted scores for Squadron ' . $sid . '.');
             }
-            $opaRows[] = ['squadron_id' => $sid, 'opa' => array_sum($scoresBySquadron[$sid]) / $categoryCount];
+            $opaRows[] = ['squadron_id' => $sid, 'opa' => (float)$scoresBySquadron[$sid]['weighted_total']];
         }
         usort($opaRows, static function (array $a, array $b): int {
             $difference = (float)$b['opa'] - (float)$a['opa'];
@@ -1390,7 +1399,7 @@ function opaRecalculatePublicationSnapshots(PDO $db): void {
             if (!isset($rankBySquadron[$sid])) {
                 throw new RuntimeException('Publication #' . $publicationId . ' is missing an overall result for Squadron ' . $sid . '.');
             }
-            $opa = array_sum($scoresBySquadron[$sid]) / $categoryCount;
+            $opa = (float)$scoresBySquadron[$sid]['weighted_total'];
             $previous = $previousSquadronRows[$sid] ?? null;
             $updateSquadron->execute([
                 $opa,
