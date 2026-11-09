@@ -91,7 +91,7 @@ check(count($firstBoard) === 10 && (int)$firstBoard[0]['squadron_id'] === 1, 'pu
 $firstOpaBySquadron = [];
 foreach ($firstBoard as $entry) {
     $firstOpaBySquadron[(int)$entry['squadron_id']] = [
-        'total' => (float)$entry['total'],
+        'opa' => (float)$entry['opa'],
         'rank' => (int)$entry['rank'],
     ];
 }
