@@ -350,6 +350,7 @@ if ($challengeAwards) {
     </section>
     
     <h2>Overall Rankings</h2>
+    <p class="breakdown-explanation">Overall OPA calculation: OPA = (SAMI percentage score × 0.25) + (AMI percentage score × 0.25) + (PAI percentage score × 0.05) + (Commissioning Education percentage score × 0.75) + (Knowledge Testing percentage score × 0.75). Each weighted category contribution is added to produce the displayed OPA score.</p>
     <table class="rankings-table" id="rankings-table">
         <tr>
             <th>Rank</th>
