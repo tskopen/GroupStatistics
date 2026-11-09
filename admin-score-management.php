@@ -425,7 +425,7 @@ function opaH($value): string {
     <div class="score-columns">
         <section class="score-card score-preview">
             <h2>Projected OPA Leaderboard</h2>
-            <p class="score-note">OPA is the unrounded average of the active category percentage scores. Incomplete rows remain unranked until completed.</p>
+            <p class="score-note">OPA is the sum of each category percentage score multiplied by its configured military weight. Incomplete rows remain unranked until completed.</p>
             <div class="score-table-wrap">
                 <table class="score-table" id="projected-table">
                     <thead><tr><th>Projected Rank</th><th>Squadron</th><th>Projected OPA</th><th>Completeness</th></tr></thead>
@@ -621,7 +621,7 @@ function opaH($value): string {
                 if (prior === null || Math.abs(item.opa-prior) >= 0.0000001) { rank=index+1; prior=item.opa; }
                 row.dataset.opa = String(item.opa);
                 row.querySelector('.projected-rank').textContent = '#' + rank;
-                row.querySelector('.projected-opa').textContent = item.opa.toFixed(2) + '%';
+                row.querySelector('.projected-opa').textContent = item.opa.toFixed(2);
                 row.cells[3].textContent = 'Complete';
             }
             tableBody.appendChild(row);
