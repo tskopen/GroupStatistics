@@ -457,7 +457,7 @@ function opaGetRecentOpaHistoryBySquadron(PDO $db, int $limit = 4): array {
 function opaGetPublishedLeaderboard(PDO $db, ?int $publicationId = null): array {
     if ($publicationId === null) $publicationId = opaGetLatestPublicationId($db);
     if ($publicationId === null) return [];
-    $stmt = $db->prepare("SELECT ps.squadron_id, s.name, ps.opa AS total, ps.opa, ps.overall_rank AS rank,
+    $stmt = $db->prepare("SELECT ps.squadron_id, s.name, ps.opa, ps.overall_rank AS rank,
             ps.previous_opa, ps.opa_change, ps.previous_rank, ps.rank_change
         FROM scoring_publication_squadrons ps
         JOIN squadrons s ON s.id = ps.squadron_id
