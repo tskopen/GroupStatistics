@@ -114,10 +114,8 @@ if (strcasecmp(trim($section['name']), 'Group Leadership') === 0):
 ?>
 <div class="command-chart" aria-label="Group staff chain of command">
     <?php if ($slots['commander']): ?><div class="command-tier"><?php meetRenderRoleCard($slots['commander'], 'primary-node'); ?></div><?php endif; ?>
-    <?php if ($slots['deputy'] || $slots['chief']): ?><div class="command-tier dual">
-        <?php if ($slots['deputy']) meetRenderRoleCard($slots['deputy']); ?>
-        <?php if ($slots['chief']) meetRenderRoleCard($slots['chief']); ?>
-    </div><?php endif; ?>
+    <?php if ($slots['deputy']): ?><div class="command-tier"><?php meetRenderRoleCard($slots['deputy'], 'primary-node'); ?></div><?php endif; ?>
+    <?php if ($slots['chief']): ?><div class="command-tier"><?php meetRenderRoleCard($slots['chief'], 'primary-node'); ?></div><?php endif; ?>
     <?php $support = array_filter([$slots['exec'], $slots['sel'], $slots['first_shirt'], $slots['superintendent']]); ?>
     <?php if ($support): ?><div class="command-tier support">
         <?php foreach ($support as $role) meetRenderRoleCard($role, 'support-node'); ?>
