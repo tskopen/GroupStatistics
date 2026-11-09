@@ -1307,6 +1307,11 @@ function opaRecalculatePublicationSnapshots(PDO $db): void {
         $categories = [];
         $scoresBySquadron = [];
         $currentCategoryRows = [];
+        $weightStmt = $db->query('SELECT category_key,military_weight FROM scoring_categories');
+        $militaryWeights = [];
+        foreach ($weightStmt->fetchAll(PDO::FETCH_ASSOC) as $weightRow) {
+            $militaryWeights[(string)$weightRow['category_key']] = (float)$weightRow['military_weight'];
+        }
         foreach ($scoreRows as $row) {
             $categoryKey = (string)$row['category_key'];
             $squadronId = (int)$row['squadron_id'];
@@ -1330,11 +1335,6 @@ function opaRecalculatePublicationSnapshots(PDO $db): void {
 
         $categoryCount = count($categories);
         if ($categoryCount < 1) throw new RuntimeException('Publication #' . $publicationId . ' has no scoring categories.');
-        $weightStmt = $db->query('SELECT category_key,military_weight FROM scoring_categories');
-        $militaryWeights = [];
-        foreach ($weightStmt->fetchAll(PDO::FETCH_ASSOC) as $weightRow) {
-            $militaryWeights[(string)$weightRow['category_key']] = (float)$weightRow['military_weight'];
-        }
         foreach ($categories as $categoryKey => $category) {
             if (count($category['rows']) !== 10) {
                 throw new RuntimeException('Publication #' . $publicationId . ' category ' . $categoryKey . ' must contain all ten Group 1 squadrons.');
