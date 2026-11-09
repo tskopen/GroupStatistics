@@ -320,6 +320,7 @@ body {
         <div class="history-eyebrow">USAFA · Group 1</div>
         <h1>OPA Publication History</h1>
         <p>Review official scoring snapshots, overall standings, and category-level results for each published period.</p>
+        <p class="publication-compare-caption">Overall OPA formula: (SAMI percentage score × 0.25) + (AMI percentage score × 0.25) + (PAI percentage score × 0.05) + (Commissioning Education percentage score × 0.75) + (Knowledge Testing percentage score × 0.75). Weighted contributions are summed; the displayed OPA is a score, not a percentage.</p>
     </div>
 </header>
 <main class="history-page">
