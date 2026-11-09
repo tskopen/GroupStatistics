@@ -82,19 +82,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $responsibilities = trim((string)($_POST['responsibilities'] ?? ''));
             $sort = filter_var($_POST['sort_order'] ?? 0, FILTER_VALIDATE_INT);
             $status = (string)($_POST['status'] ?? 'draft');
+            $parentRoleId = filter_var($_POST['parent_role_id'] ?? '', FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: null;
             if (!$sectionId || !$db->query('SELECT id FROM directory_sections WHERE id=' . (int)$sectionId)->fetchColumn()) $errors[] = 'Choose a valid section.';
             if (!$personId || !$db->query('SELECT id FROM directory_people WHERE id=' . (int)$personId)->fetchColumn()) $errors[] = 'Choose a valid profile.';
             if ($title === '' || directoryTextLength($title) > 140) $errors[] = 'Role title is required and must be 140 characters or fewer.';
             if (directoryTextLength($responsibilities) > 2000) $errors[] = 'Responsibilities must be 2,000 characters or fewer.';
             if ($sort === false) $errors[] = 'Role order must be a whole number.';
             if (!in_array($status, ['draft', 'published'], true)) $errors[] = 'Choose draft or published status.';
+            if ($parentRoleId) {
+                $parentStmt = $db->prepare('SELECT section_id FROM directory_roles WHERE id=?');
+                $parentStmt->execute([$parentRoleId]);
+                $parentSection = $parentStmt->fetchColumn();
+                if (!$parentSection || (int)$parentSection !== (int)$sectionId) $errors[] = 'Choose a parent role from the same section.';
+                if ($id && $parentRoleId === $id) $errors[] = 'A role cannot be its own parent.';
+                $cursor = $parentRoleId; $seen = [];
+                while ($cursor && !$errors) {
+                    if ($cursor === $id || isset($seen[$cursor])) { $errors[] = 'That parent assignment would create a hierarchy cycle.'; break; }
+                    $seen[$cursor] = true;
+                    $parentLookup = $db->prepare('SELECT parent_role_id FROM directory_roles WHERE id=?');
+                    $parentLookup->execute([$cursor]); $cursor = (int)($parentLookup->fetchColumn() ?: 0) ?: null;
+                }
+            }
             if (!$errors) {
                 if ($id) {
-                    $stmt = $db->prepare('UPDATE directory_roles SET section_id=?, person_id=?, title=?, responsibilities=?, sort_order=?, status=?, updated_at=? WHERE id=?');
-                    $stmt->execute([$sectionId, $personId, $title, $responsibilities, $sort, $status, $now(), $id]);
+                    $stmt = $db->prepare('UPDATE directory_roles SET section_id=?, person_id=?, title=?, responsibilities=?, sort_order=?, status=?, parent_role_id=?, updated_at=? WHERE id=?');
+                    $stmt->execute([$sectionId, $personId, $title, $responsibilities, $sort, $status, $parentRoleId, $now(), $id]);
                 } else {
-                    $stmt = $db->prepare('INSERT INTO directory_roles(section_id, person_id, title, responsibilities, sort_order, status, created_at, updated_at) VALUES(?,?,?,?,?,?,?,?)');
-                    $stmt->execute([$sectionId, $personId, $title, $responsibilities, $sort, $status, $now(), $now()]);
+                    $stmt = $db->prepare('INSERT INTO directory_roles(section_id, person_id, title, responsibilities, sort_order, status, parent_role_id, created_at, updated_at) VALUES(?,?,?,?,?,?,?,?,?)');
+                    $stmt->execute([$sectionId, $personId, $title, $responsibilities, $sort, $status, $parentRoleId, $now(), $now()]);
                 }
                 header('Location: admin-directory.php?notice=role_saved'); exit;
             }
@@ -151,7 +166,7 @@ if (isset($_GET['edit_person'])) { $stmt=$db->prepare('SELECT * FROM directory_p
 if (isset($_GET['edit_role'])) { $stmt=$db->prepare('SELECT * FROM directory_roles WHERE id=?'); $stmt->execute([(int)$_GET['edit_role']]); $editRole=$stmt->fetch(PDO::FETCH_ASSOC) ?: null; }
 if (isset($_GET['edit_section'])) { $stmt=$db->prepare('SELECT * FROM directory_sections WHERE id=?'); $stmt->execute([(int)$_GET['edit_section']]); $editSection=$stmt->fetch(PDO::FETCH_ASSOC) ?: null; }
 $personForm = $editPerson ?: ['id'=>null,'display_name'=>'','bio'=>'','contact'=>'','photo_filename'=>null];
-$roleForm = $editRole ?: ['id'=>null,'section_id'=>$sections[0]['id'] ?? '', 'person_id'=>$people[0]['id'] ?? '', 'title'=>'','responsibilities'=>'','sort_order'=>0,'status'=>'draft'];
+$roleForm = $editRole ?: ['id'=>null,'section_id'=>$sections[0]['id'] ?? '', 'person_id'=>$people[0]['id'] ?? '', 'title'=>'','responsibilities'=>'','sort_order'=>0,'status'=>'draft','parent_role_id'=>null];
 $sectionForm = $editSection ?: ['id'=>null,'name'=>'','description'=>'','sort_order'=>count($sections)*10,'is_visible'=>1];
 ?>
 <!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Manage Meet the Group</title>
@@ -182,6 +197,7 @@ $sectionForm = $editSection ?: ['id'=>null,'name'=>'','description'=>'','sort_or
 <label class="field">Section *<select name="section_id" required><?php foreach ($sections as $section): ?><option value="<?php echo (int)$section['id']; ?>" <?php echo (int)$roleForm['section_id']===(int)$section['id']?'selected':''; ?>><?php echo directoryAdminEscape($section['name']); ?><?php echo empty($section['is_visible'])?' (hidden)':''; ?></option><?php endforeach; ?></select></label>
 <label class="field">Role / title *<input name="title" maxlength="140" required value="<?php echo directoryAdminEscape($roleForm['title']); ?>" placeholder="e.g., Group Commander"></label>
 <label class="field">Display order (lower appears first)<input type="number" name="sort_order" step="1" value="<?php echo (int)$roleForm['sort_order']; ?>"></label></div>
+<label class="field">Reports to / parent position<select name="parent_role_id"><option value="">No parent — top-level role</option><?php foreach ($roles as $candidate): if ((int)$candidate['section_id'] !== (int)$roleForm['section_id'] || (int)$candidate['id'] === (int)($roleForm['id'] ?? 0)) continue; ?><option value="<?php echo (int)$candidate['id']; ?>" <?php echo (int)($roleForm['parent_role_id'] ?? 0)===(int)$candidate['id']?'selected':''; ?>><?php echo directoryAdminEscape($candidate['title']); ?> — <?php echo directoryAdminEscape($candidate['display_name']); ?></option><?php endforeach; ?></select><span class="hint">Roles with the same parent appear at the same level. Set a parent to group this position beneath it.</span></label>
 <label class="field">Responsibilities / description<textarea name="responsibilities" maxlength="2000"><?php echo directoryAdminEscape($roleForm['responsibilities']); ?></textarea></label>
 <label class="field">Publication status<select name="status"><option value="draft" <?php echo $roleForm['status']==='draft'?'selected':''; ?>>Draft — admins only</option><option value="published" <?php echo $roleForm['status']==='published'?'selected':''; ?>>Published — visible publicly</option></select></label>
 <div class="actions"><button class="btn" type="submit" <?php echo (!$people || !$sections)?'disabled':''; ?>>Save role</button><?php if ($roleForm['id']): ?><a class="btn secondary" href="admin-directory.php#roles">Cancel</a><?php endif; ?></div></form>
