@@ -701,6 +701,7 @@ if ('serviceWorker' in navigator) {
         return '<div class="breakdown-publication-card">' +
             '<h5>' + escapeHtml(title + ' · ' + publication.label) + '</h5>' +
             '<div class="breakdown-opa">' + numberValue(publication.opa) + '</div>' +
+            '<span class="breakdown-meta">Calculation: SAMI × 0.25 + AMI × 0.25 + PAI × 0.05 + Commissioning Education × 0.75 + Knowledge Testing × 0.75 (percentage scores × weights, summed).</span>' +
             '<div>Overall rank: <strong>#' + escapeHtml(publication.overall_rank) + '</strong></div>' +
             '<span class="breakdown-meta">Published ' + escapeHtml(publicationDate(publication)) + '</span>' +
             (publication.description ? '<span class="breakdown-meta breakdown-description">' + escapeHtml(publication.description) + '</span>' : '') +
