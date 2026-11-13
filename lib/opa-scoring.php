@@ -974,7 +974,10 @@ function opaBuildPooledAverageImportPreview(array $sheets, array $categories): a
             'sami' => ['sami'], 'pai' => ['pai'], 'cai' => ['cai'], 'ami' => ['ami'],
         ];
         foreach ($aliases as $canonical => $terms) foreach ($terms as $term) {
-            if ($n !== $term && strpos($n, $term) !== 0) continue;
+            $matchesTerm = ($n === $term || strpos($n, $term) === 0);
+            // CG01 uses labels such as AMI CAI 3; classify these as CAI rather than AMI.
+            if ($canonical === 'cai' && strpos($n, 'cai') !== false) $matchesTerm = true;
+            if (!$matchesTerm) continue;
             $category = opaMatchWideCategory($canonical, $categories);
             if (!$category && $canonical === 'mae') $category = opaMatchWideCategory('Major Assessment Event', $categories);
             if ($category && (int)$category['is_active'] === 1) return $category;
