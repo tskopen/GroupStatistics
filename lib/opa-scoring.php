@@ -1047,7 +1047,7 @@ function opaBuildPooledAverageImportPreview(array $sheets, array $categories): a
             $records[$categoryId][$sid] = [
                 'category_id' => (int)$categoryId, 'squadron_id' => (int)$sid,
                 'source_rank' => null, 'category_rank' => null,
-                'category_score' => round($sum / $count, 4),
+                'category_score' => round($sum / $count, 2),
                 'source_measurement' => 'Pooled mean of ' . $count . ' individual scores',
             ];
         }
