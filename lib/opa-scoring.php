@@ -868,6 +868,8 @@ function opaParseSquadronIdentifier($value): ?int {
     $value = trim((string)$value);
     if ($value === '') return null;
     if (preg_match('/^\d{1,2}$/', $value)) return (int)$value;
+    // Raw Group 1 exports use CS01-CS10 unit identifiers.
+    if (preg_match('/^CS0*(\\d{1,2})$/i', $value, $match)) return (int)$match[1];
     if (preg_match('/(?:squadron|sq)\s*#?\s*0*(\d{1,2})\b/i', $value, $match)) return (int)$match[1];
     if (preg_match('/\b0*(\d{1,2})(?:st|nd|rd|th)?\s+(?:squadron|sq)\b/i', $value, $match)) return (int)$match[1];
     return null;
@@ -954,6 +956,116 @@ function opaMatchWideCategory(string $label, array $categories): ?array {
     // Do not guess when two active categories resolve to the same source label.
     return count($matches) === 1 ? $matches[0] : null;
 }
+
+/** Pool raw student-level assessment scores into each unit/category average. */
+function opaBuildPooledAverageImportPreview(array $sheets, array $categories): array {
+    $sums = []; $counts = []; $warnings = []; $records = [];
+    $master = null;
+    foreach ($sheets as $sheet) if (strcasecmp(trim((string)$sheet['name']), 'CG01') === 0) { $master = $sheet; break; }
+
+    $mapCategory = static function (string $label) use ($categories): ?array {
+        $n = opaNormalizeHeader($label);
+        $aliases = [
+            'ppnonoticeami' => ['ppnonoticeami','nnamispotcheck','nonoticeami','spotdiscrepancies'],
+            'commissioningeducation' => ['commissioningeducation'],
+            'knowledgetesting' => ['knowledgetesting','ktest'],
+            'marching' => ['marching','nmfmarching'],
+            'mae' => ['mae','majorassessmentevent','commschallenge','bagdrag'],
+            'sami' => ['sami'], 'pai' => ['pai'], 'cai' => ['cai'], 'ami' => ['ami'],
+        ];
+        foreach ($aliases as $canonical => $terms) foreach ($terms as $term) {
+            if ($n !== $term && strpos($n, $term) !== 0) continue;
+            $category = opaMatchWideCategory($canonical, $categories);
+            if (!$category && $canonical === 'mae') $category = opaMatchWideCategory('Major Assessment Event', $categories);
+            if ($category && (int)$category['is_active'] === 1) return $category;
+            // fallback exact key/display name matching
+            foreach ($categories as $candidate) {
+                $key = opaNormalizeHeader((string)$candidate['category_key']);
+                $name = opaNormalizeHeader((string)$candidate['display_name']);
+                if ((in_array($key, $terms, true) || in_array($name, $terms, true)) && (int)$candidate['is_active'] === 1) return $candidate;
+            }
+        }
+        return null;
+    };
+
+    $collect = static function ($unitValue, $scoreValue, array $category) use (&$sums, &$counts, &$warnings): void {
+        $sid = opaParseSquadronIdentifier($unitValue);
+        if ($sid === null && preg_match('/^CS0*(\d{1,2})$/i', trim((string)$unitValue), $m)) $sid = (int)$m[1];
+        if ($sid === null || $sid < 1 || $sid > 10) return;
+        $score = opaParseNumericValue($scoreValue);
+        if ($score === null) return;
+        if ($score < 0 || $score > 100) { $warnings[] = $category['display_name'] . ': out-of-range score ignored for Squadron ' . $sid . '.'; return; }
+        $id = (int)$category['id'];
+        $sums[$id][$sid] = ($sums[$id][$sid] ?? 0.0) + $score;
+        $counts[$id][$sid] = ($counts[$id][$sid] ?? 0) + 1;
+    };
+
+    $identified = 0;
+    if ($master !== null) {
+        $hi = null; $headers = [];
+        foreach (array_slice($master['rows'], 0, 25) as $i => $row) {
+            $unitCol = opaFindHeaderColumn($row['cells'], ['unit']);
+            if ($unitCol !== null) { $hi = $i; $headers = $row['cells']; break; }
+        }
+        if ($hi === null) $warnings[] = 'CG01 master sheet was found but its Unit header could not be identified.';
+        else {
+            $unitCol = opaFindHeaderColumn($headers, ['unit']); $columns = [];
+            foreach ($headers as $col => $label) {
+                if ((int)$col === $unitCol) continue;
+                $cat = $mapCategory((string)$label);
+                if ($cat) $columns[(int)$col] = $cat;
+            }
+            if (!$columns) $warnings[] = 'CG01 master sheet has no assessment columns matching active OPA categories.';
+            foreach (array_slice($master['rows'], $hi + 1) as $row) {
+                foreach ($columns as $col => $cat) $collect($row['cells'][$unitCol] ?? '', $row['cells'][$col] ?? null, $cat);
+            }
+            $identified = 1;
+        }
+    } else {
+        foreach ($sheets as $sheet) {
+            $hi = null; $unitCol = null; $scoreCol = null;
+            foreach (array_slice($sheet['rows'], 0, 25) as $i => $row) {
+                $u = opaFindHeaderColumn($row['cells'], ['unit']); $s = opaFindHeaderColumn($row['cells'], ['score']);
+                if ($u !== null && $s !== null) { $hi = $i; $unitCol = $u; $scoreCol = $s; break; }
+            }
+            if ($hi === null) continue;
+            $cat = $mapCategory((string)$sheet['name']);
+            if (!$cat) { $warnings[] = 'Worksheet "' . $sheet['name'] . '" was skipped: assessment category could not be mapped.'; continue; }
+            $identified++;
+            foreach (array_slice($sheet['rows'], $hi + 1) as $row) $collect($row['cells'][$unitCol] ?? '', $row['cells'][$scoreCol] ?? null, $cat);
+        }
+    }
+
+    foreach ($sums as $categoryId => $bySid) {
+        $cat = null; foreach ($categories as $candidate) if ((int)$candidate['id'] === (int)$categoryId) $cat = $candidate;
+        if (!$cat) continue;
+        foreach ($bySid as $sid => $sum) {
+            $count = (int)$counts[$categoryId][$sid];
+            $records[$categoryId][$sid] = [
+                'category_id' => (int)$categoryId, 'squadron_id' => (int)$sid,
+                'source_rank' => null, 'category_rank' => null,
+                'category_score' => round($sum / $count, 4),
+                'source_measurement' => 'Pooled mean of ' . $count . ' individual scores',
+            ];
+        }
+        if (count($records[$categoryId]) === 10 && in_array($cat['ranking_direction'], ['higher','lower'], true)) {
+            $ordered = array_values($records[$categoryId]);
+            usort($ordered, static function($a,$b) use($cat) {
+                $cmp = (float)$a['category_score'] <=> (float)$b['category_score'];
+                if (abs($cmp) < 0.0000001) return (int)$a['squadron_id'] <=> (int)$b['squadron_id'];
+                return $cat['ranking_direction'] === 'higher' ? -$cmp : $cmp;
+            });
+            $tie = false;
+            for ($i=1; $i<count($ordered); $i++) if (abs((float)$ordered[$i-1]['category_score']-(float)$ordered[$i]['category_score'])<0.0000001) {$tie=true;break;}
+            if ($tie) $warnings[] = $cat['display_name'] . ': tied pooled averages; ranks left blank for manual resolution.';
+            else foreach ($ordered as $i=>$row) $records[$categoryId][$row['squadron_id']]['category_rank'] = $i+1;
+        } elseif (count($records[$categoryId]) !== 10) $warnings[] = $cat['display_name'] . ': raw pooled scores found for ' . count($records[$categoryId]) . ' of ten squadrons; ranks not inferred.';
+        else $warnings[] = $cat['display_name'] . ': ranking direction is manual; ranks not inferred.';
+    }
+    if (!$identified || !$records) $warnings[] = 'No raw assessment scores mapped to active categories.';
+    return ['records'=>$records,'warnings'=>array_values(array_unique($warnings)),'identified_sheets'=>$identified];
+}
+
 /**
  * Import both normalized tables (Squadron / Category / Rank / Percentage)
  * and the Group 1 wide workbook: one row per squadron, with category-specific
