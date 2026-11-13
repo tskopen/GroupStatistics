@@ -375,7 +375,7 @@ function opaH($value): string {
                             <td><?php echo opaH($previewCategoryName); ?></td>
                             <td><?php echo (int)$previewRecord['squadron_id']; ?></td>
                             <td><?php echo $previewRecord['category_rank']===null?'Needs entry':(int)$previewRecord['category_rank']; ?></td>
-                            <td><?php echo $previewRecord['category_score']===null?'Not supplied':opaH($previewRecord['category_score']).'%'; ?></td>
+                            <td><?php echo $previewRecord['category_score']===null?'Not supplied':number_format((float)$previewRecord['category_score'], 2, '.', '').'%'; ?></td>
                             <td><?php echo $previewRecord['source_rank']===null?'—':(int)$previewRecord['source_rank']; ?></td>
                             <td><?php echo $previewRecord['source_measurement']===null?'—':opaH($previewRecord['source_measurement']); ?></td>
                         </tr>
