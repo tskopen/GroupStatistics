@@ -119,7 +119,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             $hash = hash_file('sha256', $file['tmp_name']);
             $sheets = opaReadXlsxWorkbook($file['tmp_name']);
-            $preview = opaBuildImportPreview($sheets, opaGetCategories($db));
+            $importMode = (string)($_POST['import_mode'] ?? 'precalculated');
+            if (!in_array($importMode, ['precalculated', 'pooled'], true)) throw new RuntimeException('Choose a supported workbook import mode.');
+            $preview = $importMode === 'pooled'
+                ? opaBuildPooledAverageImportPreview($sheets, opaGetCategories($db))
+                : opaBuildImportPreview($sheets, opaGetCategories($db));
             if (empty($preview['records'])) {
                 throw new RuntimeException(implode(' ', $preview['warnings']) ?: 'No supported Group 1 records were found.');
             }
@@ -142,7 +146,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             $_SESSION['opa_import_preview'] = [
                 'draft_id' => $draftId, 'file_name' => basename((string)$file['name']),
-                'file_hash' => $hash, 'preview' => $preview,
+                'file_hash' => $hash, 'preview' => $preview, 'import_mode' => $importMode,
                 'categories' => array_values(array_unique(array_map(static function ($categoryId) use ($db) {
                     $stmt = $db->prepare('SELECT display_name FROM scoring_categories WHERE id=?');
                     $stmt->execute([(int)$categoryId]);
@@ -330,16 +334,34 @@ function opaH($value): string {
 
     <section class="score-card">
         <div class="score-section-head"><h2>Import Excel / Autofill</h2><span class="score-tag">Preview before applying</span></div>
-        <p class="score-note">Upload an .xlsx workbook to identify worksheet headers and populate the same rank and percentage fields below. Only Squadron identifiers 1–10 are eligible. Existing values are not replaced until you review and confirm the import. Unsupported columns or ambiguous categories are reported rather than guessed.</p>
-        <form method="post" enctype="multipart/form-data" action="admin-score-management.php" class="score-inline">
-            <input type="hidden" name="action" value="preview_import">
-            <input type="hidden" name="draft_id" value="<?php echo $draftId; ?>">
-            <input type="file" name="workbook" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required>
-            <button class="score-btn secondary" type="submit">Inspect Workbook</button>
-        </form>
+        <p class="score-note">Choose the import format. Both paths preview their results first and only update the private draft after you confirm; the published leaderboard is unchanged until publication.</p>
+        <div class="score-grid">
+            <div class="score-card" style="padding:14px">
+                <h3>Pre-calculated Averages</h3>
+                <p class="score-note">Use a workbook that already contains category ranks and unit/squadron percentage averages.</p>
+                <form method="post" enctype="multipart/form-data" action="admin-score-management.php" class="score-inline">
+                    <input type="hidden" name="action" value="preview_import">
+                    <input type="hidden" name="import_mode" value="precalculated">
+                    <input type="hidden" name="draft_id" value="<?php echo $draftId; ?>">
+                    <input type="file" name="workbook" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required>
+                    <button class="score-btn secondary" type="submit">Preview Pre-calculated Upload</button>
+                </form>
+            </div>
+            <div class="score-card" style="padding:14px">
+                <h3>Calculate Pooled Averages from Raw Scores</h3>
+                <p class="score-note">Use the detailed student-level assessment export. CG01 master sheet is preferred and each individual score is pooled equally per unit/category; detailed tabs are used if CG01 is absent (never combined, to avoid double-counting).</p>
+                <form method="post" enctype="multipart/form-data" action="admin-score-management.php" class="score-inline">
+                    <input type="hidden" name="action" value="preview_import">
+                    <input type="hidden" name="import_mode" value="pooled">
+                    <input type="hidden" name="draft_id" value="<?php echo $draftId; ?>">
+                    <input type="file" name="workbook" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required>
+                    <button class="score-btn secondary" type="submit">Preview Calculated Upload</button>
+                </form>
+            </div>
+        </div>
         <?php if ($pendingImport): ?>
         <div class="score-message warning">
-            <strong>Workbook preview: <?php echo opaH($pendingImport['file_name']); ?></strong>
+            <strong><?php echo ($pendingImport['import_mode'] ?? 'precalculated') === 'pooled' ? 'Pooled raw-score preview: ' : 'Pre-calculated workbook preview: '; ?><?php echo opaH($pendingImport['file_name']); ?></strong>
             <p><?php echo (int)$pendingImport['record_count']; ?> squadron/category records identified. <?php echo (int)$pendingImport['replacement_count']; ?> existing field values would change. <?php echo (int)($pendingImport['manual_override_count'] ?? 0); ?> manually entered or corrected rows would be affected. Categories without workbook data will be preserved.</p>
             <p><strong>Categories affected:</strong> <?php echo opaH(implode(', ', $pendingImport['categories'] ?? [])); ?></p>
             <div class="score-table-wrap">
